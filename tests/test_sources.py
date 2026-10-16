@@ -213,9 +213,9 @@ class BaseInterpreterTest(unittest.TestCase):
         return env
 
     def test_hidden_base_interpreter_is_bound(self):
-        env = self.write_config("/home/someone/.pyenv/versions/3.12.0/bin")
+        env = self.write_config("/srv/pythons/3.12.0/bin")
         self.assertEqual(scenarios.base_interpreter(env),
-                         [Path("/home/someone/.pyenv/versions/3.12.0")])
+                         [Path("/srv/pythons/3.12.0")])
 
     def test_linked_version_folder_binds_link_and_target(self):
         root = Path(tempfile.mkdtemp(prefix="model-rig-pythons-"))

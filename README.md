@@ -97,7 +97,10 @@ Requirements:
 
        model-rig rescore results/<batch>
 
-`python3 -m rig` works in place of `model-rig` everywhere.
+`python3 -m rig` works in place of `model-rig` everywhere. A plain
+(non-editable) install works when you run it from the checkout folder,
+or with `MODEL_RIG_ROOT` set to the checkout. `MODEL_RIG_HOME` moves the
+state folder from `~/.model-rig/`.
 
 ## How it works
 
