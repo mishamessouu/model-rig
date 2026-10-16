@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If you use model-rig, please cite it as below."
+title: "model-rig: cost per successful fix for coding agents on real, reverted security fixes"
+type: software
+authors:
+  - alias: mishamessouu
+license: Apache-2.0
+repository-code: "https://github.com/mishamessouu/model-rig"
+version: 0.1.0
+date-released: 2026-10-16
+keywords:
+  - benchmark
+  - coding agents
+  - evaluation
+  - security
