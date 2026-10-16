@@ -1,0 +1,47 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
+      # Ubuntu 24.04 lets AppArmor block unprivileged user namespaces, so
+      # bwrap fails with "setting up uid map: Permission denied". The
+      # runner is thrown away after the job, so lift the restriction here.
+      - name: Allow bwrap user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Check the sandbox starts
+        run: bwrap --ro-bind / / --unshare-pid --unshare-net true
+
+      - name: Install model-rig
+        run: |
+          python3 -m pip install -e .
+          model-rig --help
+
+      # Fake agents only: no model call, no sign-in, no wger fixture.
+      - name: Rig tests
+        run: python3 -m unittest -v tests.test_rig tests.test_sources
+
+      - name: Check the demo scenario
+        run: python3 -m rig check booking-ladder

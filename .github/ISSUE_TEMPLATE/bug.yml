@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in the rig does not work as documented.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran and its output. Remove any token or sign-in data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: OS, Python, bwrap, and Claude Code or Codex version if a run is involved.
+      placeholder: "Ubuntu 24.04, Python 3.12, bwrap 0.9, Claude Code 2.x"
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: "`python3 -m unittest tests.test_rig` passes on my machine, or its failure is the bug."
+        - label: The report contains no hidden test or reference fix content.

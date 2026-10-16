@@ -1,0 +1,42 @@
+name: New scenario
+description: Propose a real or planted defect scenario.
+labels: [scenario]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read docs/adding-a-scenario.md first. Do not paste hidden tests or
+        reference fixes here: a public issue contaminates the scenario.
+  - type: input
+    id: upstream
+    attributes:
+      label: Upstream app and licence
+      placeholder: "github.com/owner/app, MIT"
+    validations:
+      required: true
+  - type: input
+    id: fix
+    attributes:
+      label: Fix commit, date, and advisory
+      placeholder: "abc1234, 2026-09-01, GHSA-xxxx-xxxx-xxxx"
+    validations:
+      required: true
+  - type: textarea
+    id: defect
+    attributes:
+      label: The defect in one or two sentences
+      description: Class (for example IDOR, missing authorization), and which layers a fix touches.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup needs
+      description: Language, test command, test time, and anything a venv cannot hold (database server, toolchain).
+  - type: dropdown
+    id: public
+    attributes:
+      label: Public or held out
+      options:
+        - Public (demo, its tests may be known to models)
+        - Held out (I keep hidden files private and publish results only)
