@@ -120,6 +120,9 @@ def base_interpreter(env):
 def load(name):
     """Load a scenario by name, or from a folder path (the rig's tests)."""
     folder = Path(name) if Path(name).is_absolute() else ROOT / "scenarios" / name
+    if not (folder / "scenario.toml").is_file():
+        raise SystemExit(f"no scenario at {folder}. Run model-rig from a model-rig "
+                         "checkout, or set MODEL_RIG_ROOT to one.")
     data = tomllib.loads((folder / "scenario.toml").read_text())
     prompts = {key: " ".join(text.split()) for key, text in data["prompts"].items()}
     tests = data.get("tests", {})
