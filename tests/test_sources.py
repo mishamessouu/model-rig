@@ -206,5 +206,28 @@ class GitScenarioTest(unittest.TestCase):
         self.assertIn("environment current", said.getvalue())
 
 
+class BaseInterpreterTest(unittest.TestCase):
+    def write_config(self, home):
+        env = Path(tempfile.mkdtemp(prefix="model-rig-venv-"))
+        (env / "pyvenv.cfg").write_text(f"home = {home}\nversion = 3.12.0\n")
+        return env
+
+    def test_hidden_base_interpreter_is_bound(self):
+        env = self.write_config("/home/someone/.pyenv/versions/3.12.0/bin")
+        self.assertEqual(scenarios.base_interpreter(env),
+                         [Path("/home/someone/.pyenv/versions/3.12.0")])
+
+    def test_linked_version_folder_binds_link_and_target(self):
+        root = Path(tempfile.mkdtemp(prefix="model-rig-pythons-"))
+        (root / "cpython-3.12.9" / "bin").mkdir(parents=True)
+        (root / "cpython-3.12").symlink_to(root / "cpython-3.12.9")
+        env = self.write_config(root / "cpython-3.12" / "bin")
+        self.assertEqual(scenarios.base_interpreter(env),
+                         [root / "cpython-3.12", (root / "cpython-3.12.9").resolve()])
+
+    def test_system_interpreter_needs_no_bind(self):
+        self.assertEqual(scenarios.base_interpreter(self.write_config("/usr/bin")), [])
+
+
 if __name__ == "__main__":
     unittest.main()

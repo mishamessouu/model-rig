@@ -181,7 +181,8 @@ def fake(cell, prompt, run_dir, budget_usd, scenario=None):
         argv += [ROOT / ".git", ROOT / "scenarios", scenario.hidden,
                  scenario.solution("probe").parent,
                  CLAUDE_FOLDER, CODEX_FOLDER, STATE / "fixtures",
-                 "/run/docker.sock", "/var/snap", *scenario.sandbox_read()]
+                 "/run/docker.sock", "/var/snap",
+                 *([scenario.env] if scenario.env else [])]
     solution = scenario.solution(cell["model"]) if scenario else None
     if solution and solution.is_dir():
         argv.append(solution)

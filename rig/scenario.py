@@ -65,8 +65,12 @@ class Scenario:
         return out
 
     def sandbox_read(self):
-        """Paths both sandboxes bind read-only for this scenario."""
-        return [self.env] if self.env else []
+        """Paths both sandboxes bind read-only for this scenario: the
+        prepared venv, and its base interpreter when the sandbox would
+        otherwise hide it."""
+        if not self.env:
+            return []
+        return [self.env, *base_interpreter(self.env)]
 
     def sandbox_env(self):
         """Variables both sandboxes set, so `python3` is the prepared one."""
@@ -89,6 +93,28 @@ class Scenario:
             return None
         return (f"{self.name}: {' and '.join(self.missing())} not prepared. "
                 f"Run: python3 -m rig prepare {self.name}")
+
+
+def base_interpreter(env):
+    """The Python install a venv points to, if it sits under a folder the
+    sandbox empties (pyenv or uv-managed Python under home or /tmp).
+    Without it, the venv's `python3` is a broken link in the sandbox.
+    Both the named folder and its resolved target are listed, because uv
+    names a version folder through a link."""
+    config = Path(env) / "pyvenv.cfg"
+    if not config.exists():
+        return []
+    for line in config.read_text().splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() == "home" and value.strip():
+            named = Path(value.strip()).parent
+            out = []
+            for prefix in (named, named.resolve()):
+                if prefix not in out and any(
+                        prefix.is_relative_to(folder) for folder in sandbox.EMPTIED):
+                    out.append(prefix)
+            return out
+    return []
 
 
 def load(name):
