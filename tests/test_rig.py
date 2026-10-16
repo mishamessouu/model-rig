@@ -26,6 +26,22 @@ class ScenarioTest(unittest.TestCase):
     def test_booking_ladder_is_sound(self):
         self.assertEqual(check.check("booking-ladder"), [])
 
+    def test_every_scenario_loads_with_its_files(self):
+        # No prepare step: this checks the small files a pull request adds.
+        from rig import scenario as scenarios
+        names = sorted(p.parent.name for p in ROOT.glob("scenarios/*/scenario.toml"))
+        self.assertIn("wger-log-idor", names)
+        for name in names:
+            with self.subTest(scenario=name):
+                scenario = scenarios.load(name)
+                self.assertEqual(scenario.name, name)
+                self.assertTrue(scenario.prompts)
+                self.assertTrue(any(scenario.hidden.iterdir()))
+                for defect in scenario.defects:
+                    self.assertTrue(defect["tests"], defect["id"])
+                    solution = scenario.solution(defect.get("solution", defect["id"]))
+                    self.assertTrue(solution.is_dir(), solution)
+
 
 class PipelineTest(unittest.TestCase):
     @classmethod
