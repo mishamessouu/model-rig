@@ -22,6 +22,8 @@ Results are evidence: do not edit them by hand. `model-rig rescore` and
 
 The scenario, cells, prompts, and repeats; the full matrix used; the
 rig's git commit (`rig_commit`); and the Claude Code and Codex versions.
+A batch continued with `--resume` gets one `resumed` entry per
+continuation, with its time, run count, rig commit, and CLI versions.
 
 ### `runs/<id>/result.json`
 

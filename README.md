@@ -87,6 +87,9 @@ Requirements:
 
        model-rig run wger-log-idor --cells claude-opus-medium,claude-sonnet-medium,codex-sol-high,codex-luna-medium --prompts open,ddd,security --yes
 
+   If a batch stops, run the same command with `--resume results/<batch>`.
+   It adds only the missing runs to that folder.
+
 7. Rebuild a batch's report. This is free.
 
        model-rig report results/<batch>

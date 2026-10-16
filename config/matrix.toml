@@ -29,3 +29,16 @@ name = "codex-luna-medium"
 harness = "codex"
 model = "gpt-6-luna"
 effort = "medium"
+
+# Effort pairs: the same model at a second effort level.
+[[cells]]
+name = "codex-sol-medium"
+harness = "codex"
+model = "gpt-6.1-sol"
+effort = "medium"
+
+[[cells]]
+name = "codex-luna-high"
+harness = "codex"
+model = "gpt-6-luna"
+effort = "high"

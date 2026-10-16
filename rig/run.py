@@ -4,6 +4,7 @@ import gzip
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
 import tomllib
@@ -38,6 +39,17 @@ def _text(value):
 def _git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
                           text=True, check=True).stdout
+
+
+def _kill_group(process):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _stop_on_term(*_):
+    raise SystemExit("stopped by SIGTERM")
 
 
 def _restore_sign_in(snapshots):
@@ -82,13 +94,21 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
                               network=invocation.network)
     started = time.time()
     timed_out, code = False, None
+    # Own process group, so a stop or a timeout ends the whole sandbox:
+    # bwrap's --die-with-parent covers its child, not bwrap itself.
+    process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, start_new_session=True)
     try:
-        done = subprocess.run(command, capture_output=True,
-                              timeout=matrix["timeout_seconds"])
-        stdout, stderr, code = _text(done.stdout), _text(done.stderr), done.returncode
-    except subprocess.TimeoutExpired as expired:
+        out, err = process.communicate(timeout=matrix["timeout_seconds"])
+        stdout, stderr, code = _text(out), _text(err), process.returncode
+    except subprocess.TimeoutExpired:
         timed_out = True
-        stdout, stderr = _text(expired.stdout), _text(expired.stderr)
+        _kill_group(process)
+        out, err = process.communicate()
+        stdout, stderr = _text(out), _text(err)
+    except BaseException:
+        _kill_group(process)
+        raise
     seconds = round(time.time() - started, 1)
     _restore_sign_in(snapshots)
     for _, local in invocation.auth:
@@ -156,7 +176,8 @@ def _versions():
 
 
 def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
-              results_root=None, keep=False, echo=print):
+              results_root=None, keep=False, echo=print, resume=None):
+    """Run a batch. With `resume`, add the missing runs to that batch folder."""
     scenario = scenarios.load(scenario_name)
     if scenario.unprepared():
         raise SystemExit(scenario.unprepared())
@@ -164,17 +185,34 @@ def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
     if unknown:
         raise SystemExit(f"unknown prompts: {', '.join(unknown)}")
     runs = plan(matrix, cell_names, prompt_names, repeats)
-    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
-    batch = f"{stamp}-{scenario.name}"
-    out_root = Path(results_root or ROOT / "results") / batch
-    out_root.mkdir(parents=True)
     commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
                             capture_output=True, text=True).stdout.strip()
-    (out_root / "batch.json").write_text(json.dumps({
-        "batch": batch, "scenario": scenario.name, "cells": cell_names,
-        "prompts": prompt_names, "repeats": repeats, "rig_commit": commit or None,
-        "versions": _versions(), "matrix": matrix,
-    }, indent=2) + "\n")
+    if resume:
+        out_root = Path(resume)
+        info = json.loads((out_root / "batch.json").read_text())
+        if info["scenario"] != scenario.name:
+            raise SystemExit(f"{out_root} is a batch of {info['scenario']}")
+        batch = info["batch"]
+        runs = [(rep, cell, prompt) for rep, cell, prompt in runs
+                if not (out_root / "runs" / f"{cell['name']}.{prompt}.r{rep}"
+                        / "result.json").exists()]
+        info.setdefault("resumed", []).append({
+            "at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+            "cells": cell_names, "prompts": prompt_names, "repeats": repeats,
+            "runs": len(runs), "rig_commit": commit or None, "versions": _versions(),
+        })
+        (out_root / "batch.json").write_text(json.dumps(info, indent=2) + "\n")
+    else:
+        stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+        batch = f"{stamp}-{scenario.name}"
+        out_root = Path(results_root or ROOT / "results") / batch
+        out_root.mkdir(parents=True)
+        (out_root / "batch.json").write_text(json.dumps({
+            "batch": batch, "scenario": scenario.name, "cells": cell_names,
+            "prompts": prompt_names, "repeats": repeats, "rig_commit": commit or None,
+            "versions": _versions(), "matrix": matrix,
+        }, indent=2) + "\n")
+    signal.signal(signal.SIGTERM, _stop_on_term)
     results = []
     for number, (rep, cell, prompt) in enumerate(runs, 1):
         echo(f"[{number}/{len(runs)}] {cell['name']} {prompt} r{rep}")

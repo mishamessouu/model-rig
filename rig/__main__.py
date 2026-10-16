@@ -32,6 +32,7 @@ def main(argv=None):
     running.add_argument("--prompts", required=True, help="comma-separated prompt names")
     running.add_argument("--repeats", type=int)
     running.add_argument("--keep", action="store_true", help="keep work folders")
+    running.add_argument("--resume", help="add the missing runs to this batch folder")
     running.add_argument("--yes", action="store_true",
                          help="confirm that real agent runs may spend usage")
     rescoring = commands.add_parser("rescore", help="score a batch's saved diffs again")
@@ -62,7 +63,7 @@ def main(argv=None):
             print("These runs call real models and spend usage. Add --yes to start.")
             return 2
         out_root, _ = run.run_batch(args.scenario, matrix, cells, prompts, repeats,
-                                    keep=args.keep)
+                                    keep=args.keep, resume=args.resume)
         (out_root / "report.md").write_text(report.markdown(out_root))
         print(f"report: {out_root / 'report.md'}")
         return 0

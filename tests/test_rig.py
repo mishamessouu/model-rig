@@ -110,6 +110,16 @@ class RescoreTest(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text())["fixed"], ["s1-sql-injection"])
 
 
+class ResumeTest(unittest.TestCase):
+    def test_resume_runs_only_missing(self):
+        out, _ = batch(["fake-none"])
+        _, rows = run.run_batch("booking-ladder", MATRIX, ["fake-none", "fake-s1"],
+                                ["open"], 1, echo=lambda *_: None, resume=out)
+        self.assertEqual([row["cell"] for row in rows], ["fake-s1"])
+        self.assertEqual(len(list(out.glob("runs/*/result.json"))), 2)
+        self.assertEqual(json.loads((out / "batch.json").read_text())["resumed"][0]["runs"], 1)
+
+
 class CodexParseTest(unittest.TestCase):
     def test_cached_tokens_move_out_of_input(self):
         log = "\n".join([
