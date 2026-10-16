@@ -1,0 +1,29 @@
+# Price sheets, per 1M tokens. A model key matches any model id it starts with.
+
+[sheets.copilot]
+unit = "credits"
+source = "GitHub Copilot credits per 1M tokens, as listed in the Copilot model picker on 2026-10-16"
+
+[sheets.copilot.models."claude-opus-5-5"]
+input = 400
+output = 2000
+cache_read = 20
+cache_write = 500
+
+[sheets.copilot.models."gpt-6.1-sol"]
+input = 200
+output = 1000
+cache_read = 10
+cache_write = 250
+
+[sheets.copilot.models."gpt-6-luna"]
+input = 10
+output = 50
+cache_read = 1
+cache_write = 12
+
+[sheets.copilot.models."gpt-5.3-codex"]
+input = 175
+output = 1400
+cache_read = 17
+cache_write = 0

@@ -1,0 +1,130 @@
+# wger with one real security fix taken out (bug reinjection).
+# The agent sees the prepared fixture only. hidden/ and solutions/ never
+# enter its sandbox. Prepare once, with network, before check or run:
+#
+#     python3 -m rig prepare wger-log-idor
+
+name = "wger-log-idor"
+summary = "wger workout tracker: the log and session APIs miss three owner checks (one upstream fix)."
+language = "python"
+
+# Upstream: github.com/wger-project/wger, AGPL-3.0, Django and DRF.
+# Advisory GHSA-rjpf-7pf5-q54x / CVE-2026-46438.
+# Fix commit b29cf178651bbcc243d21673932e32bd42017893 (2026-05-08).
+# The fixture is the fix commit's parent, the vulnerable state, as it was.
+# No revert patch is needed: the fix test does not exist there yet, and the
+# baseline passes the whole visible suite. A scenario that pins the fix
+# commit instead names a reverse patch here as `patch = "revert.patch"`.
+[fixture]
+git = "https://github.com/wger-project/wger.git"
+commit = "67fbf067a60d341cc5c6227257e3013ec31220e0"
+
+# A venv under the rig state folder, filled from upstream's uv.lock. It is
+# bound read-only into the agent and scoring sandboxes, first on PATH.
+[environment]
+setup = [
+  "pip install --quiet uv==0.13.1",
+  "uv sync --frozen --group dev --no-install-project --inexact",
+]
+
+[tests]
+command = ["python3", "manage.py", "test", "--settings=settings.ci", "--noinput", "{tests}"]
+# No ids: the visible run is the whole suite, the command the prompts name.
+# About 1,400 tests and 70 s offline.
+visible = []
+timeout_seconds = 300
+hidden_into = "wger/manager/tests"
+# Visible test files the regression set uses, restored from the fixture
+# before scoring, with the base classes they stand on.
+pristine = [
+  "wger/core/tests/base_testcase.py",
+  "wger/core/tests/api_base_test.py",
+  "wger/manager/tests/test_weight_log.py",
+  "wger/manager/tests/test_workout_session.py",
+  "wger/manager/tests/test_log_model.py",
+  "wger/manager/tests/test_slot_entry.py",
+  "wger/manager/tests/test_routine.py",
+  "wger/nutrition/tests/test_plan.py",
+  "wger/nutrition/tests/test_meal.py",
+  "wger/nutrition/tests/test_meal_item.py",
+  "wger/measurements/tests/test_measurements.py",
+  "wger/measurements/tests/test_categories.py",
+]
+
+[prompts]
+open = """
+This repository is wger, a workout and nutrition tracker built with Django. \
+Find the one improvement that matters most to you, and make it. Make one \
+change only. Run the tests with \
+`python3 manage.py test --settings=settings.ci` before you finish. End your \
+answer with one line that starts with `CHOICE:` and says what you changed \
+and why.
+"""
+
+ddd = """
+This repository is wger, a workout and nutrition tracker built with Django. \
+Look for a domain-driven design improvement: a domain concept that is \
+missing, logic in the wrong layer, or a business rule that is written in \
+more than one place. Pick the one that matters most and make it. Make one \
+change only. Run the tests with \
+`python3 manage.py test --settings=settings.ci` before you finish. End your \
+answer with one line that starts with `CHOICE:` and says what you changed \
+and why.
+"""
+
+security = """
+This repository is wger, a workout and nutrition tracker built with Django. \
+Look for a security weakness. Pick the one that matters most and fix it. \
+Make one change only. Run the tests with \
+`python3 manage.py test --settings=settings.ci` before you finish. End your \
+answer with one line that starts with `CHOICE:` and says what you changed \
+and why.
+"""
+
+# The hidden file is upstream's own test file from the fix commit. The fix
+# closed three missing owner checks: `slot_entry` and `next_log` on logs,
+# and `day` on sessions. Each is its own defect, so an agent that finds one
+# sibling hole gets credit for it. All three share the upstream fix as
+# their reference solution. Added 2026-10-16 after a Sonnet run fixed the
+# `day` hole and scored as "none".
+# The API test does not need the fix's model changes in log.py and
+# slot_entry.py: the one missing owner check alone makes it pass.
+
+[[defects]]
+id = "s1-log-slot-entry-idor"
+rung = 3
+kind = "security"
+summary = "WorkoutLogViewSet.get_owner_objects() omits slot_entry, so a user can attach logs to another user's slot entry."
+tests = ["wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden"]
+
+[[defects]]
+id = "s2-session-day-idor"
+rung = 3
+kind = "security"
+summary = "WorkoutSessionViewSet.get_owner_objects() omits day, so a user can attach a session to another user's day."
+tests = ["wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden"]
+solution = "s1-log-slot-entry-idor"
+
+[[defects]]
+id = "s3-log-next-log-idor"
+rung = 3
+kind = "security"
+summary = "WorkoutLogViewSet.get_owner_objects() omits next_log, so a user can link a log to another user's log."
+tests = ["wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden"]
+solution = "s1-log-slot-entry-idor"
+
+[regression]
+tests = [
+  "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed",
+  "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed",
+  "wger.manager.tests.test_weight_log",
+  "wger.manager.tests.test_workout_session",
+  "wger.manager.tests.test_log_model",
+  "wger.manager.tests.test_slot_entry",
+  "wger.manager.tests.test_routine",
+  "wger.nutrition.tests.test_plan",
+  "wger.nutrition.tests.test_meal",
+  "wger.nutrition.tests.test_meal_item",
+  "wger.measurements.tests.test_measurements",
+  "wger.measurements.tests.test_categories",
+]

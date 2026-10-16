@@ -1,0 +1,31 @@
+# The agents to compare. Model and effort are configuration, not code.
+# harness: claude (Claude Code) or codex (Codex CLI). Run one cell first.
+
+repeats = 3
+timeout_seconds = 1800
+# Claude Code stops at this spend. Codex has no such flag; the timeout holds it.
+budget_usd = 20.0
+
+[[cells]]
+name = "claude-opus-medium"
+harness = "claude"
+model = "opus"
+effort = "medium"
+
+[[cells]]
+name = "claude-sonnet-medium"
+harness = "claude"
+model = "sonnet"
+effort = "medium"
+
+[[cells]]
+name = "codex-sol-high"
+harness = "codex"
+model = "gpt-6.1-sol"
+effort = "high"
+
+[[cells]]
+name = "codex-luna-medium"
+harness = "codex"
+model = "gpt-6-luna"
+effort = "medium"

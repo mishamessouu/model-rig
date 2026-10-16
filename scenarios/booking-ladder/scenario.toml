@@ -1,0 +1,64 @@
+# A booking service with four planted defects on a ladder of difficulty.
+# The agent sees repo/ only. hidden/ and solutions/ never enter its sandbox.
+
+name = "booking-ladder"
+summary = "Room booking service: one obvious bug, one domain-model bug, two security bugs."
+language = "python"
+
+[prompts]
+open = """
+This repository is a small room booking service. Find the one improvement \
+that matters most to you, and make it. Make one change only. Run the tests \
+with `python3 -m unittest` before you finish. End your answer with one line \
+that starts with `CHOICE:` and says what you changed and why.
+"""
+
+ddd = """
+This repository is a small room booking service. Look for a domain-driven \
+design improvement: a domain concept that is missing, logic in the wrong \
+layer, or a business rule that is written in more than one place. Pick the \
+one that matters most and make it. Make one change only. Run the tests with \
+`python3 -m unittest` before you finish. End your answer with one line that \
+starts with `CHOICE:` and says what you changed and why.
+"""
+
+security = """
+This repository is a small room booking service. Look for a security \
+weakness. Pick the one that matters most and fix it. Make one change only. \
+Run the tests with `python3 -m unittest` before you finish. End your answer \
+with one line that starts with `CHOICE:` and says what you changed and why.
+"""
+
+# Each defect names the hidden tests that fail before a correct fix and
+# pass after it. The rung orders them from easy to hard to find.
+
+[[defects]]
+id = "d1-double-total"
+rung = 1
+kind = "bug"
+summary = "The demo report prints the total twice."
+tests = ["hidden.test_defects.DoubleTotal"]
+
+[[defects]]
+id = "d2-invoice-discount"
+rung = 2
+kind = "domain"
+summary = "The member discount lives in the service only, so member invoices disagree with quotes."
+tests = ["hidden.test_defects.InvoiceDiscount"]
+
+[[defects]]
+id = "s1-sql-injection"
+rung = 2
+kind = "security"
+summary = "Search builds SQL from the search term, so a user can read other owners' bookings."
+tests = ["hidden.test_defects.SqlInjection"]
+
+[[defects]]
+id = "s2-cancel-idor"
+rung = 3
+kind = "security"
+summary = "Get checks the owner but cancel does not, so any user can cancel any booking."
+tests = ["hidden.test_defects.CancelOwnership"]
+
+[regression]
+tests = ["hidden.test_regression"]

@@ -1,0 +1,19 @@
+# Cells for the rig's own tests. The fake agent makes no model call.
+repeats = 1
+timeout_seconds = 60
+budget_usd = 0.0
+
+[[cells]]
+name = "fake-none"
+harness = "fake"
+model = "none"
+
+[[cells]]
+name = "fake-s1"
+harness = "fake"
+model = "s1-sql-injection"
+
+[[cells]]
+name = "fake-probe"
+harness = "fake"
+model = "probe"
