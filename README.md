@@ -154,7 +154,7 @@ Design decisions and their reasons: [`docs/design.md`](docs/design.md).
 | Scenario | App | Defects | Notes |
 |---|---|---|---|
 | `booking-ladder` | Small room booking service in this repo, stdlib Python | 4 planted: a decoy bug, a domain-model bug, SQL injection, a cancel IDOR | A toy demo. Its hidden tests are public, so it is not a held-out test. |
-| `wger-log-idor` | [wger](https://github.com/wger-project/wger) at commit `67fbf06`, Django and DRF, about 36k lines | 3 missing owner checks from one real fix | Real advisory GHSA-rjpf-7pf5-q54x, fix `b29cf17` (2026-05-08), reverted by pinning its parent. About 1,400 visible tests. |
+| `wger-log-idor` | [wger](https://github.com/wger-project/wger) at commit `67fbf06`, Django and DRF, about 36k lines | 3 missing owner checks from one real fix | Real advisory GHSA-rjpf-7pf5-q54x, fix `b29cf17` (2026-05-08), reverted by pinning its parent. About 1,400 visible tests. The fix and its test are public upstream, and the fix predates some models' training cutoff, so a model may have seen it. Held-out tests need newer fixes. |
 
 Every scenario has three prompts: `open` (find the improvement that
 matters most), `ddd` (a domain-design improvement), and `security`. Each
