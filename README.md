@@ -133,8 +133,9 @@ state folder from `~/.model-rig/`.
 - **Sandbox.** bubblewrap with a read-only root. Home, `/tmp`, `/run`,
   `/var`, and other data folders are empty, so the agent cannot see the
   rig repo, the hidden tests, your files, the sign-ins, or the Docker
-  socket. Only the run folder is writable. A prepared venv is bound
-  read-only and comes first on `PATH`.
+  socket. Only the run folder is writable. A prepared venv, and its base
+  Python if that lives under a hidden folder, is bound read-only and comes
+  first on `PATH`.
 - **Scorer.** Copies the agent's result, restores the visible test files
   the regression set uses, adds the hidden tests, and runs each test id
   in a sandbox with no network.
