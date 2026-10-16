@@ -9,7 +9,7 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ROOT, STATE
+from . import PACKAGE, ROOT, STATE
 
 
 @dataclass
@@ -167,7 +167,7 @@ def parse_codex(stdout, final_file=None, model="unknown"):
 
 # --- Fake agent for the rig's own tests ---------------------------------------
 
-FAKE = ROOT / "rig" / "fake_agent.py"
+FAKE = PACKAGE / "fake_agent.py"
 
 
 def fake(cell, prompt, run_dir, budget_usd, scenario=None):

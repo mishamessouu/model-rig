@@ -1,11 +1,13 @@
-"""Command line.
+"""Command line. `model-rig` and `python3 -m rig` are the same program.
 
-    python3 -m rig prepare wger-log-idor
-    python3 -m rig check booking-ladder
-    python3 -m rig run booking-ladder --cells claude-opus-medium --prompts open --repeats 1 --yes
-    python3 -m rig report results/<batch>
+    model-rig prepare wger-log-idor
+    model-rig check booking-ladder
+    model-rig run booking-ladder --cells claude-opus-medium --prompts open --repeats 1 --yes
+    model-rig rescore results/<batch>
+    model-rig report results/<batch>
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -14,7 +16,9 @@ from . import scenario as scenarios
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="rig")
+    prog = "model-rig" if os.path.basename(sys.argv[0]) == "model-rig" else "python3 -m rig"
+    parser = argparse.ArgumentParser(
+        prog=prog, description="Run coding agents on planted-defect scenarios and score them.")
     commands = parser.add_subparsers(dest="command", required=True)
     preparing = commands.add_parser(
         "prepare", help="fetch a scenario's fixture and build its environment (network)")

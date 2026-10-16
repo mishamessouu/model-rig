@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "model-rig"
+version = "0.1.0"
+description = "Run Claude Code and Codex on real, reverted security fixes and score choice, correctness, breakage, and cost per successful fix."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "mishamessouu" }]
+keywords = ["benchmark", "coding agents", "evaluation", "llm", "security"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Testing",
+]
+# No runtime dependencies: the rig uses the standard library only.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/mishamessouu/model-rig"
+Issues = "https://github.com/mishamessouu/model-rig/issues"
+
+[project.scripts]
+model-rig = "rig.__main__:main"
+
+[tool.setuptools]
+packages = ["rig"]
