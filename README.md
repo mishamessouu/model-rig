@@ -64,9 +64,8 @@ wger is a mature open-source app, not a demo. Figures from 2026-10-17:
 | Security process | Published advisories with fixes and regression tests ([OpenSSF Scorecard](https://securityscorecards.dev/viewer/?uri=github.com/wger-project/wger) 5.2/10: strong on maintenance, SAST, and licence; weak on branch protection and pinned dependencies) |
 
 So the defect sits in code that many people have read, tested, and
-shipped. Its own test suite did not catch it; the advisory credits an
-external reporter.
-That is the kind of bug the benchmark is about.
+shipped. Its own test suite did not catch it, and the advisory credits
+a reporter. That is the kind of bug the benchmark is about.
 
 Full report, with every diff and log:
 [`results/20261016T205957Z-wger-log-idor/report.md`](results/20261016T205957Z-wger-log-idor/report.md).
