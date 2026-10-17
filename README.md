@@ -48,6 +48,25 @@ mixed. Credits use the GitHub Copilot price sheet, which does not list
 Sonnet. 12 more Codex runs used a design-focused prompt; no planted
 hole is a design defect, so those runs show behaviour and cost only.
 
+#### Is wger real production code?
+
+wger is a mature open-source app, not a demo. Figures from 2026-10-17:
+
+| Signal | wger |
+|---|---|
+| Age and activity | Started 2013; 1,330 commits in the last 12 months; releases 2.5, 2.6, 2.7 in 2026 |
+| People | 362 contributors, 7,100 GitHub stars, 1,040 forks |
+| Size at the pinned commit | 35,573 lines of app code in 344 files and 14 Django apps |
+| Tests | About 1,400 tests, 21,532 lines of test code (0.61 test lines per app line) |
+| Structure | Standard Django and DRF layers: models, views, API viewsets, serializers, templates |
+| Checks in CI | Unit tests, ruff lint and format, CodeQL security scanning |
+| Lint at the pinned commit | 187 ruff findings with the project's own rules, about 5 per 1,000 lines, mostly unused imports and long lines |
+| Security process | Published advisories with fixes and regression tests ([OpenSSF Scorecard](https://securityscorecards.dev/viewer/?uri=github.com/wger-project/wger) 5.2/10: strong on maintenance, SAST, and licence; weak on branch protection and pinned dependencies) |
+
+So the defect sits in code that many people have read, tested, and
+shipped. It was found by an outside report, not by its own test suite.
+That is the kind of bug the benchmark is about.
+
 Full report, with every diff and log:
 [`results/20261016T205957Z-wger-log-idor/report.md`](results/20261016T205957Z-wger-log-idor/report.md).
 <!-- RESULTS:END -->
