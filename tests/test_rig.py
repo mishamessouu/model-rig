@@ -150,8 +150,12 @@ class ClaudeParseTest(unittest.TestCase):
 
 class ClaudeInvocationTest(unittest.TestCase):
     def test_one_agent_no_background_no_web(self):
+        from unittest import mock
+
         from rig.harness import claude
-        with tempfile.TemporaryDirectory() as folder:
+        # CI has no Claude Code, and this test only reads the argv.
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch("rig.harness._real", return_value=Path("/usr/bin/claude")):
             run_dir = Path(folder)
             invocation = claude({"model": "opus"}, "fix it", run_dir, 1.0)
         argv = [str(part) for part in invocation.argv]
