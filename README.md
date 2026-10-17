@@ -31,7 +31,8 @@ Three runs per cell. Hidden tests decide success.
 What it shows:
 
 - **On real code, the models do not agree.** Hit rates run from 6 of 6
-  to 1 of 6. On a 250-line toy app, every model picked the same fix.
+  to 1 of 6. On a 250-line toy app, both models we tried picked the
+  same fix.
 - **Only Opus found a real hole every time,** also with no security hint.
 - **Higher effort did not help Sol.** Medium found as many holes as high
   (4 of 6), at lower cost.
