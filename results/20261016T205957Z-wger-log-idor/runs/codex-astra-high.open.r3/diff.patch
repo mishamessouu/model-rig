@@ -1,0 +1,96 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..65d7718 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,9 +16,18 @@
+ import datetime
+ import logging
+ 
++# Third Party
++from rest_framework import status
++
+ # wger
+ from wger.core.tests import api_base_test
+-from wger.manager.models import WorkoutLog
++from wger.manager.models import (
++    Day,
++    Slot,
++    SlotEntry,
++    WorkoutLog,
++    WorkoutSession,
++)
+ 
+ 
+ logger = logging.getLogger(__name__)
+@@ -41,3 +50,58 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_create_with_another_users_slot_entry(self):
++        self.authenticate()
++        slot_entry = SlotEntry.objects.get(pk=1)
++        self.assertNotEqual(slot_entry.get_owner_object().user.username, self.user_access)
++        logs_before = list(WorkoutLog.objects.values())
++        sessions_before = list(WorkoutSession.objects.values())
++
++        response = self.client.post(
++            self.url, {**self.data, 'slot_entry': slot_entry.pk}, format='json'
++        )
++
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertEqual(list(WorkoutLog.objects.values()), logs_before)
++        self.assertEqual(list(WorkoutSession.objects.values()), sessions_before)
++
++    def test_update_with_another_users_slot_entry(self):
++        self.authenticate()
++        slot_entry = SlotEntry.objects.get(pk=1)
++        self.assertNotEqual(slot_entry.get_owner_object().user.username, self.user_access)
++        logs_before = list(WorkoutLog.objects.values())
++        sessions_before = list(WorkoutSession.objects.values())
++
++        for method in ('put', 'patch'):
++            with self.subTest(method=method):
++                response = getattr(self.client, method)(
++                    self.url_detail, {**self.data, 'slot_entry': slot_entry.pk}, format='json'
++                )
++
++                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++                self.assertEqual(list(WorkoutLog.objects.values()), logs_before)
++                self.assertEqual(list(WorkoutSession.objects.values()), sessions_before)
++
++    def test_write_with_own_or_null_slot_entry(self):
++        self.authenticate()
++        day = Day.objects.create(routine_id=self.data['routine'])
++        slot = Slot.objects.create(day=day)
++        slot_entry = SlotEntry.objects.create(slot=slot, exercise_id=self.data['exercise'])
++
++        for method in ('post', 'put', 'patch'):
++            for slot_entry_id in (slot_entry.pk, None):
++                with self.subTest(method=method, slot_entry=slot_entry_id):
++                    response = getattr(self.client, method)(
++                        self.url if method == 'post' else self.url_detail,
++                        {**self.data, 'slot_entry': slot_entry_id},
++                        format='json',
++                    )
++
++                    self.assertEqual(
++                        response.status_code,
++                        status.HTTP_201_CREATED if method == 'post' else status.HTTP_200_OK,
++                    )
++                    log = WorkoutLog.objects.get(pk=response.data['id'])
++                    self.assertEqual(log.slot_entry_id, slot_entry_id)
++                    self.assertEqual(log.user.username, self.user_access)

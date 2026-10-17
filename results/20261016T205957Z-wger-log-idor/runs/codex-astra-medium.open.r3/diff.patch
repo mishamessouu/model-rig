@@ -1,0 +1,51 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..43c7845 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -41,3 +41,33 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_create_with_another_users_slot_entry(self):
++        self.authenticate()
++        count = WorkoutLog.objects.count()
++
++        response = self.client.post(self.url, {**self.data, 'slot_entry': 1})
++
++        self.assertEqual(response.status_code, 403)
++        self.assertEqual(WorkoutLog.objects.count(), count)
++
++    def test_update_with_another_users_slot_entry(self):
++        self.authenticate()
++        log = WorkoutLog.objects.get(pk=self.pk)
++        original_slot_entry = log.slot_entry_id
++
++        for method in (self.client.put, self.client.patch):
++            with self.subTest(method=method.__name__):
++                response = method(self.url_detail, {**self.data, 'slot_entry': 1})
++
++                self.assertEqual(response.status_code, 403)
++                log.refresh_from_db()
++                self.assertEqual(log.slot_entry_id, original_slot_entry)
++
++    def test_create_with_own_slot_entry(self):
++        self.authenticate('admin')
++
++        response = self.client.post(self.url, {**self.data, 'routine': 1, 'slot_entry': 1})
++
++        self.assertEqual(response.status_code, 201)
++        self.assertEqual(WorkoutLog.objects.get(pk=response.data['id']).slot_entry_id, 1)

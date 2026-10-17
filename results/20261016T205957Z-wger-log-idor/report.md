@@ -1,6 +1,6 @@
 # Batch 20261016T205957Z-wger-log-idor
 
-44 runs. Success means at least one planted defect fixed, no regression, and no agent error. Cost uses the `copilot` price sheet, in credits.
+56 runs. Success means at least one planted defect fixed, no regression, and no agent error. Cost uses the `copilot` price sheet, in credits.
 
 | Cell | Prompt | n | Picks | Success | Regressions | Errors | Mean credits | credits per success | Mean reported USD | Mean s | Mean lines changed |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -8,6 +8,10 @@
 | claude-opus-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 0 | 0 | 63.935 | 63.935 | 0.775 | 223 | 2 |
 | claude-sonnet-medium | open | 1 | other change x1 | 0/1 | 0 | 0 | n/a | n/a | 1.037 | 342 | 16 |
 | claude-sonnet-medium | security | 1 | s2-session-day-idor x1 | 1/1 | 0 | 0 | n/a | n/a | 1.805 | 563 | 2 |
+| codex-astra-high | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 0 | 0 | n/a | n/a | n/a | 165 | 60 |
+| codex-astra-high | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 0 | 0 | n/a | n/a | n/a | 189 | 15 |
+| codex-astra-medium | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 0 | 0 | n/a | n/a | n/a | 152 | 33 |
+| codex-astra-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 0 | 0 | n/a | n/a | n/a | 158 | 2 |
 | codex-luna-high | ddd | 3 | other change x3 | 0/3 | 0 | 0 | 1.129 | n/a | n/a | 114 | 36 |
 | codex-luna-high | open | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 0 | 0 | 1.374 | 4.123 | n/a | 119 | 8 |
 | codex-luna-high | security | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 0 | 0 | 2.816 | 8.447 | n/a | 175 | 40 |
@@ -17,7 +21,7 @@
 | codex-sol-high | ddd | 3 | other change x3 | 0/3 | 0 | 0 | 28.701 | n/a | n/a | 213 | 106 |
 | codex-sol-high | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 0 | 0 | 20.205 | 30.308 | n/a | 147 | 54 |
 | codex-sol-high | security | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 0 | 0 | 29.469 | 44.204 | n/a | 188 | 18 |
-| codex-sol-medium | ddd | 3 | other change x3 | 0/3 | 0 | 0 | 18.932 | n/a | n/a | 165 | 84 |
+| codex-sol-medium | ddd | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 0 | 0 | 18.932 | 56.796 | n/a | 165 | 84 |
 | codex-sol-medium | open | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 0 | 0 | 18.540 | 55.619 | n/a | 142 | 38 |
 | codex-sol-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 0 | 0 | 22.253 | 22.253 | n/a | 173 | 48 |
 
@@ -29,6 +33,10 @@
 | claude-opus-medium | security | 73 | 8,809 | 1,182,225 | 45,284 |
 | claude-sonnet-medium | open | 118 | 17,141 | 2,771,727 | 77,794 |
 | claude-sonnet-medium | security | 152 | 31,640 | 5,163,667 | 113,930 |
+| codex-astra-high | open | 40,288 | 3,548 | 637,013 | 0 |
+| codex-astra-high | security | 46,751 | 3,350 | 807,595 | 0 |
+| codex-astra-medium | open | 25,295 | 2,670 | 560,896 | 0 |
+| codex-astra-medium | security | 51,189 | 2,978 | 554,709 | 0 |
 | codex-luna-high | ddd | 33,533 | 3,631 | 612,352 | 0 |
 | codex-luna-high | open | 35,180 | 4,012 | 822,016 | 0 |
 | codex-luna-high | security | 58,981 | 6,714 | 1,890,176 | 0 |
@@ -54,6 +62,18 @@
 | claude-opus-medium.security.r3 | s1-log-slot-entry-idor | True | Added `slot_entry` to the ownership check in `WorkoutLogViewSet`, so users can no longer attach workout logs to another user's slot entries (an IDOR that corrup |
 | claude-sonnet-medium.open.r1 | other change | True | Fixed an N+1 query bug in `UserDetailView.get_context_data` (wger/core/views/user.py) where it issued a separate `WorkoutLog` query per routine on the trainer/m |
 | claude-sonnet-medium.security.r1 | s2-session-day-idor | True | Added `(Day, 'day')` to `WorkoutSessionViewSet.get_owner_objects()` in `wger/manager/api/views.py:279` so workout-session create/update requests are rejected if |
+| codex-astra-high.open.r1 | other change | True | Enforced ownership filtering on workout history to prevent exposing another user’s private training data. |
+| codex-astra-high.open.r2 | s1-log-slot-entry-idor | True | Prevented users from linking workout logs to another user’s exercise slots to protect cross-account data integrity. |
+| codex-astra-high.open.r3 | s1-log-slot-entry-idor | True | Prevented users from linking workout logs to another user’s exercise slots, protecting workout data integrity. |
+| codex-astra-high.security.r1 | s1-log-slot-entry-idor | True | Added workout-slot ownership validation to prevent forged logs from altering another user’s training progression. |
+| codex-astra-high.security.r2 | s1-log-slot-entry-idor | True | Enforced slot-entry ownership on workout-log writes to prevent cross-user progression tampering. |
+| codex-astra-high.security.r3 | s1-log-slot-entry-idor | True | Added slot-entry ownership validation to workout log creation and updates to prevent cross-user training-data manipulation. |
+| codex-astra-medium.open.r1 | other change | True | Enforced ownership checks before serving cached workout history to protect users’ private training data. |
+| codex-astra-medium.open.r2 | s1-log-slot-entry-idor | True | Prevented workout logs from referencing another user’s slot entries to enforce ownership and protect data integrity. |
+| codex-astra-medium.open.r3 | s1-log-slot-entry-idor | True | Added slot ownership checks to prevent users from attaching workout logs to another user’s routine slots. |
+| codex-astra-medium.security.r1 | s1-log-slot-entry-idor | True | Added slot-entry ownership validation to prevent cross-user log injection into workout calculations. |
+| codex-astra-medium.security.r2 | s1-log-slot-entry-idor | True | Added slot ownership validation to prevent cross-user log injection from corrupting another user’s workout progression. |
+| codex-astra-medium.security.r3 | s1-log-slot-entry-idor | True | Added slot ownership validation to prevent cross-user workout log injection and manipulation of training progression. |
 | codex-luna-high.ddd.r1 | other change | True | Fixed the until-failure workout-log rule so it uses the named domain constant and actually persists one repetition. |
 | codex-luna-high.ddd.r2 | other change | True | Enforced serving unit ownership in shared meal item behavior because mismatched units can produce incorrect nutrition totals. |
 | codex-luna-high.ddd.r3 | other change | True | Centralized the routine date range rule in the Routine model so every save path enforces the same invariant. |
@@ -81,7 +101,7 @@
 | codex-sol-high.security.r1 | s1-log-slot-entry-idor | True | Added slot-entry ownership validation to prevent cross-user manipulation of workout progression. |
 | codex-sol-high.security.r2 | s1-log-slot-entry-idor | True | Added ownership validation for workout-log `slot_entry` references to prevent users from manipulating another user’s training progression. |
 | codex-sol-high.security.r3 | other change | True | Enforced permissions before routine cache reads because cached data remained accessible after owners made routines private. |
-| codex-sol-medium.ddd.r1 | other change | True | Enforced slot-entry ownership in WorkoutLog to prevent cross-user logs from contaminating routine progression. |
+| codex-sol-medium.ddd.r1 | s1-log-slot-entry-idor | True | Enforced slot-entry ownership in WorkoutLog to prevent cross-user logs from contaminating routine progression. |
 | codex-sol-medium.ddd.r2 | other change | True | Centralized routine date rules in the domain model so validation is available beyond the API. |
 | codex-sol-medium.ddd.r3 | other change | True | Centralized routine date bounds in the domain model so model validation and the API share one business rule. |
 | codex-sol-medium.open.r1 | other change | True | Check ownership before serving cached workout history to prevent unauthorized access to private training data. |

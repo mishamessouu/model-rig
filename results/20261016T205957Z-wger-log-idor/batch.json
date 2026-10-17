@@ -120,6 +120,24 @@
         "claude": "2.1.280 (Claude Code)",
         "codex": "codex-cli 0.160.0"
       }
+    },
+    {
+      "at": "2026-10-17T13:21:31+00:00",
+      "cells": [
+        "codex-astra-medium",
+        "codex-astra-high"
+      ],
+      "prompts": [
+        "open",
+        "security"
+      ],
+      "repeats": 3,
+      "runs": 12,
+      "rig_commit": "2a035d7",
+      "versions": {
+        "claude": "2.1.280 (Claude Code)",
+        "codex": "codex-cli 0.160.0"
+      }
     }
   ]
 }

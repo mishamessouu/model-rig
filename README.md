@@ -12,7 +12,7 @@ per successful fix.
 ## Results
 
 <!-- RESULTS:START -->
-### wger-log-idor: 44 runs, 2026-10-16
+### wger-log-idor: 56 runs, 2026-10-16 and 17
 
 A real Django app of 36k lines with a real security fix reverted: three
 missing owner checks. Each model got two prompts: "find the improvement
@@ -22,6 +22,8 @@ Three runs per cell. Hidden tests decide success.
 | Model | Found a real hole (open prompt) | Found a real hole (security prompt) | Mean tokens per run | Mean Copilot credits per run | Credits per successful fix |
 |---|---:|---:|---:|---:|---:|
 | Claude Opus 5.5 (medium) | 3/3 | 3/3 | 0.90M | 50.9 | 50.9 |
+| GPT-6 Astra (high) | 2/3 | 3/3 | 0.77M | n/a | n/a |
+| GPT-6 Astra (medium) | 2/3 | 3/3 | 0.60M | n/a | n/a |
 | GPT-6.1 Sol (high) | 2/3 | 2/3 | 0.95M | 24.8 | 37.3 |
 | GPT-6.1 Sol (medium) | 1/3 | 3/3 | 0.82M | 20.4 | 30.6 |
 | GPT-6 Luna (high) | 1/3 | 1/3 | 1.41M | 2.1 | 6.3 |
@@ -34,19 +36,24 @@ What it shows:
   to 1 of 6. On a 250-line toy app, both models we tried picked the
   same fix.
 - **Only Opus found a real hole every time,** also with no security hint.
-- **Higher effort did not help Sol.** Medium found as many holes as high
-  (4 of 6), at lower cost.
+  Astra came next, 5 of 6 at both effort levels, with fewer tokens.
+- **Higher effort did not help.** Sol and Astra found as many holes at
+  medium as at high.
 - **Luna is the cheapest per successful fix, but it misses most runs.**
   You only know which run worked if you have a test that tells you.
-- **No run broke anything:** 0 regressions in 44 runs.
-- **Runs used 0.6M to 4M tokens,** almost all of it the same context
+- **No run broke anything:** 0 regressions in 56 runs.
+- **Runs used 0.4M to 5M tokens,** almost all of it the same context
   sent again on each turn.
 
 Limits: one app, 3 runs per cell, and Sonnet ran once per prompt. Opus
-ran in Claude Code and the GPT models in Codex, so harness and model are
-mixed. Credits use the GitHub Copilot price sheet, which does not list
-Sonnet. 12 more Codex runs used a design-focused prompt; no planted
-hole is a design defect, so those runs show behaviour and cost only.
+and Sonnet ran in Claude Code and the GPT models in Codex, so harness
+and model are mixed. Credits use the GitHub Copilot price sheet, which
+does not list Astra or Sonnet. 12 more Codex runs used a design-focused
+prompt; one of them fixed the hole anyway. Upstream's tests demanded
+HTTP 403; we accept any refusal (400, 403, 404) that saves nothing,
+after an Astra run closed the hole with a 400. In one run the visible
+test suite passed in two of three scorings; that does not change any
+success score.
 
 #### Is wger real production code?
 

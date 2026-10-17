@@ -1,0 +1,99 @@
+diff --git a/wger/manager/models/routine.py b/wger/manager/models/routine.py
+index ba0776f..bb1d037 100644
+--- a/wger/manager/models/routine.py
++++ b/wger/manager/models/routine.py
+@@ -349,16 +349,16 @@ class Routine(models.Model):
+ 
+     def logs_display(self, date: datetime.date = None):
+         """
+-        Returns all the logs for this routine, grouped by the session
++        Returns the owner's logs for this routine, grouped by the session
+         """
+         out = []
+ 
+-        qs = self.sessions.all()
++        qs = self.sessions.filter(user_id=self.user_id)
+         if date:
+             qs = qs.filter(date=date)
+ 
+         for session in qs:
+-            out.append({'session': session, 'logs': session.logs.all()})
++            out.append({'session': session, 'logs': session.logs.filter(user_id=self.user_id)})
+ 
+         return out
+ 
+@@ -434,13 +434,13 @@ class Routine(models.Model):
+                 for key in res_group:
+                     avg_log_data(res_group[key], cnt_group[key])
+ 
+-        # Iterate over each workout session associated with the routine
+-        for session in self.sessions.all():
++        # Only include the routine owner's personal training history.
++        for session in self.sessions.filter(user_id=self.user_id):
+             session_date = session.date
+             week_number = session_date.isocalendar().week
+ 
+             # TODO: filter for lb
+-            for log in session.logs.kg().reps():
++            for log in session.logs.filter(user_id=self.user_id).kg().reps():
+                 iteration = log.iteration
+                 exercise = log.exercise
+                 weight = log.weight
+diff --git a/wger/manager/tests/test_routine.py b/wger/manager/tests/test_routine.py
+index 6e4acb9..f93a4eb 100644
+--- a/wger/manager/tests/test_routine.py
++++ b/wger/manager/tests/test_routine.py
+@@ -16,6 +16,7 @@
+ import datetime
+ 
+ # Django
++from django.core.cache import cache
+ from django.urls import reverse
+ 
+ # wger
+@@ -25,6 +26,7 @@ from wger.manager.dataclasses import WorkoutDayData
+ from wger.manager.models import (
+     Day,
+     Label,
++    WorkoutLog,
+     WorkoutSession,
+ )
+ from wger.manager.models.routine import Routine
+@@ -599,3 +601,37 @@ class RoutineLogsAndStatsScopeTestCase(WgerTestCase):
+         self.user_login('test')
+         response = self.client.get(self.detail_url)
+         self.assertEqual(response.status_code, 200)
++
++
++class RoutineHistoryOwnershipTestCase(WgerTestCase):
++    """Related sessions and logs must belong to the routine owner."""
++
++    def setUp(self):
++        super().setUp()
++        self.user_login('test')
++        # Routine 3 and session 5 belong to test; session 4 and log 4 do not.
++        self.routine = Routine.objects.get(pk=3)
++
++    def test_logs_exclude_other_users_history(self):
++        for session_id in (4, 5):
++            with self.subTest(foreign_log_session=session_id):
++                WorkoutLog.objects.filter(pk=4).update(session_id=session_id)
++                cache.clear()
++                response = self.client.get(reverse('routine-logs', kwargs={'pk': self.routine.pk}))
++
++                self.assertEqual(response.status_code, 200)
++                data = response.json()
++                self.assertEqual([entry['session']['id'] for entry in data], [5])
++                self.assertEqual([log['id'] for log in data[0]['logs']], [5])
++
++    def test_stats_exclude_other_users_history(self):
++        for session_id in (4, 5):
++            with self.subTest(foreign_log_session=session_id):
++                WorkoutLog.objects.filter(pk=4).update(session_id=session_id)
++                cache.clear()
++                response = self.client.get(reverse('routine-stats', kwargs={'pk': self.routine.pk}))
++
++                self.assertEqual(response.status_code, 200)
++                data = response.json()
++                self.assertEqual(data['sets']['mesocycle']['total'], '1.00')
++                self.assertEqual(data['volume']['mesocycle']['total'], '240.00')
