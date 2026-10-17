@@ -42,3 +42,15 @@ name = "codex-luna-high"
 harness = "codex"
 model = "gpt-6-luna"
 effort = "high"
+
+[[cells]]
+name = "codex-astra-medium"
+harness = "codex"
+model = "gpt-6-astra"
+effort = "medium"
+
+[[cells]]
+name = "codex-astra-high"
+harness = "codex"
+model = "gpt-6-astra"
+effort = "high"
