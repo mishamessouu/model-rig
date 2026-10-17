@@ -28,6 +28,13 @@ from wger.manager.models import (
 )
 
 
+# Status codes that refuse a foreign reference (model-rig, 2026-10-17).
+REFUSED = (
+    status.HTTP_400_BAD_REQUEST,
+    status.HTTP_403_FORBIDDEN,
+    status.HTTP_404_NOT_FOUND,
+)
+
 class WorkoutLogSlotEntryOwnershipTestCase(WgerTestCase):
     """
     Make sure the API rejects cross-user references on the ``slot_entry``
@@ -63,7 +70,9 @@ class WorkoutLogSlotEntryOwnershipTestCase(WgerTestCase):
             },
         )
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        # model-rig change from upstream: upstream asserts 403. A refusal
+        # with 400 or 404 is as secure; the record check below decides.
+        self.assertIn(response.status_code, REFUSED)
         self.assertFalse(
             WorkoutLog.objects.filter(slot_entry=victim_slot_entry, weight=999).exists()
         )
@@ -127,7 +136,13 @@ class WorkoutLogNextLogOwnershipTestCase(WgerTestCase):
             },
         )
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        # model-rig change from upstream: upstream asserts 403. A refusal
+        # with 400 or 404 is as secure; the record check below decides.
+        self.assertIn(response.status_code, REFUSED)
+        # model-rig addition: upstream checks only the status code here.
+        self.assertFalse(
+            WorkoutLog.objects.filter(next_log=victim_log, repetitions=5, weight=50).exists()
+        )
 
 
 class WorkoutSessionDayOwnershipTestCase(WgerTestCase):
@@ -156,7 +171,9 @@ class WorkoutSessionDayOwnershipTestCase(WgerTestCase):
             },
         )
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        # model-rig change from upstream: upstream asserts 403. A refusal
+        # with 400 or 404 is as secure; the record check below decides.
+        self.assertIn(response.status_code, REFUSED)
         self.assertFalse(WorkoutSession.objects.filter(day=victim_day, routine_id=3).exists())
 
     def test_create_with_own_day_is_allowed(self):

@@ -34,3 +34,7 @@ This was checked against the GitHub contents API on 2026-10-16.
   upstream. It is not stored in this repository.
 
 `scenario.toml` in this folder is part of model-rig and is Apache-2.0.
+
+Change from upstream: in `hidden/test_api_ownership_checks.py`, the three
+"forbidden" tests accept 400, 403, or 404 instead of 403 only (`REFUSED`).
+Each test still checks that no record was saved.
