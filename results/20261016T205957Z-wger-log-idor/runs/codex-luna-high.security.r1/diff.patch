@@ -1,0 +1,334 @@
+diff --git a/wger/core/templates/base.html b/wger/core/templates/base.html
+index 60ad90a..11c56a3 100644
+--- a/wger/core/templates/base.html
++++ b/wger/core/templates/base.html
+@@ -11,11 +11,14 @@
+                 You are browsing the site as the user "{{ current_user }}", all actions are
+                 performed on their data.
+             {% endblocktranslate %}
+-            <a href="{% url 'core:user:trainer-login' trainer_identity %}" class="alert-link">
++            <form method="post" action="{% url 'core:user:trainer-login' trainer_identity %}" class="d-inline">
++                {% csrf_token %}
++                <button type="submit" class="btn btn-link alert-link p-0 align-baseline">
+                 {% blocktranslate with target=user.userprofile.gym.name trimmed %}
+                     Back to "{{ target }}"
+                 {% endblocktranslate %}
+-            </a>
++                </button>
++            </form>
+         </div>
+     {% endif %}
+ 
+diff --git a/wger/core/templates/base_wide.html b/wger/core/templates/base_wide.html
+index 7de7d2e..b940f6e 100644
+--- a/wger/core/templates/base_wide.html
++++ b/wger/core/templates/base_wide.html
+@@ -8,9 +8,12 @@
+                 browsing the site as the user "{{ current_user }}", all actions are performed on
+                 their data.
+             {% endblocktranslate %}
+-            <a href="{% url 'core:user:trainer-login' trainer_identity %}" class="alert-link">
++            <form method="post" action="{% url 'core:user:trainer-login' trainer_identity %}" class="d-inline">
++                {% csrf_token %}
++                <button type="submit" class="btn btn-link alert-link p-0 align-baseline">
+                 {% blocktranslate with target=user.userprofile.gym.name trimmed %}Back to "{{ target }}"{% endblocktranslate %}
+-            </a>
++                </button>
++            </form>
+         </div>
+     {% endif %}
+ 
+diff --git a/wger/core/templates/user/overview.html b/wger/core/templates/user/overview.html
+index c9921f6..19e8a55 100644
+--- a/wger/core/templates/user/overview.html
++++ b/wger/core/templates/user/overview.html
+@@ -27,7 +27,11 @@
+ 
+ <h4>{% translate "Routines" %} <small>({% blocktranslate with number=10 %}last {{ number }}{% endblocktranslate %})</small></h4>
+ {% if perms.gym.gym_trainer %}
+-<a href="{{trainer_login}}?next={% url 'manager:routine:overview' %}" class="btn btn-light btn-sm">{% translate "Overview" %}</a>
++<form method="post" action="{{ trainer_login }}" class="d-inline">
++    {% csrf_token %}
++    <input type="hidden" name="next" value="{% url 'manager:routine:overview' %}">
++    <button type="submit" class="btn btn-light btn-sm">{% translate "Overview" %}</button>
++</form>
+ {#<a href="{{trainer_login}}?next={% url 'manager:workout:add' %}" class="btn btn-light btn-sm">{% translate "Add workout" %}</a>#}
+ {% endif %}
+ 
+@@ -47,7 +51,11 @@
+         {{entry.routine.created}}
+     </td>
+     <td>
+-        <a href="{{trainer_login}}?next={{ entry.routine.get_absolute_url }}">{{entry.routine}}</a>
++        <form method="post" action="{{ trainer_login }}" class="d-inline">
++            {% csrf_token %}
++            <input type="hidden" name="next" value="{{ entry.routine.get_absolute_url }}">
++            <button type="submit" class="btn btn-link p-0">{{entry.routine}}</button>
++        </form>
+     </td>
+     <td>
+         {{entry.logs|default:'-/-'}}
+@@ -70,7 +78,11 @@
+ 
+ <h4>{% translate "Log" %} <small>({% blocktranslate with number=10 %}last {{ number }}{% endblocktranslate %})</small></h4>
+ {% if perms.gym.gym_trainer %}
+-<a href="{{trainer_login}}?next={% url 'manager:routine:calendar' %}" class="btn btn-light btn-sm">{% translate "Calendar" %}</a>
++<form method="post" action="{{ trainer_login }}" class="d-inline">
++    {% csrf_token %}
++    <input type="hidden" name="next" value="{% url 'manager:routine:calendar' %}">
++    <button type="submit" class="btn btn-light btn-sm">{% translate "Calendar" %}</button>
++</form>
+ {% endif %}
+ 
+ <table class="table">
+@@ -114,7 +126,11 @@
+ 
+ <h4>{% translate "Weight" %} <small>({% blocktranslate with number=5 %}last {{ number }}{% endblocktranslate %})</small></h4>
+ {% if perms.gym.gym_trainer %}
+-<a href="{{trainer_login}}?next={% url 'weight:overview' %}" class="btn btn-light btn-sm">{% translate "Weight overview" %}</a>
++<form method="post" action="{{ trainer_login }}" class="d-inline">
++    {% csrf_token %}
++    <input type="hidden" name="next" value="{% url 'weight:overview' %}">
++    <button type="submit" class="btn btn-light btn-sm">{% translate "Weight overview" %}</button>
++</form>
+ {% endif %}
+ 
+ <table class="table">
+@@ -146,7 +162,11 @@
+ 
+ <h4>{% translate "Nutrition plans" %} <small>({% blocktranslate with number=5 %}last {{ number }}{% endblocktranslate %})</small></h4>
+ {% if perms.gym.gym_trainer %}
+-    <a href="{{trainer_login}}?next={% url 'nutrition:plan:overview' %}" class="btn btn-light btn-sm">{% translate "Overview" %}</a>
++<form method="post" action="{{ trainer_login }}" class="d-inline">
++    {% csrf_token %}
++    <input type="hidden" name="next" value="{% url 'nutrition:plan:overview' %}">
++    <button type="submit" class="btn btn-light btn-sm">{% translate "Overview" %}</button>
++</form>
+ {% endif %}
+ 
+ <table class="table">
+@@ -167,7 +187,11 @@
+         {{nutrition_plan.creation_date}}
+     </td>
+     <td>
+-        <a href="{{trainer_login}}?next={{ nutrition_plan.get_absolute_url }}">{{nutrition_plan}}</a>
++        <form method="post" action="{{ trainer_login }}" class="d-inline">
++            {% csrf_token %}
++            <input type="hidden" name="next" value="{{ nutrition_plan.get_absolute_url }}">
++            <button type="submit" class="btn btn-link p-0">{{nutrition_plan}}</button>
++        </form>
+     </td>
+     <td>
+         {{nutrition_plan.get_nutritional_values.total.energy|floatformat}} {% translate "kcal" %}
+@@ -504,17 +528,15 @@
+         }
+     </style>
+ 
+-    <a
+-       {% if enable_login_button %}
+-        href="{% url 'core:user:trainer-login' current_user.pk %}"
+-        class="btn btn-sm btn-success"
+-       {% else %}
+-        href="#"
+-        title="{% blocktranslate %}Admin login is only available for users in {{gym_name}}{% endblocktranslate %}"
+-        class="btn btn-sm btn-secondary"
+-       {% endif %}
+-    >
+-       {% translate "Log in as this user" %}
+-    </a>
++    {% if enable_login_button %}
++        <form method="post" action="{% url 'core:user:trainer-login' current_user.pk %}" class="d-inline">
++            {% csrf_token %}
++            <button type="submit" class="btn btn-sm btn-success">{% translate "Log in as this user" %}</button>
++        </form>
++    {% else %}
++        <button type="button" title="{% blocktranslate %}Admin login is only available for users in {{gym_name}}{% endblocktranslate %}" class="btn btn-sm btn-secondary" disabled>
++            {% translate "Log in as this user" %}
++        </button>
++    {% endif %}
+ {% endif %}
+ {% endblock %}
+diff --git a/wger/core/tests/test_user_login.py b/wger/core/tests/test_user_login.py
+index eb57605..2835f60 100644
+--- a/wger/core/tests/test_user_login.py
++++ b/wger/core/tests/test_user_login.py
+@@ -17,6 +17,7 @@ from wger.core.views.user import trainer_login
+ def _build_mock_request(user):
+     request = mock.Mock()
+     request.session = dict()
++    request.method = 'POST'
+     request.GET = dict()
+     request.user = user
+     return request
+diff --git a/wger/core/views/user.py b/wger/core/views/user.py
+index 1f604e0..cfea4b2 100644
+--- a/wger/core/views/user.py
++++ b/wger/core/views/user.py
+@@ -48,6 +48,7 @@ from django.shortcuts import (
+     redirect,
+     render,
+ )
++from django.views.decorators.http import require_POST
+ from django.template.context_processors import csrf
+ from django.urls import (
+     reverse,
+@@ -162,6 +163,7 @@ def delete(request, user_pk=None):
+ 
+ 
+ @login_required()
++@require_POST
+ def trainer_login(request, user_pk):
+     """
+     Allows a trainer to 'log in' as the selected user
+diff --git a/wger/gym/tests/test_routine.py b/wger/gym/tests/test_routine.py
+index 3d8d041..7148957 100644
+--- a/wger/gym/tests/test_routine.py
++++ b/wger/gym/tests/test_routine.py
+@@ -65,7 +65,7 @@ class RoutineApiTrainerTestCase(WgerTestCase):
+         from the user, plus their own.
+         """
+         self.user_login('admin')
+-        self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+ 
+         request = self.client.get(reverse('routine-list'))
+         self.assertEqual(request.status_code, 200)
+@@ -99,7 +99,7 @@ class RoutineApiTrainerTestCase(WgerTestCase):
+         from the user, plus their own.
+         """
+         self.user_login('admin')
+-        self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+ 
+         request = self.client.get(reverse('templates-list'))
+         self.assertEqual(request.status_code, 200)
+diff --git a/wger/gym/tests/test_user.py b/wger/gym/tests/test_user.py
+index 35b22b3..40b2157 100644
+--- a/wger/gym/tests/test_user.py
++++ b/wger/gym/tests/test_user.py
+@@ -153,11 +153,17 @@ class TrainerLoginTestCase(WgerTestCase):
+     Tests the trainer login view (switching to user ID)
+     """
+ 
++    def test_get_does_not_switch_identity(self):
++        self.user_login('admin')
++        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        self.assertEqual(response.status_code, 405)
++        self.assertFalse(self.client.session.get('trainer.identity'))
++
+     def test_anonymous(self):
+         """
+         Test the trainer login as an anonymous user
+         """
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 1}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 1}))
+         self.assertEqual(response.status_code, 302)
+         self.assertFalse(self.client.session.get('trainer.identity'))
+ 
+@@ -166,7 +172,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         Test the trainer login as a logged in user without rights
+         """
+         self.user_login('test')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 1}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 1}))
+         self.assertEqual(response.status_code, 403)
+         self.assertFalse(self.client.session.get('trainer.identity'))
+ 
+@@ -175,7 +181,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         Test the trainer login as a logged in user with enough rights
+         """
+         self.user_login('admin')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertEqual(response.status_code, 302)
+         self.assertTrue(self.client.session.get('trainer.identity'))
+ 
+@@ -187,7 +193,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         profile.gym_id = 2
+         profile.save()
+         self.user_login('admin')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertEqual(response.status_code, 404)
+         self.assertFalse(self.client.session.get('trainer.identity'))
+ 
+@@ -201,7 +207,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         user.user_permissions.add(permission)
+ 
+         self.user_login('admin')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertEqual(response.status_code, 403)
+         self.assertFalse(self.client.session.get('trainer.identity'))
+ 
+@@ -215,7 +221,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         user.user_permissions.add(permission)
+ 
+         self.user_login('admin')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertEqual(response.status_code, 403)
+         self.assertFalse(self.client.session.get('trainer.identity'))
+ 
+@@ -229,12 +235,12 @@ class TrainerLoginTestCase(WgerTestCase):
+ 
+         # Step 1: legitimate hop — trainer1 (user 4) into test (user 2)
+         self.user_login('trainer1')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertEqual(response.status_code, 302)
+         self.assertTrue(self.client.session.get('trainer.identity'))
+ 
+         # Step 2: chained hop — now-as-test, target manager1 (user 9, has manage_gym)
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 9}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 9}))
+         self.assertEqual(response.status_code, 403)
+ 
+     def test_open_redirect_external_next_blocked(self):
+@@ -243,7 +249,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         """
+         for evil in ('https://evil.example/', '//evil.example/x', '%2F%2Fevil.example'):
+             self.user_login('admin')
+-            response = self.client.get(
++            response = self.client.post(
+                 reverse('core:user:trainer-login', kwargs={'user_pk': 2}) + f'?next={evil}'
+             )
+             self.assertEqual(response.status_code, 302)
+@@ -252,7 +258,7 @@ class TrainerLoginTestCase(WgerTestCase):
+ 
+     def test_safe_next_passes_through(self):
+         self.user_login('admin')
+-        response = self.client.get(
++        response = self.client.post(
+             reverse('core:user:trainer-login', kwargs={'user_pk': 2}) + '?next=/exercise/overview'
+         )
+         self.assertEqual(response.status_code, 302)
+@@ -268,7 +274,7 @@ class TrainerLoginTestCase(WgerTestCase):
+         user.user_permissions.add(permission)
+ 
+         self.user_login('admin')
+-        response = self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        response = self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertEqual(response.status_code, 403)
+         self.assertFalse(self.client.session.get('trainer.identity'))
+ 
+@@ -355,7 +361,7 @@ class GymScopeGuardsTestCase(WgerTestCase):
+         self._both_gyms_none(attacker_pk=4)  # trainer1
+         self.user_login('trainer1')
+ 
+-        response = self.client.get(
++        response = self.client.post(
+             reverse('core:user:trainer-login', kwargs={'user_pk': self.VICTIM_USER_PK})
+         )
+         self.assertIn(response.status_code, (403, 404))
+@@ -480,8 +486,8 @@ class TrainerLogoutTestCase(WgerTestCase):
+         Test the trainer login as an anonymous user
+         """
+         self.user_login('admin')
+-        self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
++        self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 2}))
+         self.assertTrue(self.client.session.get('trainer.identity'))
+ 
+-        self.client.get(reverse('core:user:trainer-login', kwargs={'user_pk': 1}))
++        self.client.post(reverse('core:user:trainer-login', kwargs={'user_pk': 1}))
+         self.assertFalse(self.client.session.get('trainer.identity'))

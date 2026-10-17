@@ -1,0 +1,26 @@
+diff --git a/wger/utils/viewsets.py b/wger/utils/viewsets.py
+index b31e176..1edeafb 100644
+--- a/wger/utils/viewsets.py
++++ b/wger/utils/viewsets.py
+@@ -37,7 +37,9 @@ class WgerOwnerObjectModelViewSet(viewsets.ModelViewSet):
+ 
+             if request.data.get(entry[1]):
+                 pk = request.data.get(entry[1])
+-                obj = entry[0].objects.get(pk=pk)
++                obj = entry[0].objects.filter(pk=pk).first()
++                if obj is None:
++                    raise exceptions.NotFound('Related object not found')
+                 if obj.get_owner_object().user != request.user:
+                     raise exceptions.PermissionDenied('You are not allowed to do this')
+         else:
+@@ -53,7 +55,9 @@ class WgerOwnerObjectModelViewSet(viewsets.ModelViewSet):
+ 
+             if request.data.get(entry[1]):
+                 pk = request.data.get(entry[1])
+-                obj = entry[0].objects.get(pk=pk)
++                obj = entry[0].objects.filter(pk=pk).first()
++                if obj is None:
++                    raise exceptions.NotFound('Related object not found')
+                 if obj.get_owner_object().user != request.user:
+                     raise exceptions.PermissionDenied('You are not allowed to do this')
+         else:

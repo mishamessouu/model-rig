@@ -1,0 +1,13 @@
+diff --git a/wger/utils/middleware.py b/wger/utils/middleware.py
+index fdde69f..29edb18 100644
+--- a/wger/utils/middleware.py
++++ b/wger/utils/middleware.py
+@@ -42,7 +42,7 @@ def check_current_request(request):
+ 
+     # Don't create guest users for requests that are accessing the site
+     # through the REST API
+-    if 'api' in request.path:
++    if 'api' in request.path.split('/'):
+         return False
+ 
+     # Other paths

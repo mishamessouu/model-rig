@@ -1,0 +1,189 @@
+{
+  "run_id": "codex-luna-high.ddd.r1",
+  "batch": "20261016T205957Z-wger-log-idor",
+  "scenario": "wger-log-idor",
+  "cell": "codex-luna-high",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "high",
+  "prompt": "ddd",
+  "repeat": 1,
+  "seconds": 103.2,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 26255,
+    "output": 2542,
+    "cache_read": 578432,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 26255,
+      "output": 2542,
+      "cache_read": 578432,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 604687,
+    "cached_input_tokens": 578432,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 2542,
+    "reasoning_output_tokens": 641
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 0.9681,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Fixed the until-failure workout-log rule so it uses the named domain constant and actually persists one repetition.",
+  "final": "Updated `WorkoutLog.save()` to use the `REP_UNIT_TILL_FAILURE` domain constant and set the persisted `repetitions` field to 1. Added a regression test for the saved value.\n\n`python3 manage.py test --settings=settings.ci` passed: 1419 tests, 17 skipped. `git diff --check` passed.\n\nCHOICE: Fixed the until-failure workout-log rule so it uses the named domain constant and actually persists one repetition.",
+  "diff": {
+    "files": 2,
+    "added": 17,
+    "removed": 2
+  },
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden": {
+      "passed": false,
+      "tail": "INFO 2026-10-17 02:51:52,126 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_next_log_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmph_pw9s5h/tmpz92as255/repo/wger/manager/tests/test_api_ownership_checks.py\", line 130, in test_create_with_foreign_next_log_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.336s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+      "passed": false,
+      "tail": "F\n======================================================================\nFAIL: test_create_with_foreign_slot_entry_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden)\nPOST /api/v2/workoutlog/ from user 'test' must not be able to attach\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmph_pw9s5h/tmpz92as255/repo/wger/manager/tests/test_api_ownership_checks.py\", line 66, in test_create_with_foreign_slot_entry_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.361s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "INFO 2026-10-17 02:51:59,315 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmph_pw9s5h/tmpz92as255/repo/wger/manager/tests/test_api_ownership_checks.py\", line 159, in test_create_with_foreign_day_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.317s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_log_model": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_routine": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_slot_entry": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_weight_log": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_workout_session": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_categories": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_measurements": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal_item": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_plan": {
+      "passed": true,
+      "tail": ""
+    }
+  },
+  "previous_scores": [
+    {
+      "until": "2026-10-17T00:52:27+00:00",
+      "fixed": [],
+      "regression_pass": true,
+      "visible_pass": true,
+      "visible_tail": "",
+      "tests": {
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden": {
+          "passed": false,
+          "tail": "INFO 2026-10-17 01:41:14,385 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_next_log_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-luna-high.ddd.r1/tmpx1xp8n0b/repo/wger/manager/tests/test_api_ownership_checks.py\", line 130, in test_create_with_foreign_next_log_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.307s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+          "passed": false,
+          "tail": "F\n======================================================================\nFAIL: test_create_with_foreign_slot_entry_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden)\nPOST /api/v2/workoutlog/ from user 'test' must not be able to attach\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-luna-high.ddd.r1/tmpx1xp8n0b/repo/wger/manager/tests/test_api_ownership_checks.py\", line 66, in test_create_with_foreign_slot_entry_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.304s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
+          "passed": false,
+          "tail": "INFO 2026-10-17 01:41:20,804 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-luna-high.ddd.r1/tmpx1xp8n0b/repo/wger/manager/tests/test_api_ownership_checks.py\", line 159, in test_create_with_foreign_day_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.288s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_log_model": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_routine": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_slot_entry": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_weight_log": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_workout_session": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.measurements.tests.test_categories": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.measurements.tests.test_measurements": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_meal": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_meal_item": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_plan": {
+          "passed": true,
+          "tail": ""
+        }
+      }
+    }
+  ]
+}

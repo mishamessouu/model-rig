@@ -1,0 +1,78 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_api_log_ownership.py b/wger/manager/tests/test_api_log_ownership.py
+new file mode 100644
+index 0000000..1571ca4
+--- /dev/null
++++ b/wger/manager/tests/test_api_log_ownership.py
+@@ -0,0 +1,59 @@
++# Django
++from django.urls import reverse
++
++# Third Party
++from rest_framework import status
++
++# wger
++from wger.core.tests.base_testcase import WgerTestCase
++from wger.manager.models import (
++    Day,
++    Slot,
++    SlotEntry,
++    WorkoutLog,
++)
++
++
++class WorkoutLogOwnershipTestCase(WgerTestCase):
++    def setUp(self):
++        super().setUp()
++        self.user_login('admin')
++        self.own_entry = SlotEntry.objects.get(pk=1)
++        day = Day.objects.create(routine_id=2, order=1)
++        slot = Slot.objects.create(day=day, order=1)
++        self.foreign_entry = SlotEntry.objects.create(slot=slot, exercise_id=1)
++
++    def write_log(self, method, entry):
++        url = (
++            reverse('workoutlog-list')
++            if method == 'post'
++            else reverse('workoutlog-detail', kwargs={'pk': 1})
++        )
++        return getattr(self.client, method)(
++            url,
++            data={'exercise': 1, 'repetitions': 10, 'slot_entry': entry},
++            content_type='application/json',
++        )
++
++    def test_cannot_attach_logs_to_another_users_slot_entry(self):
++        for method in ('post', 'put', 'patch'):
++            with self.subTest(method=method):
++                count = WorkoutLog.objects.count()
++                response = self.write_log(method, self.foreign_entry.pk)
++                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++                self.assertEqual(WorkoutLog.objects.count(), count)
++                self.assertIsNone(WorkoutLog.objects.get(pk=1).slot_entry_id)
++
++    def test_can_attach_logs_to_own_slot_entry(self):
++        for method in ('post', 'put', 'patch'):
++            with self.subTest(method=method):
++                response = self.write_log(method, self.own_entry.pk)
++                expected = status.HTTP_201_CREATED if method == 'post' else status.HTTP_200_OK
++                self.assertEqual(response.status_code, expected)
++                log = WorkoutLog.objects.get(pk=response.json()['id'])
++                self.assertEqual(log.slot_entry, self.own_entry)
++
++    def test_slot_entry_is_optional(self):
++        response = self.write_log('post', None)
++        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
++        self.assertIsNone(WorkoutLog.objects.get(pk=response.json()['id']).slot_entry_id)

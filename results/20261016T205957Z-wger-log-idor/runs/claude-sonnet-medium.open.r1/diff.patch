@@ -1,0 +1,32 @@
+diff --git a/wger/core/views/user.py b/wger/core/views/user.py
+index 1f604e0..8db6acc 100644
+--- a/wger/core/views/user.py
++++ b/wger/core/views/user.py
+@@ -592,15 +592,23 @@ class UserDetailView(LoginRequiredMixin, WgerMultiplePermissionRequiredMixin, De
+         Send some additional data to the template
+         """
+         context = super(UserDetailView, self).get_context_data(**kwargs)
+-        out = []
+         routines = Routine.objects.filter(user=self.object).all()
++
++        # Fetch all logs for all of the user's routines in a single query instead
++        # of issuing one query per routine.
++        dates_by_routine = {}
++        last_log_by_routine = {}
++        for log in WorkoutLog.objects.filter(routine__user=self.object):
++            dates_by_routine.setdefault(log.routine_id, set()).add(log.date)
++            last_log_by_routine[log.routine_id] = log
++
++        out = []
+         for routine in routines:
+-            logs = WorkoutLog.objects.filter(routine=routine)
+             out.append(
+                 {
+                     'routine': routine,
+-                    'logs': logs.dates('date', 'day').count(),
+-                    'last_log': logs.last(),
++                    'logs': len(dates_by_routine.get(routine.id, ())),
++                    'last_log': last_log_by_routine.get(routine.id),
+                 }
+             )
+         context['routine_data'] = out

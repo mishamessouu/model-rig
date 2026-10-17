@@ -1,0 +1,92 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..26b9d53 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,9 +16,19 @@
+ import datetime
+ import logging
+ 
++# Django
++from django.contrib.auth.models import User
++
+ # wger
+ from wger.core.tests import api_base_test
+-from wger.manager.models import WorkoutLog
++from wger.core.tests.base_testcase import WgerTestCase
++from wger.manager.models import (
++    Day,
++    Routine,
++    Slot,
++    SlotEntry,
++    WorkoutLog,
++)
+ 
+ 
+ logger = logging.getLogger(__name__)
+@@ -41,3 +51,53 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++
++class WorkoutLogSlotOwnershipTestCase(WgerTestCase):
++    def setUp(self):
++        super().setUp()
++        self.user_login('test')
++        self.user = User.objects.get(username='test')
++        routine = Routine.objects.filter(user=self.user).first()
++        self.own_slot = Slot.objects.create(day=Day.objects.create(routine=routine))
++        self.foreign_slot = Slot.objects.exclude(day__routine__user=self.user).first()
++        self.own_entry = SlotEntry.objects.create(slot=self.own_slot, exercise_id=1)
++        self.foreign_entry = SlotEntry.objects.create(slot=self.foreign_slot, exercise_id=1)
++
++    def test_create_rejects_foreign_slot_entry(self):
++        count = WorkoutLog.objects.count()
++        response = self.client.post(
++            '/api/v2/workoutlog/',
++            data={
++                'exercise': 1,
++                'repetitions': 3,
++                'slot_entry': self.foreign_entry.pk,
++            },
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, 403)
++        self.assertEqual(WorkoutLog.objects.count(), count)
++
++    def test_update_rejects_foreign_slot_entry(self):
++        log = WorkoutLog.objects.create(
++            user=self.user, exercise_id=1, repetitions=3, slot_entry=self.own_entry
++        )
++        response = self.client.patch(
++            f'/api/v2/workoutlog/{log.pk}/',
++            data={'slot_entry': self.foreign_entry.pk},
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, 403)
++        log.refresh_from_db()
++        self.assertEqual(log.slot_entry, self.own_entry)
++
++    def test_create_accepts_own_slot_entry(self):
++        response = self.client.post(
++            '/api/v2/workoutlog/',
++            data={'exercise': 1, 'repetitions': 3, 'slot_entry': self.own_entry.pk},
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, 201)
++        self.assertEqual(
++            WorkoutLog.objects.get(pk=response.json()['id']).slot_entry, self.own_entry
++        )

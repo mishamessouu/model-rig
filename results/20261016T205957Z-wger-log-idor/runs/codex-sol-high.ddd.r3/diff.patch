@@ -1,0 +1,165 @@
+diff --git a/wger/manager/api/validators.py b/wger/manager/api/validators.py
+index 140344a..0dcafb4 100644
+--- a/wger/manager/api/validators.py
++++ b/wger/manager/api/validators.py
+@@ -16,16 +16,8 @@
+ # Third Party
+ from rest_framework import serializers
+ 
+-
+-REQUIREMENTS_REQUIRED_KEYS = [
+-    'rules',
+-]
+-REQUIREMENTS_RULES_KEYS = [
+-    'weight',
+-    'repetitions',
+-    'rir',
+-    'rest',
+-]
++# wger
++from wger.manager.dataclasses import ConfigRequirements
+ 
+ 
+ def validate_requirements(value: dict | None):
+@@ -34,15 +26,7 @@ def validate_requirements(value: dict | None):
+     if value is None:
+         return
+ 
+-    if not isinstance(value, dict):
+-        raise serializers.ValidationError('Requirements must be a JSON object.')
+-
+-    if not all(key in value for key in REQUIREMENTS_REQUIRED_KEYS):
+-        raise serializers.ValidationError("Missing required keys: 'rules'")
+-
+-    if 'rules' in value and not isinstance(value['rules'], list):
+-        raise serializers.ValidationError("'rules' must be a list.")
+-
+-    for rule in value['rules']:
+-        if rule not in REQUIREMENTS_RULES_KEYS:
+-            raise serializers.ValidationError(f'Invalid rule: {rule}')
++    try:
++        ConfigRequirements(value)
++    except ValueError as exc:
++        raise serializers.ValidationError(str(exc)) from exc
+diff --git a/wger/manager/dataclasses.py b/wger/manager/dataclasses.py
+index 77e0abd..2733075 100644
+--- a/wger/manager/dataclasses.py
++++ b/wger/manager/dataclasses.py
+@@ -271,10 +271,25 @@ def round_value(
+ 
+ @dataclass(init=False)
+ class ConfigRequirements:
++    """Log fields that must meet their targets before a progression can advance."""
++
+     rules: List[str] = field(default_factory=list)
+ 
+     def __init__(self, data: Dict[str, Any]):
+-        self.rules = data.get('rules', [])
++        if not isinstance(data, dict):
++            raise ValueError('Requirements must be a JSON object.')
++
++        if 'rules' not in data:
++            raise ValueError("Missing required keys: 'rules'")
++
++        if not isinstance(data['rules'], list):
++            raise ValueError("'rules' must be a list.")
++
++        for rule in data['rules']:
++            if rule not in ('weight', 'repetitions', 'rir', 'rest'):
++                raise ValueError(f'Invalid rule: {rule}')
++
++        self.rules = list(data['rules'])
+ 
+     def __bool__(self):
+         return bool(self.rules)
+diff --git a/wger/manager/models/abstract_config.py b/wger/manager/models/abstract_config.py
+index 24a5cd2..e6bec40 100644
+--- a/wger/manager/models/abstract_config.py
++++ b/wger/manager/models/abstract_config.py
+@@ -128,7 +128,7 @@ class AbstractChangeConfig(models.Model):
+         """
+         Get the requirements as an object
+         """
+-        if not self.requirements:
++        if self.requirements is None:
+             return None
+ 
+         return ConfigRequirements(self.requirements)
+diff --git a/wger/manager/tests/test_dataclasses_helper.py b/wger/manager/tests/test_dataclasses_helper.py
+index c503ea9..a9fa2c7 100644
+--- a/wger/manager/tests/test_dataclasses_helper.py
++++ b/wger/manager/tests/test_dataclasses_helper.py
+@@ -18,8 +18,16 @@ from decimal import Decimal
+ # Django
+ from django.test import SimpleTestCase
+ 
++# Third Party
++from rest_framework.exceptions import ValidationError
++
+ # wger
+-from wger.manager.dataclasses import round_value
++from wger.manager.api.serializers import SetNrConfigSerializer
++from wger.manager.dataclasses import (
++    ConfigRequirements,
++    round_value,
++)
++from wger.manager.models import SetsConfig
+ 
+ 
+ class RoundValueTestCase(SimpleTestCase):
+@@ -44,3 +52,55 @@ class RoundValueTestCase(SimpleTestCase):
+ 
+     def test_round_no_value(self):
+         self.assertEqual(round_value(None), None)
++
++
++class ConfigRequirementsTestCase(SimpleTestCase):
++    def test_supported_log_fields(self):
++        rules = ['weight', 'repetitions', 'rir', 'rest']
++        requirements = ConfigRequirements({'rules': rules})
++
++        self.assertEqual(requirements.rules, rules)
++        self.assertTrue(requirements)
++
++    def test_empty_and_absent_requirements(self):
++        self.assertFalse(ConfigRequirements({'rules': []}))
++        self.assertIsNone(SetsConfig(requirements=None).requirements_object)
++
++        for value in (None, {'rules': []}):
++            with self.subTest(value=value):
++                requirements_field = SetNrConfigSerializer().fields['requirements']
++                self.assertEqual(requirements_field.run_validation(value), value)
++
++    def test_invalid_requirements_rejected_by_domain_and_api(self):
++        invalid_values = [
++            [],
++            'weight',
++            {},
++            {'rules': None},
++            {'rules': 'weight'},
++            {'rules': ['sets']},
++            {'rules': ['weight', 'unknown']},
++            {'rules': [None]},
++        ]
++
++        for value in invalid_values:
++            with self.subTest(value=value):
++                with self.assertRaises(ValueError) as error:
++                    ConfigRequirements(value)
++
++                # Stored configurations use the same validation when read by progression logic.
++                with self.assertRaises(ValueError):
++                    SetsConfig(requirements=value).requirements_object
++
++                requirements_field = SetNrConfigSerializer().fields['requirements']
++                with self.assertRaises(ValidationError) as api_error:
++                    requirements_field.run_validation(value)
++                self.assertEqual(api_error.exception.detail, [str(error.exception)])
++
++    def test_input_mutation_does_not_change_requirements(self):
++        data = {'rules': ['weight']}
++        requirements = ConfigRequirements(data)
++
++        data['rules'].append('unknown')
++
++        self.assertEqual(requirements.rules, ['weight'])

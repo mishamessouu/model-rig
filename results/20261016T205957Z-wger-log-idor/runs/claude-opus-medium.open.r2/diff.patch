@@ -1,0 +1,54 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..fb66d6e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,12 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++            (WorkoutLog, 'next_log'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..09adb25 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -41,3 +41,31 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_create_with_foreign_slot_entry(self):
++        """
++        Logs can't be attached to a slot entry belonging to another user
++        """
++        self.authenticate('test')
++        data = {**self.data, 'slot_entry': 1}
++        response = self.client.post(self.url, data=data)
++        self.assertEqual(response.status_code, 403)
++        self.assertFalse(WorkoutLog.objects.filter(slot_entry=1, user__username='test').exists())
++
++    def test_create_with_foreign_next_log(self):
++        """
++        Logs can't point to a log belonging to another user
++        """
++        self.authenticate('test')
++        data = {**self.data, 'next_log': 1}
++        response = self.client.post(self.url, data=data)
++        self.assertEqual(response.status_code, 403)
++
++    def test_update_with_foreign_slot_entry(self):
++        """
++        Existing logs can't be moved to a slot entry belonging to another user
++        """
++        self.authenticate('test')
++        response = self.client.patch(self.url_detail, data={'slot_entry': 1})
++        self.assertEqual(response.status_code, 403)
++        self.assertIsNone(WorkoutLog.objects.get(pk=self.pk).slot_entry_id)

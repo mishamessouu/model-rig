@@ -1,0 +1,13 @@
+diff --git a/wger/nutrition/models/plan.py b/wger/nutrition/models/plan.py
+index 137c8de..4f0fcef 100644
+--- a/wger/nutrition/models/plan.py
++++ b/wger/nutrition/models/plan.py
+@@ -210,7 +210,7 @@ class NutritionPlan(models.Model):
+         amount of the current plan
+         """
+ 
+-        goal_calories = self.user.userprofile.calories
++        goal_calories = self.goal_energy or self.user.userprofile.calories
+         actual_calories = self.get_nutritional_values()['total']['energy']
+ 
+         # Within 3%

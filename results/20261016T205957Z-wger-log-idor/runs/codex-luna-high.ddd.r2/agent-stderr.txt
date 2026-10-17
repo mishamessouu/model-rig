@@ -1,0 +1,3 @@
+Reading additional input from stdin...
+2026-10-16T23:57:14.096120Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-luna-high.ddd.r2/repo/wger/nutrition/helpers.py:
+# Django

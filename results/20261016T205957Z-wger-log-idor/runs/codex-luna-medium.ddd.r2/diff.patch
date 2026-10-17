@@ -1,0 +1,53 @@
+diff --git a/wger/manager/models/slot.py b/wger/manager/models/slot.py
+index 379eb7d..c51765e 100644
+--- a/wger/manager/models/slot.py
++++ b/wger/manager/models/slot.py
+@@ -2,6 +2,7 @@
+ from typing import List
+ 
+ # Django
++from django.core.exceptions import ValidationError
+ from django.db import models
+ 
+ # wger
+@@ -58,6 +59,12 @@ class Slot(models.Model):
+         """
+         return f'Set {self.id}'
+ 
++    def save(self, *args, **kwargs):
++        """Rest days cannot contain exercise slots."""
++        if self.day.is_rest:
++            raise ValidationError('A rest day cannot contain exercise slots.')
++        return super().save(*args, **kwargs)
++
+     def get_owner_object(self):
+         """
+         Returns the object that has owner information
+diff --git a/wger/manager/tests/test_day.py b/wger/manager/tests/test_day.py
+index 1174e04..96a7943 100644
+--- a/wger/manager/tests/test_day.py
++++ b/wger/manager/tests/test_day.py
+@@ -17,9 +17,10 @@ from dataclasses import asdict
+ from decimal import Decimal
+ 
+ # wger
++from django.core.exceptions import ValidationError
+ from wger.core.tests.base_testcase import WgerTestCase
+ from wger.manager.dataclasses import SetConfigData
+-from wger.manager.models import Day
++from wger.manager.models import Day, Slot
+ 
+ 
+ class DaySlotTestCase(WgerTestCase):
+@@ -211,3 +212,11 @@ class DayModelTestCase(WgerTestCase):
+         day.name = 'foo'
+         day.save()
+         self.assertEqual(day.slots.count(), 3)
++
++    def test_cannot_add_slot_to_rest_day(self):
++        day = Day.objects.get(pk=1)
++        day.is_rest = True
++        day.save()
++
++        with self.assertRaises(ValidationError):
++            Slot.objects.create(day=day)

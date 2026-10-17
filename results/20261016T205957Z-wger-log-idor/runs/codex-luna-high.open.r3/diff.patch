@@ -1,0 +1,51 @@
+diff --git a/wger/core/middleware.py b/wger/core/middleware.py
+index fb069cd..a30d8d2 100644
+--- a/wger/core/middleware.py
++++ b/wger/core/middleware.py
+@@ -27,6 +27,7 @@ from django.contrib.auth import (
+ from django.shortcuts import redirect
+ from django.urls import reverse
+ from django.utils.deprecation import MiddlewareMixin
++from django.utils.http import url_has_allowed_host_and_scheme
+ 
+ # wger
+ from wger.utils.helpers import remove_language_code
+@@ -141,6 +142,12 @@ class AuthProxyHeaderMiddleware(MiddlewareMixin):
+                 f"trusted IP '{client_ip}'."
+             )
+             next_url = request.GET.get('next', reverse('core:dashboard'))
++            if not url_has_allowed_host_and_scheme(
++                url=next_url,
++                allowed_hosts={request.get_host()},
++                require_https=request.is_secure(),
++            ):
++                next_url = reverse('core:dashboard')
+             if request.user.is_authenticated:
+                 return redirect(next_url)
+         else:
+diff --git a/wger/core/tests/test_auth_proxy_middleware.py b/wger/core/tests/test_auth_proxy_middleware.py
+index 6f9b278..d21feac 100644
+--- a/wger/core/tests/test_auth_proxy_middleware.py
++++ b/wger/core/tests/test_auth_proxy_middleware.py
+@@ -81,6 +81,21 @@ class AuthProxyMiddlewareTests(TestCase):
+         # Check if the correct user is logged into the session
+         self.assertEqual(int(self.client.session.get('_auth_user_id', 0)), self.existing_user.pk)
+ 
++    @override_settings(
++        AUTH_PROXY_TRUSTED_IPS=[TRUSTED_IP],
++        AUTH_PROXY_HEADER=PROXY_HEADER_KEY,
++        WGER_SETTINGS={'ALLOW_GUEST_USERS': False},
++    )
++    def test_success_trusted_ip_rejects_external_next_url(self):
++        response = self.client.get(
++            self.login_url,
++            {'next': 'https://evil.example'},
++            REMOTE_ADDR=TRUSTED_IP,
++            **{PROXY_HEADER_KEY: USERNAME},
++        )
++
++        self.assertRedirects(response, self.protected_url, fetch_redirect_response=False)
++
+     @override_settings(
+         AUTH_PROXY_TRUSTED_IPS=[TRUSTED_IP],
+         AUTH_PROXY_HEADER=PROXY_HEADER_KEY,

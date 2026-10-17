@@ -1,0 +1,80 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..5fbcf7f 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -175,12 +175,13 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Returns the logs for the routine
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_logs(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+-        out = LogDisplaySerializer(self.get_object().logs_display(), many=True).data
++        out = LogDisplaySerializer(routine.logs_display(), many=True).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+         return Response(out)
+ 
+@@ -189,12 +190,13 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Returns the logs for the routine
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_stats(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+-        out = LogStatsDataSerializer(self.get_object().calculate_log_statistics()).data
++        out = LogStatsDataSerializer(routine.calculate_log_statistics()).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+ 
+         return Response(out)
+diff --git a/wger/manager/tests/test_routine.py b/wger/manager/tests/test_routine.py
+index 6e4acb9..1dde19c 100644
+--- a/wger/manager/tests/test_routine.py
++++ b/wger/manager/tests/test_routine.py
+@@ -16,6 +16,7 @@
+ import datetime
+ 
+ # Django
++from django.core.cache import cache
+ from django.urls import reverse
+ 
+ # wger
+@@ -28,6 +29,7 @@ from wger.manager.models import (
+     WorkoutSession,
+ )
+ from wger.manager.models.routine import Routine
++from wger.utils.cache import CacheKeyMapper
+ 
+ 
+ class RoutineTestCase(WgerTestCase):
+@@ -591,6 +593,25 @@ class RoutineLogsAndStatsScopeTestCase(WgerTestCase):
+         response = self.client.get(self.stats_url)
+         self.assertEqual(response.status_code, 200)
+ 
++    def test_cached_history_requires_current_ownership(self):
++        self.user_login('trainer2')
++        user_id = Routine.objects.get(pk=self.PUBLIC_TEMPLATE_PK).user_id
++        endpoints = (
++            (self.logs_url, CacheKeyMapper.routine_api_logs),
++            (self.stats_url, CacheKeyMapper.routine_api_stats),
++        )
++        for url, cache_key in endpoints:
++            self.assertEqual(self.client.get(url).status_code, 200)
++            self.assertIsNotNone(cache.get(cache_key(self.PUBLIC_TEMPLATE_PK, user_id)))
++
++        # Leave the previously authorized responses cached after ownership changes.
++        Routine.objects.filter(pk=self.PUBLIC_TEMPLATE_PK).update(user_id=1)
++
++        for url, cache_key in endpoints:
++            with self.subTest(url=url):
++                self.assertIsNotNone(cache.get(cache_key(self.PUBLIC_TEMPLATE_PK, user_id)))
++                self.assertEqual(self.client.get(url).status_code, 403)
++
+     def test_template_structure_remains_publicly_readable(self):
+         """
+         The template's exercise structure is the public part of the

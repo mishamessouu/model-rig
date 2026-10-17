@@ -1,0 +1,125 @@
+{
+  "batch": "20261016T205957Z-wger-log-idor",
+  "scenario": "wger-log-idor",
+  "cells": [
+    "claude-opus-medium",
+    "claude-sonnet-medium",
+    "codex-sol-high",
+    "codex-luna-medium"
+  ],
+  "prompts": [
+    "open",
+    "security"
+  ],
+  "repeats": 3,
+  "rig_commit": "c3c9856",
+  "versions": {
+    "claude": "2.1.280 (Claude Code)",
+    "codex": "codex-cli 0.160.0"
+  },
+  "matrix": {
+    "repeats": 3,
+    "timeout_seconds": 1800,
+    "budget_usd": 20.0,
+    "cells": [
+      {
+        "name": "claude-opus-medium",
+        "harness": "claude",
+        "model": "opus",
+        "effort": "medium"
+      },
+      {
+        "name": "claude-sonnet-medium",
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "medium"
+      },
+      {
+        "name": "codex-sol-high",
+        "harness": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "high"
+      },
+      {
+        "name": "codex-luna-medium",
+        "harness": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium"
+      }
+    ]
+  },
+  "resumed": [
+    {
+      "at": "2026-10-16T21:57:37+00:00",
+      "cells": [
+        "codex-sol-high",
+        "codex-luna-medium"
+      ],
+      "prompts": [
+        "open",
+        "security"
+      ],
+      "repeats": 3,
+      "runs": 8,
+      "rig_commit": "c5b6261",
+      "versions": {
+        "claude": "2.1.280 (Claude Code)",
+        "codex": "codex-cli 0.160.0"
+      }
+    },
+    {
+      "at": "2026-10-16T22:31:51+00:00",
+      "cells": [
+        "codex-sol-medium",
+        "codex-luna-high"
+      ],
+      "prompts": [
+        "open",
+        "security"
+      ],
+      "repeats": 3,
+      "runs": 12,
+      "rig_commit": "c5b6261",
+      "versions": {
+        "claude": "2.1.280 (Claude Code)",
+        "codex": "codex-cli 0.160.0"
+      }
+    },
+    {
+      "at": "2026-10-16T23:25:14+00:00",
+      "cells": [
+        "codex-sol-high",
+        "codex-sol-medium",
+        "codex-luna-medium",
+        "codex-luna-high"
+      ],
+      "prompts": [
+        "ddd"
+      ],
+      "repeats": 3,
+      "runs": 12,
+      "rig_commit": "c5b6261",
+      "versions": {
+        "claude": "2.1.280 (Claude Code)",
+        "codex": "codex-cli 0.160.0"
+      }
+    },
+    {
+      "at": "2026-10-17T00:18:54+00:00",
+      "cells": [
+        "claude-opus-medium"
+      ],
+      "prompts": [
+        "open",
+        "security"
+      ],
+      "repeats": 3,
+      "runs": 2,
+      "rig_commit": "c5b6261",
+      "versions": {
+        "claude": "2.1.280 (Claude Code)",
+        "codex": "codex-cli 0.160.0"
+      }
+    }
+  ]
+}

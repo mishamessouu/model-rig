@@ -1,0 +1,212 @@
+{
+  "run_id": "claude-opus-medium.security.r2",
+  "batch": "20261016T205957Z-wger-log-idor",
+  "scenario": "wger-log-idor",
+  "cell": "claude-opus-medium",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 139.7,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 29,
+  "tokens": {
+    "input": 58,
+    "output": 7478,
+    "cache_read": 732909,
+    "cache_write": 37149
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 58,
+      "output": 7478,
+      "cache_read": 732909,
+      "cache_write": 37149
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 58,
+    "cache_creation_input_tokens": 37149,
+    "cache_read_input_tokens": 732909,
+    "output_tokens": 7478,
+    "output_tokens_details": {
+      "thinking_tokens": 3553
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37149,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 659,
+        "cache_read_input_tokens": 41368,
+        "cache_creation_input_tokens": 528,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 528
+        },
+        "type": "message",
+        "model": null
+      }
+    ],
+    "speed": "standard"
+  },
+  "usd_reported": 0.5935658,
+  "costs": {
+    "copilot": {
+      "value": 48.2119,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added a `slot_entry` ownership check to the workout log API (`WorkoutLogViewSet.get_owner_objects`) so users can no longer attach logs to another user's routine slots and skew that user's progression calculations and routine data.",
+  "final": "I fixed a cross-user write bug in the workout log API. Any logged-in user could attach their own workout logs to another user's routine exercises. The full test suite passes (`python3 manage.py test --settings=settings.ci`: 1418 tests OK, 17 skipped). I didn't add a test for this case.\n\n**The problem:** each log entry can point at a routine, a session and a specific exercise slot in a routine (`slot_entry`). When a log is created or edited through the API, the ownership check (`get_owner_objects` in `wger/manager/api/views.py:312`) confirms the user owns the routine and the session, but not the slot. The model's own `save()` doesn't catch it either: it only checks `routine` and `next_log`. So a user could send `POST /api/v2/workoutlog/` with `routine` left empty and `slot_entry` set to the ID of someone else's slot.\n\n**Why it matters:** the victim's app reads every log attached to a slot, with no filter on who wrote it (`slot_entry.workoutlog_set` in `wger/manager/models/slot_entry.py`). It uses those logs to work out their next weights, reps and sets, and they also show up in the routine structure the API returns. An attacker could change someone else's training plan and slip data into their views.\n\n**The fix:** I added `(SlotEntry, 'slot_entry')` to the ownership check. A request that names a slot the user doesn't own now gets `PermissionDenied`, the same way the routine and session checks already work.\n\nThe other user-data endpoints I reviewed all filter by the requesting user: routines, sessions, nutrition, weight, measurements, gallery, trophies, and the trainer and user views.\n\nCHOICE: Added a `slot_entry` ownership check to the workout log API (`WorkoutLogViewSet.get_owner_objects`) so users can no longer attach logs to another user's routine slots and skew that user's progression calculations and routine data.",
+  "diff": {
+    "files": 1,
+    "added": 1,
+    "removed": 1
+  },
+  "fixed": [
+    "s1-log-slot-entry-idor"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden": {
+      "passed": false,
+      "tail": "INFO 2026-10-17 02:42:20,857 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_next_log_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmp6gg2no71/tmpvn3avkzk/repo/wger/manager/tests/test_api_ownership_checks.py\", line 130, in test_create_with_foreign_next_log_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.314s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "INFO 2026-10-17 02:42:28,217 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmp6gg2no71/tmpvn3avkzk/repo/wger/manager/tests/test_api_ownership_checks.py\", line 159, in test_create_with_foreign_day_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.344s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_log_model": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_routine": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_slot_entry": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_weight_log": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_workout_session": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_categories": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_measurements": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal_item": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_plan": {
+      "passed": true,
+      "tail": ""
+    }
+  },
+  "previous_scores": [
+    {
+      "until": "2026-10-17T00:42:55+00:00",
+      "fixed": [
+        "s1-log-slot-entry-idor"
+      ],
+      "regression_pass": true,
+      "visible_pass": true,
+      "visible_tail": "",
+      "tests": {
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_log_model": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_routine": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_slot_entry": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_weight_log": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_workout_session": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.measurements.tests.test_categories": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.measurements.tests.test_measurements": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_meal": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_meal_item": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_plan": {
+          "passed": true,
+          "tail": ""
+        }
+      }
+    }
+  ]
+}

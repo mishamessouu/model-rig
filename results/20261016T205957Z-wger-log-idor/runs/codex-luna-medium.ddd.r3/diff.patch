@@ -1,0 +1,78 @@
+diff --git a/wger/nutrition/helpers.py b/wger/nutrition/helpers.py
+index 20be177..67cb6e7 100644
+--- a/wger/nutrition/helpers.py
++++ b/wger/nutrition/helpers.py
+@@ -107,6 +107,14 @@ class NutritionalValues:
+     def energy_kilojoule(self):
+         return self.energy * KJ_PER_KCAL
+ 
++    @classmethod
++    def sum(cls, values):
++        """Combine nutritional values into one total."""
++        total = cls()
++        for value in values:
++            total += value
++        return total
++
+     def __add__(self, other: 'NutritionalValues'):
+         """
+         Allow adding nutritional values
+diff --git a/wger/nutrition/models/meal.py b/wger/nutrition/models/meal.py
+index 180b65d..95d1e90 100644
+--- a/wger/nutrition/models/meal.py
++++ b/wger/nutrition/models/meal.py
+@@ -83,9 +83,7 @@ class Meal(models.Model):
+ 
+         :param: use_metric Flag that controls the units used
+         """
+-        nutritional_values = NutritionalValues()
+-
+-        for item in self.mealitem_set.select_related():
+-            nutritional_values += item.get_nutritional_values(use_metric=use_metric)
+-
+-        return nutritional_values
++        return NutritionalValues.sum(
++            item.get_nutritional_values(use_metric=use_metric)
++            for item in self.mealitem_set.select_related()
++        )
+diff --git a/wger/nutrition/models/plan.py b/wger/nutrition/models/plan.py
+index 137c8de..3c20fe8 100644
+--- a/wger/nutrition/models/plan.py
++++ b/wger/nutrition/models/plan.py
+@@ -126,7 +126,6 @@ class NutritionPlan(models.Model):
+         """
+         nutritional_representation = cache.get(cache_mapper.get_nutrition_cache_by_key(self.pk))
+         if not nutritional_representation:
+-            nutritional_values = NutritionalValues()
+             use_metric = self.user.userprofile.use_metric
+             unit = 'kg' if use_metric else 'lb'
+             result = {
+@@ -136,8 +135,10 @@ class NutritionPlan(models.Model):
+             }
+ 
+             # Energy
+-            for meal in self.meal_set.select_related():
+-                nutritional_values += meal.get_nutritional_values(use_metric=use_metric)
++            nutritional_values = NutritionalValues.sum(
++                meal.get_nutritional_values(use_metric=use_metric)
++                for meal in self.meal_set.select_related()
++            )
+             result['total'] = nutritional_values
+ 
+             energy = nutritional_values.energy
+diff --git a/wger/nutrition/tests/test_nutritional_values.py b/wger/nutrition/tests/test_nutritional_values.py
+index c92ba68..b417de8 100644
+--- a/wger/nutrition/tests/test_nutritional_values.py
++++ b/wger/nutrition/tests/test_nutritional_values.py
+@@ -89,3 +89,11 @@ class NutritionalValuesTestCase(SimpleTestCase):
+                 sodium=40,
+             ),
+         )
++
++    def test_sum(self):
++        """Aggregate values through the value object's domain operation."""
++        values = NutritionalValues.sum(
++            [NutritionalValues(energy=100), NutritionalValues(energy=50, protein=10)]
++        )
++
++        self.assertEqual(values, NutritionalValues(energy=150, protein=10))

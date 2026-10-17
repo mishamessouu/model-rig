@@ -1,0 +1,138 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..2dc42c5 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -128,13 +128,14 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Return the day sequence of the routine
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_date_sequence_display_key(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+         out = WorkoutDayDataDisplayModeSerializer(
+-            self.get_object().date_sequence,
++            routine.date_sequence,
+             many=True,
+         ).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+@@ -146,12 +147,13 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Return the day sequence of the routine
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_date_sequence_gym_key(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+-        out = WorkoutDayDataGymModeSerializer(self.get_object().date_sequence, many=True).data
++        out = WorkoutDayDataGymModeSerializer(routine.date_sequence, many=True).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+ 
+         return Response(out)
+@@ -161,12 +163,13 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Return the full object structure of the routine.
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_structure_key(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+-        out = RoutineStructureSerializer(self.get_object()).data
++        out = RoutineStructureSerializer(routine).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+         return Response(out)
+ 
+@@ -175,12 +178,13 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Returns the logs for the routine
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_logs(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+-        out = LogDisplaySerializer(self.get_object().logs_display(), many=True).data
++        out = LogDisplaySerializer(routine.logs_display(), many=True).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+         return Response(out)
+ 
+@@ -189,12 +193,13 @@ class RoutineViewSet(viewsets.ModelViewSet):
+         """
+         Returns the logs for the routine
+         """
++        routine = self.get_object()
+         cache_key = CacheKeyMapper.routine_api_stats(pk, request.user.id)
+         cached_data = cache.get(cache_key)
+         if cached_data is not None:
+             return Response(cached_data)
+ 
+-        out = LogStatsDataSerializer(self.get_object().calculate_log_statistics()).data
++        out = LogStatsDataSerializer(routine.calculate_log_statistics()).data
+         cache.set(cache_key, out, settings.WGER_SETTINGS['ROUTINE_CACHE_TTL'])
+ 
+         return Response(out)
+diff --git a/wger/manager/tests/test_routine.py b/wger/manager/tests/test_routine.py
+index 6e4acb9..803c2a7 100644
+--- a/wger/manager/tests/test_routine.py
++++ b/wger/manager/tests/test_routine.py
+@@ -16,6 +16,7 @@
+ import datetime
+ 
+ # Django
++from django.core.cache import cache
+ from django.urls import reverse
+ 
+ # wger
+@@ -28,6 +29,7 @@ from wger.manager.models import (
+     WorkoutSession,
+ )
+ from wger.manager.models.routine import Routine
++from wger.utils.cache import CacheKeyMapper
+ 
+ 
+ class RoutineTestCase(WgerTestCase):
+@@ -599,3 +601,37 @@ class RoutineLogsAndStatsScopeTestCase(WgerTestCase):
+         self.user_login('test')
+         response = self.client.get(self.detail_url)
+         self.assertEqual(response.status_code, 200)
++
++
++class RoutineCachedAccessTestCase(WgerTestCase):
++    def test_cached_template_data_is_denied_after_becoming_private(self):
++        actions = ('structure', 'date-sequence-display-mode', 'date-sequence-gym-mode')
++        self.user_login('test')
++        urls = [reverse(f'routine-{action}', kwargs={'pk': 5}) for action in actions]
++        for url in urls:
++            self.assertEqual(self.client.get(url).status_code, 200)
++
++        self.user_login('trainer2')
++        response = self.client.patch(
++            reverse('routine-detail', kwargs={'pk': 5}),
++            data={'is_public': False},
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, 200)
++
++        self.user_login('test')
++        for url in urls:
++            with self.subTest(url=url):
++                self.assertEqual(self.client.get(url).status_code, 404)
++
++    def test_cached_template_history_still_requires_ownership(self):
++        self.user_login('test')
++        for action, cache_key in (
++            ('logs', CacheKeyMapper.routine_api_logs),
++            ('stats', CacheKeyMapper.routine_api_stats),
++        ):
++            with self.subTest(action=action):
++                # Cached data must never bypass the current object permissions.
++                cache.set(cache_key(5, 2), {'private': 'workout history'})
++                url = reverse(f'routine-{action}', kwargs={'pk': 5})
++                self.assertEqual(self.client.get(url).status_code, 403)

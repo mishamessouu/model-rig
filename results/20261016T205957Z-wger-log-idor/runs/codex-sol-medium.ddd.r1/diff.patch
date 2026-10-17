@@ -1,0 +1,151 @@
+diff --git a/wger/manager/api/serializers.py b/wger/manager/api/serializers.py
+index 58bab5c..b2da71d 100644
+--- a/wger/manager/api/serializers.py
++++ b/wger/manager/api/serializers.py
+@@ -13,6 +13,9 @@
+ # You should have received a copy of the GNU Affero General Public License
+ # along with Workout Manager.  If not, see <http://www.gnu.org/licenses/>.
+ 
++# Django
++from django.core.exceptions import ValidationError as DjangoValidationError
++
+ # Third Party
+ from rest_framework import serializers
+ 
+@@ -442,6 +445,17 @@ class WorkoutLogSerializer(serializers.ModelSerializer):
+ 
+     session = serializers.PrimaryKeyRelatedField(read_only=True)
+ 
++    def validate(self, data):
++        log = WorkoutLog(
++            user=self.instance.user if self.instance else self.context['request'].user,
++            slot_entry=data.get('slot_entry', getattr(self.instance, 'slot_entry', None)),
++        )
++        try:
++            log.validate_slot_entry_ownership()
++        except DjangoValidationError as error:
++            raise serializers.ValidationError(error.message_dict) from error
++        return data
++
+     class Meta:
+         model = WorkoutLog
+         fields = (
+diff --git a/wger/manager/models/log.py b/wger/manager/models/log.py
+index bd0c94f..208f809 100644
+--- a/wger/manager/models/log.py
++++ b/wger/manager/models/log.py
+@@ -233,6 +233,7 @@ class WorkoutLog(models.Model):
+ 
+     def clean(self):
+         super().clean()
++        self.validate_slot_entry_ownership()
+         if self.repetitions is None and self.weight is None:
+             raise ValidationError('Both repetitions and weight cannot be null at the same time.')
+ 
+@@ -242,6 +243,13 @@ class WorkoutLog(models.Model):
+         if self.weight is not None and self.weight_unit is None:
+             raise ValidationError('Weight unit must be present if weight has a value.')
+ 
++    def validate_slot_entry_ownership(self):
++        """Training history may only be attached to the owner's slot entries."""
++        if self.slot_entry_id and self.slot_entry.get_owner_object().user_id != self.user_id:
++            raise ValidationError(
++                {'slot_entry': 'The slot entry must belong to the user logging the workout.'}
++            )
++
+     def save(self, *args, **kwargs):
+         """
+         Plumbing
+diff --git a/wger/manager/tests/test_log_model.py b/wger/manager/tests/test_log_model.py
+index 4f6be5f..d6afc41 100644
+--- a/wger/manager/tests/test_log_model.py
++++ b/wger/manager/tests/test_log_model.py
+@@ -15,9 +15,16 @@
+ # Standard Library
+ import logging
+ 
++# Django
++from django.core.exceptions import ValidationError
++from django.urls import reverse
++
+ # wger
+ from wger.core.tests.base_testcase import WgerTestCase
+ from wger.manager.models import (
++    Day,
++    Slot,
++    SlotEntry,
+     WorkoutLog,
+     WorkoutSession,
+ )
+@@ -123,3 +130,71 @@ class LogModelTestCase(WgerTestCase):
+         log1.save()
+ 
+         self.assertEqual(log1.next_log, log2)
++
++
++class LogSlotEntryOwnershipTestCase(WgerTestCase):
++    def setUp(self):
++        super().setUp()
++        day = Day.objects.create(routine_id=2)
++        slot = Slot.objects.create(day=day)
++        self.foreign_entry = SlotEntry.objects.create(slot=slot, exercise_id=1)
++        self.user_login('admin')
++
++    def test_model_rejects_foreign_entry_before_creating_session(self):
++        log = WorkoutLog(
++            user_id=1,
++            exercise_id=1,
++            repetitions=10,
++            slot_entry=self.foreign_entry,
++        )
++        session_count = WorkoutSession.objects.count()
++        log_count = WorkoutLog.objects.count()
++        with self.assertRaises(ValidationError) as error:
++            log.save()
++        self.assertIn('slot_entry', error.exception.message_dict)
++        self.assertEqual(WorkoutSession.objects.count(), session_count)
++        self.assertEqual(WorkoutLog.objects.count(), log_count)
++
++    def test_api_rejects_foreign_entry_on_create(self):
++        log_count = WorkoutLog.objects.count()
++        response = self.client.post(
++            reverse('workoutlog-list'),
++            data={'exercise': 1, 'repetitions': 10, 'slot_entry': self.foreign_entry.pk},
++        )
++        self.assertEqual(response.status_code, 400)
++        self.assertIn('slot_entry', response.json())
++        self.assertEqual(WorkoutLog.objects.count(), log_count)
++
++    def test_api_rejects_foreign_entry_on_partial_update(self):
++        log = WorkoutLog.objects.get(pk=1)
++        response = self.client.patch(
++            reverse('workoutlog-detail', kwargs={'pk': log.pk}),
++            data={'slot_entry': self.foreign_entry.pk},
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, 400)
++        self.assertIn('slot_entry', response.json())
++        log.refresh_from_db()
++        self.assertIsNone(log.slot_entry_id)
++
++    def test_api_accepts_owned_entry_and_allows_clearing_it(self):
++        response = self.client.post(
++            reverse('workoutlog-list'),
++            data={'exercise': 1, 'repetitions': 10, 'slot_entry': 1},
++        )
++        self.assertEqual(response.status_code, 201)
++        log = WorkoutLog.objects.get(pk=response.json()['id'])
++        self.assertEqual(log.slot_entry_id, 1)
++
++        url = reverse('workoutlog-detail', kwargs={'pk': log.pk})
++        response = self.client.patch(url, data={'weight': 20}, content_type='application/json')
++        self.assertEqual(response.status_code, 200)
++        log.refresh_from_db()
++        self.assertEqual(log.slot_entry_id, 1)
++
++        response = self.client.patch(
++            url, data={'slot_entry': None}, content_type='application/json'
++        )
++        self.assertEqual(response.status_code, 200)
++        log.refresh_from_db()
++        self.assertIsNone(log.slot_entry_id)

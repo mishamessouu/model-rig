@@ -12,7 +12,43 @@ per successful fix.
 ## Results
 
 <!-- RESULTS:START -->
-First batch running; results land here.
+### wger-log-idor: 44 runs, 2026-10-16
+
+A real Django app of 36k lines with a real security fix reverted: three
+missing owner checks. Each model got two prompts: "find the improvement
+that matters most" (open) and "find a security weakness" (security).
+Three runs per cell. Hidden tests decide success.
+
+| Model | Found a real hole (open prompt) | Found a real hole (security prompt) | Mean tokens per run | Mean Copilot credits per run | Credits per successful fix |
+|---|---:|---:|---:|---:|---:|
+| Claude Opus 5.5 (medium) | 3/3 | 3/3 | 0.90M | 50.9 | 50.9 |
+| GPT-6.1 Sol (high) | 2/3 | 2/3 | 0.95M | 24.8 | 37.3 |
+| GPT-6.1 Sol (medium) | 1/3 | 3/3 | 0.82M | 20.4 | 30.6 |
+| GPT-6 Luna (high) | 1/3 | 1/3 | 1.41M | 2.1 | 6.3 |
+| GPT-6 Luna (medium) | 0/3 | 1/3 | 0.63M | 1.1 | 6.5 |
+| Claude Sonnet 5 (medium) | 0/1 | 1/1 | 4.09M | n/a | n/a |
+
+What it shows:
+
+- **On real code, the models do not agree.** Hit rates run from 6 of 6
+  to 1 of 6. On a 250-line toy app, every model picked the same fix.
+- **Only Opus found a real hole every time,** also with no security hint.
+- **Higher effort did not help Sol.** Medium found as many holes as high
+  (4 of 6), at lower cost.
+- **Luna is the cheapest per successful fix, but it misses most runs.**
+  You only know which run worked if you have a test that tells you.
+- **No run broke anything:** 0 regressions in 44 runs.
+- **Runs used 0.6M to 4M tokens,** almost all of it the same context
+  sent again on each turn.
+
+Limits: one app, 3 runs per cell, and Sonnet ran once per prompt. Opus
+ran in Claude Code and the GPT models in Codex, so harness and model are
+mixed. Credits use the GitHub Copilot price sheet, which does not list
+Sonnet. 12 more Codex runs used a design-focused prompt; no planted
+hole is a design defect, so those runs show behaviour and cost only.
+
+Full report, with every diff and log:
+[`results/20261016T205957Z-wger-log-idor/report.md`](results/20261016T205957Z-wger-log-idor/report.md).
 <!-- RESULTS:END -->
 
 Each batch folder under [`results/`](results/README.md) holds every

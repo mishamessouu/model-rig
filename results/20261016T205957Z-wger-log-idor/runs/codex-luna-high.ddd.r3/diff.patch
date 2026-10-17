@@ -1,0 +1,78 @@
+diff --git a/wger/manager/api/serializers.py b/wger/manager/api/serializers.py
+index 58bab5c..b1b368d 100644
+--- a/wger/manager/api/serializers.py
++++ b/wger/manager/api/serializers.py
+@@ -13,6 +13,9 @@
+ # You should have received a copy of the GNU Affero General Public License
+ # along with Workout Manager.  If not, see <http://www.gnu.org/licenses/>.
+ 
++# Django
++from django.core.exceptions import ValidationError as DjangoValidationError
++
+ # Third Party
+ from rest_framework import serializers
+ 
+@@ -60,18 +63,14 @@ class RoutineSerializer(serializers.ModelSerializer):
+         )
+ 
+     def validate(self, data):
+-        start = data.get('start') or getattr(self.instance, 'start', None)
+-        end = data.get('end') or getattr(self.instance, 'end', None)
+-        if start and end:
+-            if start > end:
+-                raise serializers.ValidationError(
+-                    {'end': 'The end date cannot be before the start date.'}
+-                )
+-
+-            if (end - start).days > Routine.MAX_DURATION_DAYS:
+-                raise serializers.ValidationError(
+-                    {'end': f'A routine cannot span more than {Routine.MAX_DURATION_DAYS} days.'}
+-                )
++        routine = self.instance or Routine()
++        for field in ('start', 'end'):
++            if field in data:
++                setattr(routine, field, data[field])
++        try:
++            routine.clean()
++        except DjangoValidationError as error:
++            raise serializers.ValidationError(error.message_dict) from error
+         return data
+ 
+ 
+diff --git a/wger/manager/models/routine.py b/wger/manager/models/routine.py
+index ba0776f..f3336ce 100644
+--- a/wger/manager/models/routine.py
++++ b/wger/manager/models/routine.py
+@@ -28,6 +28,7 @@ from typing import List
+ from django.conf import settings
+ from django.contrib.auth.models import User
+ from django.core.cache import cache
++from django.core.exceptions import ValidationError
+ from django.db import models
+ from django.db.models import Prefetch
+ from django.urls import reverse
+@@ -153,11 +154,24 @@ class Routine(models.Model):
+ 
+     def save(self, *args, **kwargs):
+         """The is_public flag cannot be set if the routine is not a template"""
++        self.clean()
+         if self.is_public and not self.is_template:
+             self.is_public = False
+ 
+         super().save(*args, **kwargs)
+ 
++    def clean(self):
++        """Validate the date range used to generate this routine's sequence."""
++        super().clean()
++        if self.start and self.end:
++            if self.end < self.start:
++                raise ValidationError({'end': 'The end date cannot be before the start date.'})
++
++            if (self.end - self.start).days > self.MAX_DURATION_DAYS:
++                raise ValidationError(
++                    {'end': f'A routine cannot span more than {self.MAX_DURATION_DAYS} days.'}
++                )
++
+     @property
+     def duration(self) -> datetime.timedelta:
+         return self.end - self.start

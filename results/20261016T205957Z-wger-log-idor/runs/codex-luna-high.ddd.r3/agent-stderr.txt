@@ -1,0 +1,4 @@
+Reading additional input from stdin...
+2026-10-17T00:14:48.518504Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-luna-high.ddd.r3/repo/wger/manager/api/serializers.py:
+# Django
+from rest_framework import serializers

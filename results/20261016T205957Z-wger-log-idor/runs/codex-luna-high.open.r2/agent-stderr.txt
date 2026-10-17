@@ -1,0 +1,6 @@
+Reading additional input from stdin...
+2026-10-16T23:01:37.547043Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-luna-high.open.r2/repo/wger/manager/api/views.py:
+    Routine,
+    SetsConfig,
+    Slot,
+    WeightConfig,

@@ -1,0 +1,92 @@
+diff --git a/wger/nutrition/helpers.py b/wger/nutrition/helpers.py
+index 20be177..dfa816d 100644
+--- a/wger/nutrition/helpers.py
++++ b/wger/nutrition/helpers.py
+@@ -23,6 +23,9 @@ from dataclasses import (
+ from decimal import Decimal
+ from typing import Union
+ 
++# Django
++from django.core.exceptions import ValidationError
++
+ # wger
+ from wger.nutrition.consts import KJ_PER_KCAL
+ from wger.utils.constants import (
+@@ -39,6 +42,23 @@ class BaseMealItem:
+     This just provides some common helper functions
+     """
+ 
++    def clean(self):
++        """Ensure a serving unit belongs to the ingredient it measures."""
++        super().clean()
++        if self.ingredient_id and self.weight_unit_id:
++            unit_model = self._meta.get_field('weight_unit').remote_field.model
++            if unit_model.objects.filter(pk=self.weight_unit_id).exclude(
++                ingredient_id=self.ingredient_id
++            ).exists():
++                raise ValidationError(
++                    {'weight_unit': 'The serving unit must belong to the selected ingredient.'}
++                )
++
++    def save(self, *args, **kwargs):
++        """Enforce meal item invariants for every model write path."""
++        self.clean()
++        return super().save(*args, **kwargs)
++
+     def get_nutritional_values(self, use_metric=True):
+         """
+         Sums the nutritional info for the ingredient in the MealItem
+diff --git a/wger/nutrition/tests/test_meal_item.py b/wger/nutrition/tests/test_meal_item.py
+index 10ddd4d..c4bc642 100644
+--- a/wger/nutrition/tests/test_meal_item.py
++++ b/wger/nutrition/tests/test_meal_item.py
+@@ -13,12 +13,17 @@
+ # You should have received a copy of the GNU Affero General Public License
+ # along with Workout Manager.  If not, see <http://www.gnu.org/licenses/>.
+ 
++# Django
++from django.core.exceptions import ValidationError
++
+ # wger
+ from wger.core.tests import api_base_test
+ from wger.core.tests.base_testcase import WgerTestCase
+ from wger.nutrition.forms import MealItemForm
+ from wger.nutrition.models import (
+     IngredientWeightUnit,
++    LogItem,
++    Meal,
+     MealItem,
+ )
+ 
+@@ -86,3 +91,31 @@ class MealItemFormTestCase(WgerTestCase):
+         form = MealItemForm(data={'ingredient': 'not-a-number'})
+ 
+         self.assertEqual(form.fields['weight_unit'].queryset.count(), 0)
++
++    def test_serving_unit_must_belong_to_item_ingredient(self):
++        """The model invariant applies to planned meals and food logs."""
++        meal = Meal.objects.get(pk=2)
++        unit = IngredientWeightUnit.objects.create(
++            ingredient_id=2,
++            name='test serving',
++            gram=50,
++        )
++        items = (
++            MealItem(
++                meal=meal,
++                ingredient_id=1,
++                weight_unit=unit,
++                amount=1,
++                order=1,
++            ),
++            LogItem(
++                plan=meal.plan,
++                ingredient_id=1,
++                weight_unit=unit,
++                amount=1,
++            ),
++        )
++
++        for item in items:
++            with self.assertRaises(ValidationError):
++                item.save()

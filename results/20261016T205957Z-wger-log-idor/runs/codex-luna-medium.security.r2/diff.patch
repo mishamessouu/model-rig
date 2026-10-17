@@ -1,0 +1,25 @@
+diff --git a/wger/core/middleware.py b/wger/core/middleware.py
+index fb069cd..b2d8f6b 100644
+--- a/wger/core/middleware.py
++++ b/wger/core/middleware.py
+@@ -27,6 +27,7 @@ from django.contrib.auth import (
+ from django.shortcuts import redirect
+ from django.urls import reverse
+ from django.utils.deprecation import MiddlewareMixin
++from django.utils.http import url_has_allowed_host_and_scheme
+ 
+ # wger
+ from wger.utils.helpers import remove_language_code
+@@ -141,6 +142,12 @@ class AuthProxyHeaderMiddleware(MiddlewareMixin):
+                 f"trusted IP '{client_ip}'."
+             )
+             next_url = request.GET.get('next', reverse('core:dashboard'))
++            if not url_has_allowed_host_and_scheme(
++                next_url,
++                allowed_hosts={request.get_host()},
++                require_https=request.is_secure(),
++            ):
++                next_url = reverse('core:dashboard')
+             if request.user.is_authenticated:
+                 return redirect(next_url)
+         else:

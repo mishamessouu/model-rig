@@ -1,0 +1,133 @@
+diff --git a/wger/manager/api/serializers.py b/wger/manager/api/serializers.py
+index 58bab5c..cb9f492 100644
+--- a/wger/manager/api/serializers.py
++++ b/wger/manager/api/serializers.py
+@@ -13,6 +13,9 @@
+ # You should have received a copy of the GNU Affero General Public License
+ # along with Workout Manager.  If not, see <http://www.gnu.org/licenses/>.
+ 
++# Django
++from django.core.exceptions import ValidationError
++
+ # Third Party
+ from rest_framework import serializers
+ 
+@@ -60,18 +63,14 @@ class RoutineSerializer(serializers.ModelSerializer):
+         )
+ 
+     def validate(self, data):
+-        start = data.get('start') or getattr(self.instance, 'start', None)
+-        end = data.get('end') or getattr(self.instance, 'end', None)
+-        if start and end:
+-            if start > end:
+-                raise serializers.ValidationError(
+-                    {'end': 'The end date cannot be before the start date.'}
+-                )
+-
+-            if (end - start).days > Routine.MAX_DURATION_DAYS:
+-                raise serializers.ValidationError(
+-                    {'end': f'A routine cannot span more than {Routine.MAX_DURATION_DAYS} days.'}
+-                )
++        routine = Routine(
++            start=data.get('start', getattr(self.instance, 'start', None)),
++            end=data.get('end', getattr(self.instance, 'end', None)),
++        )
++        try:
++            routine.clean()
++        except ValidationError as error:
++            raise serializers.ValidationError(error.message_dict) from error
+         return data
+ 
+ 
+diff --git a/wger/manager/models/routine.py b/wger/manager/models/routine.py
+index ba0776f..f0192a9 100644
+--- a/wger/manager/models/routine.py
++++ b/wger/manager/models/routine.py
+@@ -28,6 +28,7 @@ from typing import List
+ from django.conf import settings
+ from django.contrib.auth.models import User
+ from django.core.cache import cache
++from django.core.exceptions import ValidationError
+ from django.db import models
+ from django.db.models import Prefetch
+ from django.urls import reverse
+@@ -151,6 +152,19 @@ class Routine(models.Model):
+         """
+         return self
+ 
++    def clean(self):
++        super().clean()
++        if self.start is None or self.end is None:
++            return
++
++        if self.start > self.end:
++            raise ValidationError({'end': 'The end date cannot be before the start date.'})
++
++        if self.duration.days > self.MAX_DURATION_DAYS:
++            raise ValidationError(
++                {'end': f'A routine cannot span more than {self.MAX_DURATION_DAYS} days.'}
++            )
++
+     def save(self, *args, **kwargs):
+         """The is_public flag cannot be set if the routine is not a template"""
+         if self.is_public and not self.is_template:
+diff --git a/wger/manager/tests/test_routine.py b/wger/manager/tests/test_routine.py
+index 6e4acb9..e001b13 100644
+--- a/wger/manager/tests/test_routine.py
++++ b/wger/manager/tests/test_routine.py
+@@ -16,11 +16,14 @@
+ import datetime
+ 
+ # Django
++from django.core.exceptions import ValidationError
++from django.test import SimpleTestCase
+ from django.urls import reverse
+ 
+ # wger
+ from wger.core.tests.api_base_test import ApiBaseResourceTestCase
+ from wger.core.tests.base_testcase import WgerTestCase
++from wger.manager.api.serializers import RoutineSerializer
+ from wger.manager.dataclasses import WorkoutDayData
+ from wger.manager.models import (
+     Day,
+@@ -510,6 +513,40 @@ class RoutineApiTestCase(ApiBaseResourceTestCase):
+     }
+ 
+ 
++class RoutineDateModelValidationTestCase(SimpleTestCase):
++    def test_date_bounds(self):
++        start = datetime.date(2024, 1, 1)
++        for days in (0, Routine.MAX_DURATION_DAYS):
++            with self.subTest(days=days):
++                Routine(start=start, end=start + datetime.timedelta(days=days)).clean()
++
++        for days in (-1, Routine.MAX_DURATION_DAYS + 1):
++            with self.subTest(days=days):
++                routine = Routine(start=start, end=start + datetime.timedelta(days=days))
++                with self.assertRaises(ValidationError) as error:
++                    routine.clean()
++                self.assertIn('end', error.exception.message_dict)
++
++    def test_missing_dates_are_left_to_field_validation(self):
++        start = datetime.date(2024, 1, 1)
++        for routine in (Routine(), Routine(start=start), Routine(end=start)):
++            with self.subTest(start=routine.start, end=routine.end):
++                routine.clean()
++
++    def test_partial_update_validates_combined_dates_without_mutating_instance(self):
++        routine = Routine(start=datetime.date(2024, 1, 1), end=datetime.date(2024, 2, 1))
++        for data in ({'start': '2024-03-01'}, {'end': '2024-12-01'}):
++            with self.subTest(data=data):
++                serializer = RoutineSerializer(routine, data=data, partial=True)
++                self.assertFalse(serializer.is_valid())
++                self.assertIn('end', serializer.errors)
++                self.assertEqual(routine.start, datetime.date(2024, 1, 1))
++                self.assertEqual(routine.end, datetime.date(2024, 2, 1))
++
++        serializer = RoutineSerializer(routine, data={'end': '2024-03-01'}, partial=True)
++        self.assertTrue(serializer.is_valid(), serializer.errors)
++
++
+ class RoutineDateValidationTestCase(WgerTestCase):
+     """
+     The routine API must enforce sane date bounds:

@@ -1,0 +1,13 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e650709 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -280,7 +280,7 @@ class WorkoutSessionViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine')]
++        return [(Routine, 'routine'), (Day, 'day')]
+ 
+ 
+ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
