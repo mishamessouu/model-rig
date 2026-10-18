@@ -1,0 +1,22 @@
+Partial fix: checks slot_entry ownership on create only, so an update
+still attaches a log to a foreign slot entry. The PATCH test must catch it.
+
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e48254e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -288,6 +288,14 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+     API endpoint for workout log objects
+     """
+ 
++    def create(self, request, *args, **kwargs):
++        from rest_framework import exceptions
++        from wger.manager.models import SlotEntry
++        pk = request.data.get('slot_entry')
++        if pk and SlotEntry.objects.get(pk=pk).get_owner_object().user != request.user:
++            raise exceptions.PermissionDenied('no')
++        return super().create(request, *args, **kwargs)
++
+     serializer_class = WorkoutLogSerializer
+     is_private = True
+     ordering_fields = '__all__'

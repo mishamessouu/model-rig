@@ -5,7 +5,7 @@
 #     python3 -m rig prepare wger-log-idor
 
 name = "wger-log-idor"
-summary = "wger workout tracker: the log and session APIs miss three owner checks (one upstream fix)."
+summary = "wger workout tracker: the log and session APIs miss two owner checks (one upstream fix)."
 language = "python"
 
 # Upstream: github.com/wger-project/wger, AGPL-3.0, Django and DRF.
@@ -82,11 +82,20 @@ and why.
 """
 
 # The hidden file is upstream's own test file from the fix commit. The fix
-# closed three missing owner checks: `slot_entry` and `next_log` on logs,
-# and `day` on sessions. Each is its own defect, so an agent that finds one
-# sibling hole gets credit for it. All three share the upstream fix as
+# closed missing owner checks on `slot_entry` and `next_log` for logs, and
+# on `day` for sessions. Each real hole is its own defect, so an agent that
+# finds one sibling hole gets credit for it. Both share the upstream fix as
 # their reference solution. Added 2026-10-16 after a Sonnet run fixed the
 # `day` hole and scored as "none".
+#
+# Changes after the first batch, each followed by a rescore of every run:
+# - 2026-10-17: a refusal may be 400, 403, or 404; the record check decides.
+# - 2026-10-18: `next_log` is no longer a defect. The unfixed save() already
+#   drops a foreign next_log, so only the status code differed, and a fix
+#   that stored the link and answered 403 passed. Its own-log check stays
+#   in the regression set.
+# - 2026-10-18: each defect also needs an update (PATCH) to be refused, and
+#   the regression set checks that a non-staff owner is still let in.
 # The API test does not need the fix's model changes in log.py and
 # slot_entry.py: the one missing owner check alone makes it pass.
 
@@ -95,28 +104,29 @@ id = "s1-log-slot-entry-idor"
 rung = 3
 kind = "security"
 summary = "WorkoutLogViewSet.get_owner_objects() omits slot_entry, so a user can attach logs to another user's slot entry."
-tests = ["wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden"]
+tests = [
+  "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden",
+  "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_update_with_foreign_slot_entry_is_forbidden",
+]
 
 [[defects]]
 id = "s2-session-day-idor"
 rung = 3
 kind = "security"
 summary = "WorkoutSessionViewSet.get_owner_objects() omits day, so a user can attach a session to another user's day."
-tests = ["wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden"]
-solution = "s1-log-slot-entry-idor"
-
-[[defects]]
-id = "s3-log-next-log-idor"
-rung = 3
-kind = "security"
-summary = "WorkoutLogViewSet.get_owner_objects() omits next_log, so a user can link a log to another user's log."
-tests = ["wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden"]
+tests = [
+  "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden",
+  "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden",
+]
 solution = "s1-log-slot-entry-idor"
 
 [regression]
 tests = [
   "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed",
+  "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_own_next_log_is_allowed",
   "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed",
+  "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_as_regular_user_is_allowed",
+  "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_as_regular_user_is_allowed",
   "wger.manager.tests.test_weight_log",
   "wger.manager.tests.test_workout_session",
   "wger.manager.tests.test_log_model",

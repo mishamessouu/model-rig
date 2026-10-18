@@ -1,0 +1,32 @@
+Wrong fix: refuses slot_entry and day to every non-staff user, owners too.
+The non-staff owner checks in the regression set must catch it.
+
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..39f83f8 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -282,12 +282,24 @@ class WorkoutSessionViewSet(WgerOwnerObjectModelViewSet):
+         """
+         return [(Routine, 'routine')]
+ 
++    def create(self, request, *args, **kwargs):
++        from rest_framework import exceptions
++        if request.data.get('day') and not request.user.is_staff:
++            raise exceptions.PermissionDenied('no')
++        return super().create(request, *args, **kwargs)
++
+ 
+ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+     """
+     API endpoint for workout log objects
+     """
+ 
++    def create(self, request, *args, **kwargs):
++        from rest_framework import exceptions
++        if request.data.get('slot_entry') and not request.user.is_staff:
++            raise exceptions.PermissionDenied('no')
++        return super().create(request, *args, **kwargs)
++
+     serializer_class = WorkoutLogSerializer
+     is_private = True
+     ordering_fields = '__all__'

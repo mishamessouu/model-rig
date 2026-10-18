@@ -35,6 +35,14 @@ This was checked against the GitHub contents API on 2026-10-16.
 
 `scenario.toml` in this folder is part of model-rig and is Apache-2.0.
 
-Change from upstream: in `hidden/test_api_ownership_checks.py`, the three
-"forbidden" tests accept 400, 403, or 404 instead of 403 only (`REFUSED`).
-Each test still checks that no record was saved.
+Changes from upstream in `hidden/test_api_ownership_checks.py`:
+
+- The three "forbidden" tests accept 400, 403, or 404 instead of 403 only
+  (`REFUSED`). Each test checks that no record was saved.
+- Added tests, marked "model-rig addition": an own `next_log` is still
+  allowed; a non-staff owner may still use their own slot entry and day;
+  an update (PATCH) to a foreign slot entry or day is refused.
+
+`wrong/*.patch` are known wrong fixes that `rig check` must not score as
+a success. Their context lines come from `wger/manager/api/views.py` at
+the fixture commit, under AGPL-3.0; the added lines are model-rig's.

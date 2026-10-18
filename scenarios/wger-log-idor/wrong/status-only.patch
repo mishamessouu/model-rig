@@ -1,0 +1,23 @@
+Wrong fix: saves the log first, then answers 403. The write still
+happens, so the record check must catch it.
+
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..1b9d05a 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -307,7 +307,14 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Set the owner
+         """
+-        serializer.save(user=self.request.user)
++        from rest_framework import exceptions
++        obj = serializer.save(user=self.request.user)
++        raw = self.request.data
++        from wger.manager.models import SlotEntry, WorkoutLog
++        if raw.get('next_log') and WorkoutLog.objects.get(pk=raw['next_log']).user != self.request.user:
++            raise exceptions.PermissionDenied('no')
++        if raw.get('slot_entry') and SlotEntry.objects.get(pk=raw['slot_entry']).get_owner_object().user != self.request.user:
++            raise exceptions.PermissionDenied('no')
+ 
+     def get_owner_objects(self):
+         """
