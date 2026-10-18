@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rig import ROOT, STATE, check, report, run
+from rig import ROOT, STATE, check, prices, report, run
 from rig.__main__ import main
 from rig.harness import parse_claude, parse_codex
 
@@ -25,6 +25,35 @@ def batch(cells, prompts=("open",)):
 class ScenarioTest(unittest.TestCase):
     def test_booking_ladder_is_sound(self):
         self.assertEqual(check.check("booking-ladder"), [])
+
+    def test_check_flags_weak_tests_and_wrong_fixes_that_pass(self):
+        import dataclasses
+        import shutil
+        import subprocess
+        from unittest import mock
+
+        from rig import scenario as scenarios
+        real = scenarios.load("booking-ladder")
+        with tempfile.TemporaryDirectory() as folder:
+            copy = Path(folder) / "booking-ladder"
+            shutil.copytree(real.folder, copy)
+            # A "wrong" fix that is the real s1 fix scores as a success.
+            repo = scenarios.copy_repo(real, Path(folder) / "repo")
+            scenarios.overlay(real.solution("s1-sql-injection"), repo)
+            patch = subprocess.run(["git", "-C", str(repo), "diff"],
+                                   capture_output=True, text=True).stdout
+            (copy / "wrong").mkdir()
+            (copy / "wrong" / "real.patch").write_text(patch)
+            # A defect test that passes on the unfixed code measures nothing.
+            defects = [dict(d) for d in real.defects]
+            defects[0]["tests"] = defects[0]["tests"] + ["hidden.test_regression"]
+            fake = dataclasses.replace(real, folder=copy, defects=defects)
+            with mock.patch("rig.check.scenarios.load", return_value=fake):
+                problems = check.check("booking-ladder")
+        self.assertIn("baseline already passes defect tests ['hidden.test_regression']",
+                      problems)
+        self.assertIn("wrong/real.patch scores as a success: ['s1-sql-injection']",
+                      problems)
 
     def test_every_scenario_loads_with_its_files(self):
         # No prepare step: this checks the small files a pull request adds.
@@ -99,6 +128,17 @@ class RescoreTest(unittest.TestCase):
         self.assertEqual(row["fixed"], ["s1-sql-injection"])
         self.assertEqual(row["previous_scores"][0]["fixed"], ["s1-sql-injection"])
 
+    def test_committed_fix_keeps_its_diff_and_score(self):
+        # An agent that commits its work must not leave an empty patch,
+        # or a rescore would score the clean fixture as no fix.
+        from rig.rescore import rescore
+        out, rows = batch(["fake-s1-commit"])
+        row = rows["fake-s1-commit"]
+        self.assertEqual(row["fixed"], ["s1-sql-injection"])
+        self.assertEqual(row["diff"]["files"], 1)
+        self.assertTrue((out / "runs" / "fake-s1-commit.open.r1" / "diff.patch").read_text())
+        self.assertEqual(rescore(out, echo=lambda *_: None), 0)
+
     def test_rescore_sees_a_changed_score(self):
         from rig.rescore import rescore
         out, _ = batch(["fake-s1"])
@@ -119,6 +159,71 @@ class ResumeTest(unittest.TestCase):
         self.assertEqual(len(list(out.glob("runs/*/result.json"))), 2)
         self.assertEqual(json.loads((out / "batch.json").read_text())["resumed"][0]["runs"], 1)
 
+    def test_resume_clears_a_stopped_run(self):
+        out, _ = batch(["fake-none"])
+        batch_name = json.loads((out / "batch.json").read_text())["batch"]
+        # A stopped run leaves its work folder behind.
+        (STATE / "work" / batch_name / "fake-s1.open.r1" / "home").mkdir(parents=True)
+        _, rows = run.run_batch("booking-ladder", MATRIX, ["fake-s1"], ["open"], 1,
+                                echo=lambda *_: None, resume=out)
+        self.assertEqual(rows[0]["fixed"], ["s1-sql-injection"])
+
+
+class ScorePatchTest(unittest.TestCase):
+    def test_patch_that_does_not_apply_fixes_nothing(self):
+        from rig import scenario as scenarios
+        from rig.score import score_patch
+        bad = "--- a/nope.py\n+++ b/nope.py\n@@ -1 +1 @@\n-old\n+new\n"
+        with tempfile.TemporaryDirectory() as folder:
+            scored, error = score_patch(scenarios.load("booking-ladder"), bad, folder)
+        self.assertIsNone(scored)
+        self.assertTrue(error)
+
+
+class CostTest(unittest.TestCase):
+    def test_no_usage_is_unknown_not_zero(self):
+        sheet = prices.load()["copilot"]
+        self.assertEqual(prices.cost(sheet, {}), (None, ["no usage recorded"]))
+
+
+def result(cell="c", fixed=("s1",), error=None, timed_out=False, by_model=None):
+    return {"cell": cell, "prompt": "open", "fixed": list(fixed), "regression_pass": True,
+            "error": error, "timed_out": timed_out, "diff": {"files": 1, "added": 1,
+            "removed": 0}, "by_model": by_model if by_model is not None else
+            {"m": {"input": 1_000_000, "output": 0, "cache_read": 0, "cache_write": 0}},
+            "tokens": {"input": 1, "output": 1, "cache_read": 1, "cache_write": 1},
+            "usd_reported": None, "seconds": 1, "costs": {}}
+
+
+class ReportTest(unittest.TestCase):
+    SHEETS = {"s": {"unit": "credits", "models": {
+        "m": {"input": 10, "output": 0, "cache_read": 0, "cache_write": 0}}}}
+
+    def row(self, runs):
+        return report.summarise(runs, sheet="s", sheets=self.SHEETS)[0]
+
+    def test_timed_out_run_is_not_a_success(self):
+        row = self.row([result(), result(timed_out=True)])
+        self.assertEqual(row["success"], 1)
+        self.assertEqual(row["errors"], 1)
+
+    def test_cost_comes_from_stored_tokens_and_todays_sheet(self):
+        # The run stored no cost; the sheet prices its tokens now.
+        row = self.row([result(), result()])
+        self.assertEqual(row["mean_cost"], 10.0)
+        self.assertEqual(row["cost_per_success"], 10.0)
+
+    def test_one_unpriced_run_makes_the_cell_cost_unknown(self):
+        row = self.row([result(), result(by_model={})])
+        self.assertIsNone(row["mean_cost"])
+        self.assertIsNone(row["cost_per_success"])
+
+    def test_three_of_three_has_a_wide_interval(self):
+        low, high = report.wilson(3, 3)
+        self.assertAlmostEqual(low, 0.438, places=3)
+        self.assertEqual(high, 1.0)
+        self.assertIsNone(report.wilson(0, 0))
+
 
 class CodexParseTest(unittest.TestCase):
     def test_cached_tokens_move_out_of_input(self):
@@ -133,6 +238,13 @@ class CodexParseTest(unittest.TestCase):
         self.assertEqual(parsed["by_model"]["gpt-6-luna"],
                          {"input": 2000, "output": 500, "cache_read": 10000, "cache_write": 0})
         self.assertIsNone(parsed["error"])
+
+    def test_no_finished_turn_has_no_usage(self):
+        # A Codex run cut off by the timeout writes no turn.completed event.
+        log = json.dumps({"type": "thread.started"})
+        parsed = parse_codex(log, model="gpt-6-luna")
+        self.assertEqual(parsed["by_model"], {})
+        self.assertEqual(parsed["error"], "no turn.completed event")
 
 
 class ClaudeParseTest(unittest.TestCase):

@@ -139,7 +139,7 @@ def codex(cell, prompt, run_dir, budget_usd):
 
 
 def parse_codex(stdout, final_file=None, model="unknown"):
-    totals, error = {}, None
+    totals, error, completed = {}, None, 0
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
@@ -147,6 +147,7 @@ def parse_codex(stdout, final_file=None, model="unknown"):
             continue
         kind = event.get("type", "")
         if kind == "turn.completed":
+            completed += 1
             for key, value in (event.get("usage") or {}).items():
                 if isinstance(value, int):
                     totals[key] = totals.get(key, 0) + value
@@ -161,6 +162,11 @@ def parse_codex(stdout, final_file=None, model="unknown"):
         "cache_write": 0,
     }
     final = Path(final_file).read_text() if final_file and Path(final_file).exists() else ""
+    if not completed:
+        # No finished turn means no usage record: the cost is unknown.
+        return {"by_model": {}, "raw_usage": totals, "usd_reported": None,
+                "turns": None, "error": error or "no turn.completed event",
+                "final": final}
     return {"by_model": {model: tokens}, "raw_usage": totals,
             "usd_reported": None, "turns": None, "error": error, "final": final}
 
@@ -187,6 +193,8 @@ def fake(cell, prompt, run_dir, budget_usd, scenario=None):
     if solution and solution.is_dir():
         argv.append(solution)
         read.append(solution)
+    if cell.get("commit"):
+        argv.append("--commit")
     return Invocation(argv=argv, env={"HOME": run_dir / "home"}, read=read,
                       network=False)
 

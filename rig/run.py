@@ -73,8 +73,11 @@ def _choice(final):
 def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=False):
     run_id = f"{cell['name']}.{prompt_name}.r{rep}"
     run_dir = STATE / "work" / batch / run_id
+    # A stopped run can leave its work folder behind; a resume starts it clean.
+    shutil.rmtree(run_dir, ignore_errors=True)
     (run_dir / "home").mkdir(parents=True)
     repo = scenarios.copy_repo(scenario, run_dir / "repo")
+    base = _git(repo, "rev-parse", "HEAD").strip()
     start, parse = HARNESSES[cell["harness"]]
     extra = {"scenario": scenario} if cell["harness"] == "fake" else {}
     invocation = start(cell, scenario.prompts[prompt_name], run_dir,
@@ -108,6 +111,8 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         stdout, stderr = _text(out), _text(err)
     except BaseException:
         _kill_group(process)
+        _restore_sign_in(snapshots)
+        shutil.rmtree(run_dir, ignore_errors=True)
         raise
     seconds = round(time.time() - started, 1)
     _restore_sign_in(snapshots)
@@ -115,7 +120,7 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         local.unlink(missing_ok=True)
 
     out = out_root / "runs" / run_id
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
     with gzip.open(out / "agent-log.jsonl.gz", "wt") as log:
         log.write(stdout)
     (out / "agent-stderr.txt").write_text(stderr[-20000:])
@@ -127,17 +132,25 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         usage = {"by_model": {}, "usd_reported": None, "turns": None,
                  "error": f"unreadable agent output: {error}", "final": ""}
 
+    if timed_out and not usage.get("error"):
+        usage["error"] = f"timed out after {matrix['timeout_seconds']} s"
+    # Diff against the baseline commit, not HEAD: an agent that commits its
+    # work must not leave an empty patch behind.
     _git(repo, "add", "-A")
-    patch = _git(repo, "diff", "--cached", "--no-color")
+    patch = _git(repo, "diff", "--cached", "--binary", "--no-color", base)
     (out / "diff.patch").write_text(patch)
     files = added = removed = 0
-    for line in _git(repo, "diff", "--cached", "--numstat").splitlines():
+    for line in _git(repo, "diff", "--cached", "--numstat", base).splitlines():
         plus, minus, _ = line.split("\t", 2)
         files += 1
         added += int(plus) if plus.isdigit() else 0
         removed += int(minus) if minus.isdigit() else 0
 
-    scored = score.score(scenario, repo)
+    scored, apply_error = score.score_patch(scenario, patch, run_dir / "scored")
+    if apply_error:
+        scored = {"fixed": [], "regression_pass": False, "visible_pass": False,
+                  "visible_tail": "", "tests": {}}
+        usage["error"] = usage.get("error") or f"diff did not apply: {apply_error}"
     tokens = {kind: sum(t.get(kind, 0) for t in usage["by_model"].values())
               for kind in prices.KINDS}
     costs = {}
@@ -185,7 +198,8 @@ def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
     if unknown:
         raise SystemExit(f"unknown prompts: {', '.join(unknown)}")
     runs = plan(matrix, cell_names, prompt_names, repeats)
-    commit = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
+    # "-dirty" marks uncommitted rig changes, which a bare HEAD would hide.
+    commit = subprocess.run(["git", "-C", str(ROOT), "describe", "--always", "--dirty"],
                             capture_output=True, text=True).stdout.strip()
     if resume:
         out_root = Path(resume)

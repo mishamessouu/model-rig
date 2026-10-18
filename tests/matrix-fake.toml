@@ -17,3 +17,9 @@ model = "s1-sql-injection"
 name = "fake-probe"
 harness = "fake"
 model = "probe"
+
+[[cells]]
+name = "fake-s1-commit"
+harness = "fake"
+model = "s1-sql-injection"
+commit = true

@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from . import sandbox
-from .scenario import IGNORED
+from .scenario import IGNORED, copy_repo
 
 def _run(scenario, tests, cwd):
     command = sandbox.command(
@@ -58,3 +58,30 @@ def score(scenario, repo):
         "visible_tail": "" if visible else visible_tail,
         "tests": tests,
     }
+
+
+def apply_patch(repo, patch):
+    """Apply `patch` (text) to a fresh fixture copy. Return the git error, or None."""
+    if not patch.strip():
+        return None
+    done = subprocess.run(
+        ["git", "-C", str(repo), "apply", "--binary", "--whitespace=nowarn", "-"],
+        input=patch, capture_output=True, text=True)
+    if done.returncode == 0:
+        return None
+    return done.stderr.strip()[:300] or "git apply failed"
+
+
+def score_patch(scenario, patch, folder):
+    """Score `patch` on a fresh copy of the fixture in `folder`.
+
+    The saved diff is the run's only artifact. Scoring it, not the agent's
+    working copy, makes a live score and a later rescore agree, and keeps
+    out anything the diff does not carry (ignored files, a moved HEAD).
+    Returns (score, apply_error); a patch that does not apply fixes nothing.
+    """
+    repo = copy_repo(scenario, Path(folder) / "repo")
+    error = apply_patch(repo, patch)
+    if error:
+        return None, error
+    return score(scenario, repo), None

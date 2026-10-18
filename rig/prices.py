@@ -16,6 +16,10 @@ def cost(sheet, by_model):
     A model the sheet does not list makes the cost None and is named in the
     second value, so a partial sum never reads as the whole cost.
     """
+    if not by_model:
+        # A run with no usage record (a timeout, a crash) has an unknown
+        # cost, not a cost of zero.
+        return None, ["no usage recorded"]
     total, missing = 0.0, []
     for model, tokens in by_model.items():
         price = next((p for key, p in sheet["models"].items()

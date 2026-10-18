@@ -3,9 +3,11 @@
     fake_agent.py none                 change nothing
     fake_agent.py probe                report what the sandbox lets it see
     fake_agent.py <defect> <solution>  copy a reference fix into the repo
+    ... --commit                       then commit it, as some agents do
 """
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +22,9 @@ elif len(sys.argv) > 2:
         if path.is_file():
             target = Path.cwd() / path.relative_to(source)
             shutil.copy2(path, target)
+    if "--commit" in sys.argv:
+        subprocess.run(["git", "-c", "user.name=fake", "-c", "user.email=fake@example.invalid",
+                        "commit", "-qam", "fake fix"], check=True)
 print(json.dumps({
     "type": "result", "is_error": False, "num_turns": 1, "result": final,
     "total_cost_usd": 0.01,
