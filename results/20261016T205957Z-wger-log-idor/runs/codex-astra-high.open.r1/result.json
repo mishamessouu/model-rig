@@ -56,25 +56,41 @@
   "visible_pass": true,
   "visible_tail": "",
   "tests": {
-    "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden": {
-      "passed": false,
-      "tail": "INFO 2026-10-17 16:36:38,019 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_next_log_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmpb7gqas2s/tmpjg92spll/repo/wger/manager/tests/test_api_ownership_checks.py\", line 141, in test_create_with_foreign_next_log_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.280s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_own_next_log_is_allowed": {
+      "passed": true,
+      "tail": ""
     },
     "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
       "passed": false,
-      "tail": "F\n======================================================================\nFAIL: test_create_with_foreign_slot_entry_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden)\nPOST /api/v2/workoutlog/ from user 'test' must not be able to attach\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmpb7gqas2s/tmpjg92spll/repo/wger/manager/tests/test_api_ownership_checks.py\", line 75, in test_create_with_foreign_slot_entry_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.291s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+      "tail": "F\n======================================================================\nFAIL: test_create_with_foreign_slot_entry_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden)\nPOST /api/v2/workoutlog/ from user 'test' must not be able to attach\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmp_yar0lfw/tmp6i4v6ohh/repo/wger/manager/tests/test_api_ownership_checks.py\", line 102, in test_create_with_foreign_slot_entry_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.249s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_as_regular_user_is_allowed": {
+      "passed": true,
+      "tail": ""
     },
     "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
       "passed": true,
       "tail": ""
     },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_update_with_foreign_slot_entry_is_forbidden": {
+      "passed": false,
+      "tail": "F\n======================================================================\nFAIL: test_update_with_foreign_slot_entry_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_update_with_foreign_slot_entry_is_forbidden)\nmodel-rig addition: an update must not attach a log to admin's\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmp_yar0lfw/tmp6i4v6ohh/repo/wger/manager/tests/test_api_ownership_checks.py\", line 187, in test_update_with_foreign_slot_entry_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 200 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.259s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
     "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
       "passed": false,
-      "tail": "INFO 2026-10-17 16:36:44,088 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmpb7gqas2s/tmpjg92spll/repo/wger/manager/tests/test_api_ownership_checks.py\", line 176, in test_create_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.269s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+      "tail": "INFO 2026-10-18 21:45:14,419 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmp_yar0lfw/tmp6i4v6ohh/repo/wger/manager/tests/test_api_ownership_checks.py\", line 290, in test_create_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.229s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_as_regular_user_is_allowed": {
+      "passed": true,
+      "tail": ""
     },
     "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
       "passed": true,
       "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "F\n======================================================================\nFAIL: test_update_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden)\nmodel-rig addition: an update must not attach a session to admin's\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmp_yar0lfw/tmp6i4v6ohh/repo/wger/manager/tests/test_api_ownership_checks.py\", line 355, in test_update_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 200 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.233s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
     },
     "wger.manager.tests.test_log_model": {
       "passed": true,
@@ -140,6 +156,75 @@
         "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
           "passed": false,
           "tail": "INFO 2026-10-17 15:34:54,648 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261016T205957Z-wger-log-idor/codex-astra-high.open.r1/tmptwtdug1b/repo/wger/manager/tests/test_api_ownership_checks.py\", line 159, in test_create_with_foreign_day_is_forbidden\n    self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)\nAssertionError: 201 != 403\n\n----------------------------------------------------------------------\nRan 1 test in 0.265s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_log_model": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_routine": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_slot_entry": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_weight_log": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_workout_session": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.measurements.tests.test_categories": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.measurements.tests.test_measurements": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_meal": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_meal_item": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.nutrition.tests.test_plan": {
+          "passed": true,
+          "tail": ""
+        }
+      }
+    },
+    {
+      "until": "2026-10-18T19:45:30+00:00",
+      "fixed": [],
+      "regression_pass": true,
+      "visible_pass": true,
+      "visible_tail": "",
+      "tests": {
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden": {
+          "passed": false,
+          "tail": "INFO 2026-10-17 16:36:38,019 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_next_log_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_foreign_next_log_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmpb7gqas2s/tmpjg92spll/repo/wger/manager/tests/test_api_ownership_checks.py\", line 141, in test_create_with_foreign_next_log_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.280s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+          "passed": false,
+          "tail": "F\n======================================================================\nFAIL: test_create_with_foreign_slot_entry_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden)\nPOST /api/v2/workoutlog/ from user 'test' must not be able to attach\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmpb7gqas2s/tmpjg92spll/repo/wger/manager/tests/test_api_ownership_checks.py\", line 75, in test_create_with_foreign_slot_entry_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.291s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
+          "passed": false,
+          "tail": "INFO 2026-10-17 16:36:44,088 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmpb7gqas2s/tmpjg92spll/repo/wger/manager/tests/test_api_ownership_checks.py\", line 176, in test_create_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.269s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
         },
         "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
           "passed": true,

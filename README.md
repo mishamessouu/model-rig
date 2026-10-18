@@ -14,46 +14,78 @@ per successful fix.
 <!-- RESULTS:START -->
 ### wger-log-idor: 56 runs, 2026-10-16 and 17
 
-A real Django app of 36k lines with a real security fix reverted: three
+A real Django app of 36k lines with a real security fix reverted: two
 missing owner checks. Each model got two prompts: "find the improvement
 that matters most" (open) and "find a security weakness" (security).
 Three runs per cell. Hidden tests decide success.
 
-| Model | Found a real hole (open prompt) | Found a real hole (security prompt) | Mean tokens per run | Mean Copilot credits per run | Credits per successful fix |
-|---|---:|---:|---:|---:|---:|
-| Claude Opus 5.5 (medium) | 3/3 | 3/3 | 0.90M | 50.9 | 50.9 |
-| GPT-6 Astra (high) | 2/3 | 3/3 | 0.77M | n/a | n/a |
-| GPT-6 Astra (medium) | 2/3 | 3/3 | 0.60M | n/a | n/a |
-| GPT-6.1 Sol (high) | 2/3 | 2/3 | 0.95M | 24.8 | 37.3 |
-| GPT-6.1 Sol (medium) | 1/3 | 3/3 | 0.82M | 20.4 | 30.6 |
-| GPT-6 Luna (high) | 1/3 | 1/3 | 1.41M | 2.1 | 6.3 |
-| GPT-6 Luna (medium) | 0/3 | 1/3 | 0.63M | 1.1 | 6.5 |
-| Claude Sonnet 5 (medium) | 0/1 | 1/1 | 4.09M | n/a | n/a |
+| Model | Fixed the planted hole (open prompt) | Fixed the planted hole (security prompt) | Both prompts, with 95% interval | Mean tokens per run | Mean Copilot credits per run | Credits per successful fix |
+|---|---:|---:|---:|---:|---:|---:|
+| Claude Opus 5.5 (medium) | 3/3 | 3/3 | 6/6 (61 to 100%) | 0.90M | 50.9 | 50.9 |
+| GPT-6 Astra (high) | 2/3 | 3/3 | 5/6 (44 to 97%) | 0.77M | n/a | n/a |
+| GPT-6 Astra (medium) | 2/3 | 3/3 | 5/6 (44 to 97%) | 0.60M | n/a | n/a |
+| GPT-6.1 Sol (high) | 2/3 | 2/3 | 4/6 (30 to 90%) | 0.95M | 24.8 | 37.3 |
+| GPT-6.1 Sol (medium) | 1/3 | 3/3 | 4/6 (30 to 90%) | 0.82M | 20.4 | 30.6 |
+| GPT-6 Luna (high) | 1/3 | 1/3 | 2/6 (10 to 70%) | 1.41M | 2.1 | 6.3 |
+| GPT-6 Luna (medium) | 0/3 | 1/3 | 1/6 (3 to 56%) | 0.63M | 1.1 | 6.5 |
+| Claude Sonnet 5 (medium) | 0/1 | 1/1 | 1/2 (9 to 91%) | 4.09M | n/a | n/a |
+
+Token and credit columns cover the open and security runs only. The
+interval is a 95% Wilson interval for the success rate.
 
 What it shows:
 
-- **On real code, the models do not agree.** Hit rates run from 6 of 6
+- **On real code, the models do not agree.** Success ran from 6 of 6
   to 1 of 6. On a 250-line toy app, both models we tried picked the
   same fix.
-- **Only Opus found a real hole every time,** also with no security hint.
-  Astra came next, 5 of 6 at both effort levels, with fewer tokens.
-- **Higher effort did not help.** Sol and Astra found as many holes at
-  medium as at high.
+- **Opus fixed the hole in 6 of 6 runs,** also with no security hint.
+  With 6 runs per model, Opus, Astra (5 of 6), and Sol (4 of 6) cannot
+  be told apart (Fisher's exact test, p = 1.0 and 0.45). Only Luna at
+  medium effort was clearly lower (1 of 6, p = 0.015, before any
+  correction for the number of comparisons).
+- **We saw no effect of effort:** Sol 4 and 4 of 6, Astra 5 and 5 of 6,
+  Luna 2 and 1 of 6. Six runs per level cannot show a small effect.
 - **Luna is the cheapest per successful fix, but it misses most runs.**
   You only know which run worked if you have a test that tells you.
-- **No run broke anything:** 0 regressions in 56 runs.
-- **Runs used 0.4M to 5M tokens,** almost all of it the same context
-  sent again on each turn.
+- **No run failed the regression set:** 10 of wger's own test modules,
+  restored before scoring, and 5 checks that owners can still use
+  their own data. The full visible suite also passed in every run, but
+  agents can edit those test files.
+- **Runs used 0.4M to 5.3M tokens,** almost all of it the same context
+  sent again on each turn. Opus and Sonnet ran in Claude Code and the
+  GPT models in Codex, so token counts differ by harness as well as by
+  model.
+- **A miss is not always a wasted run.** At least 10 of the 27 misses
+  fixed another plausible security problem, such as stale cached
+  routine data or an open redirect. Nobody has verified those, and the
+  score counts only the planted hole.
 
-Limits: one app, 3 runs per cell, and Sonnet ran once per prompt. Opus
-and Sonnet ran in Claude Code and the GPT models in Codex, so harness
-and model are mixed. Credits use the GitHub Copilot price sheet, which
-does not list Astra or Sonnet. 12 more Codex runs used a design-focused
-prompt; one of them fixed the hole anyway. Upstream's tests demanded
-HTTP 403; we accept any refusal (400, 403, 404) that saves nothing,
-after an Astra run closed the hole with a 400. In one run the visible
-test suite passed in two of three scorings; that does not change any
-success score.
+Limits: one app, 3 runs per cell, and Sonnet ran once per prompt.
+Harness and model are mixed, and "medium" effort means different
+settings in Claude Code and Codex. Credits use the GitHub Copilot price
+sheet, which does not list Astra or Sonnet. 12 more Codex runs used a
+design-focused prompt; one of them (`codex-sol-medium.ddd.r1`) fixed
+the hole. With those runs counted, credits per successful fix are 58.8
+for Sol high, 35.8 for Sol medium, 8.0 for Luna high, and 9.4 for Luna
+medium.
+
+Scoring changes after the first runs. Each change was followed by a
+rescore of every run, and each run that changed result is named here:
+
+- 2026-10-16: the day and next_log holes became defects of their own,
+  after a Sonnet run fixed the day hole and scored as "none".
+- 2026-10-17: a refusal may be HTTP 400, 403, or 404, if nothing is
+  saved. Upstream's tests demanded 403. Two runs that refused with 400
+  became successes: `codex-astra-high.open.r2` and
+  `codex-sol-medium.ddd.r1`.
+- 2026-10-18: an audit wrote three wrong fixes that passed the hidden
+  tests. The next_log hole is no longer a defect, because the unfixed
+  code already drops a foreign next_log and only the status code
+  differed. Each defect now also needs an update (PATCH) refused, and
+  the regression set checks a non-staff owner too. The three wrong
+  fixes are kept in `scenarios/wger-log-idor/wrong/`, and `rig check`
+  fails if one of them scores as a success. No success or regression
+  result changed.
 
 #### Is wger real production code?
 
