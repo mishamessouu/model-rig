@@ -1,0 +1,94 @@
+{
+  "run_id": "codex-luna-medium.open.r1",
+  "batch": "20261019T065231Z-booking-ladder",
+  "scenario": "booking-ladder",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 44.2,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 4810,
+    "output": 553,
+    "cache_read": 56704,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 4810,
+      "output": 553,
+      "cache_read": 56704,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 61514,
+    "cached_input_tokens": 56704,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 553,
+    "reasoning_output_tokens": 36
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 0.1325,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Parameterized booking search because it prevents user input from changing the SQL query.",
+  "final": "Updated `BookingRepository.search` to bind the owner and search term as SQL parameters, preventing SQL injection. `python3 -m unittest` passes (3 tests).\n\nCHOICE: Parameterized booking search because it prevents user input from changing the SQL query.",
+  "diff": {
+    "files": 1,
+    "added": 5,
+    "removed": 2
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprdenmarkeast.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-sql-injection"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "hidden.test_defects.CancelOwnership": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_other_user_cannot_cancel (hidden.test_defects.CancelOwnership.test_other_user_cannot_cancel)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261019T065231Z-booking-ladder/codex-luna-medium.open.r1/scored/tmpna4_g__u/repo/hidden/test_defects.py\", line 43, in test_other_user_cannot_cancel\n    with self.assertRaises(Exception):\nAssertionError: Exception not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.DoubleTotal": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_report_total_printed_once (hidden.test_defects.DoubleTotal.test_report_total_printed_once)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261019T065231Z-booking-ladder/codex-luna-medium.open.r1/scored/tmpna4_g__u/repo/hidden/test_defects.py\", line 12, in test_report_total_printed_once\n    self.assertEqual(len(lines), 1)\nAssertionError: 2 != 1\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.InvoiceDiscount": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_member_invoice_matches_quote (hidden.test_defects.InvoiceDiscount.test_member_invoice_matches_quote)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261019T065231Z-booking-ladder/codex-luna-medium.open.r1/scored/tmpna4_g__u/repo/hidden/test_defects.py\", line 20, in test_member_invoice_matches_quote\n    self.assertEqual(invoice_total(booking, alice), service.quote(\"alice\", 2))\nAssertionError: 400 != 360\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.SqlInjection": {
+      "passed": true,
+      "tail": ""
+    },
+    "hidden.test_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

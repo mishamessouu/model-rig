@@ -1,0 +1,39 @@
+diff --git a/bookings/repository.py b/bookings/repository.py
+index 82b77e7..09c1501 100644
+--- a/bookings/repository.py
++++ b/bookings/repository.py
+@@ -50,11 +50,12 @@ class BookingRepository:
+         return [Booking(*row) for row in rows]
+ 
+     def search(self, owner, term):
+-        query = (
++        rows = self.db.execute(
+             f"SELECT {COLUMNS} FROM bookings "
+-            f"WHERE owner = '{owner}' AND title LIKE '%{term}%' ORDER BY id"
+-        )
+-        return [Booking(*row) for row in self.db.execute(query).fetchall()]
++            "WHERE owner = ? AND title LIKE '%' || ? || '%' ORDER BY id",
++            (owner, term),
++        ).fetchall()
++        return [Booking(*row) for row in rows]
+ 
+     def all_active(self):
+         rows = self.db.execute(
+diff --git a/tests/test_basic.py b/tests/test_basic.py
+index 7418b8a..5d1a705 100644
+--- a/tests/test_basic.py
++++ b/tests/test_basic.py
+@@ -28,6 +28,13 @@ class BasicTest(unittest.TestCase):
+         )
+         self.assertEqual(response["status"], 201)
+ 
++    def test_search_does_not_leak_other_users_bookings(self):
++        service = make_service()
++        service.book("alice", "Fjord", "Secret", 2)
++        mine = service.book("bob", "Glacier", "Bob's sync", 1)
++        self.assertEqual(service.search("bob", "' OR '1'='1"), [])
++        self.assertEqual([b.id for b in service.search("bob", "Bob's")], [mine.id])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

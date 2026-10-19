@@ -1,0 +1,19 @@
+diff --git a/bookings/repository.py b/bookings/repository.py
+index 82b77e7..b0eeed4 100644
+--- a/bookings/repository.py
++++ b/bookings/repository.py
+@@ -52,9 +52,12 @@ class BookingRepository:
+     def search(self, owner, term):
+         query = (
+             f"SELECT {COLUMNS} FROM bookings "
+-            f"WHERE owner = '{owner}' AND title LIKE '%{term}%' ORDER BY id"
++            "WHERE owner = ? AND title LIKE ? ORDER BY id"
+         )
+-        return [Booking(*row) for row in self.db.execute(query).fetchall()]
++        return [
++            Booking(*row)
++            for row in self.db.execute(query, (owner, f"%{term}%")).fetchall()
++        ]
+ 
+     def all_active(self):
+         rows = self.db.execute(
