@@ -7,6 +7,9 @@
 name = "wger-log-idor"
 summary = "wger workout tracker: the log and session APIs miss two owner checks (one upstream fix)."
 language = "python"
+# The day of the upstream fix (b29cf17, below). `rig run` warns for a cell
+# whose training cutoff is on or after it.
+fix_date = "2026-05-08"
 
 # Upstream: github.com/wger-project/wger, AGPL-3.0, Django and DRF.
 # Advisory GHSA-rjpf-7pf5-q54x / CVE-2026-46438.

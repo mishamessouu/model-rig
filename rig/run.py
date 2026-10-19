@@ -1,4 +1,5 @@
 """Run a batch: every repeat of every cell on every prompt, one at a time."""
+import contextlib
 import datetime
 import gzip
 import json
@@ -10,13 +11,19 @@ import time
 import tomllib
 from pathlib import Path
 
-from . import ROOT, STATE, prices, sandbox, score
+from . import ROOT, STATE, prices, proxy, sandbox, score
 from . import scenario as scenarios
 from .harness import HARNESSES
 
 
 def load_matrix(path=None):
-    return tomllib.loads(Path(path or ROOT / "config" / "matrix.toml").read_text())
+    """Load the cells. A cell without `hosts` gets its harness's list from
+    config/network.toml, so batch.json records what each cell could reach."""
+    matrix = tomllib.loads(Path(path or ROOT / "config" / "matrix.toml").read_text())
+    network = tomllib.loads((ROOT / "config" / "network.toml").read_text())
+    for cell in matrix["cells"]:
+        cell.setdefault("hosts", list(network["hosts"].get(cell["harness"], [])))
+    return matrix
 
 
 def plan(matrix, cell_names, prompt_names, repeats):
@@ -70,6 +77,16 @@ def _choice(final):
     return lines[-1][len("CHOICE:"):].strip() if lines else None
 
 
+def fix_after_cutoff(fix_date, cutoff):
+    """True when the fix is later than the model's training cutoff, so the
+    model cannot have learned it. False when the fix falls in or before the
+    cutoff month. None when either date is unknown. Both compare by month,
+    because cutoffs are stated by month."""
+    if not fix_date or not cutoff:
+        return None
+    return str(fix_date)[:7] > str(cutoff)[:7]
+
+
 def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=False):
     run_id = f"{cell['name']}.{prompt_name}.r{rep}"
     run_dir = STATE / "work" / batch / run_id
@@ -88,39 +105,49 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
             raise SystemExit(f"No sign-in at {master}. Run scripts/login.sh first.")
         shutil.copy2(master, local)
         snapshots.append((master, local, master.read_bytes()))
-    # The scenario's prepared environment is bound read-only and comes
-    # first on PATH, so the agent runs the tests the way the scorer does.
-    command = sandbox.command(invocation.argv, cwd=repo,
-                              read=[*invocation.read, *scenario.sandbox_read()],
-                              write=[run_dir],
-                              env={**scenario.sandbox_env(), **invocation.env},
-                              network=invocation.network)
-    started = time.time()
-    timed_out, code = False, None
-    # Own process group, so a stop or a timeout ends the whole sandbox:
-    # bwrap's --die-with-parent covers its child, not bwrap itself.
-    process = subprocess.Popen(command, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, start_new_session=True)
-    try:
-        out, err = process.communicate(timeout=matrix["timeout_seconds"])
-        stdout, stderr, code = _text(out), _text(err), process.returncode
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        _kill_group(process)
-        out, err = process.communicate()
-        stdout, stderr = _text(out), _text(err)
-    except BaseException:
-        _kill_group(process)
-        _restore_sign_in(snapshots)
-        shutil.rmtree(run_dir, ignore_errors=True)
-        raise
+    out = out_root / "runs" / run_id
+    out.mkdir(parents=True, exist_ok=True)
+    # The network log goes to the results folder, which the sandbox
+    # hides, so the agent cannot edit it. A run with no hosts leaves it empty.
+    network_log = out / "network.jsonl"
+    network_log.write_text("")
+    with contextlib.ExitStack() as stack:
+        socket_path = None
+        if invocation.hosts:
+            # Stops on any way out of this block: a timeout, a stop, an error.
+            socket_path = stack.enter_context(
+                proxy.serve(invocation.hosts, network_log)).socket
+        # The scenario's prepared environment is bound read-only and comes
+        # first on PATH, so the agent runs the tests the way the scorer does.
+        command = sandbox.command(invocation.argv, cwd=repo,
+                                  read=[*invocation.read, *scenario.sandbox_read()],
+                                  write=[run_dir],
+                                  env={**scenario.sandbox_env(), **invocation.env},
+                                  proxy=socket_path)
+        started = time.time()
+        timed_out, code = False, None
+        # Own process group, so a stop or a timeout ends the whole sandbox:
+        # bwrap's --die-with-parent covers its child, not bwrap itself.
+        process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, start_new_session=True)
+        try:
+            agent_out, agent_err = process.communicate(timeout=matrix["timeout_seconds"])
+            stdout, stderr, code = _text(agent_out), _text(agent_err), process.returncode
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            _kill_group(process)
+            agent_out, agent_err = process.communicate()
+            stdout, stderr = _text(agent_out), _text(agent_err)
+        except BaseException:
+            _kill_group(process)
+            _restore_sign_in(snapshots)
+            shutil.rmtree(run_dir, ignore_errors=True)
+            raise
     seconds = round(time.time() - started, 1)
     _restore_sign_in(snapshots)
     for _, local in invocation.auth:
         local.unlink(missing_ok=True)
 
-    out = out_root / "runs" / run_id
-    out.mkdir(parents=True, exist_ok=True)
     with gzip.open(out / "agent-log.jsonl.gz", "wt") as log:
         log.write(stdout)
     (out / "agent-stderr.txt").write_text(stderr[-20000:])
@@ -169,6 +196,8 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         "choice": _choice(usage.get("final", "")),
         "final": usage.get("final", "")[-4000:],
         "diff": {"files": files, "added": added, "removed": removed},
+        "network": proxy.summary(network_log),
+        "fix_after_cutoff": fix_after_cutoff(scenario.fix_date, cell.get("cutoff")),
         **scored,
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -226,6 +255,11 @@ def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
             "prompts": prompt_names, "repeats": repeats, "rig_commit": commit or None,
             "versions": _versions(), "matrix": matrix,
         }, indent=2) + "\n")
+    for name in dict.fromkeys(cell["name"] for _, cell, _ in runs):
+        cell = next(c for c in matrix["cells"] if c["name"] == name)
+        if fix_after_cutoff(scenario.fix_date, cell.get("cutoff")) is False:
+            echo(f"WARNING: {name} has training cutoff {cell['cutoff']}, on or after "
+                 f"the {scenario.name} fix of {scenario.fix_date}. It may know the fix.")
     signal.signal(signal.SIGTERM, _stop_on_term)
     results = []
     for number, (rep, cell, prompt) in enumerate(runs, 1):

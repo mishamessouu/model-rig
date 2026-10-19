@@ -23,3 +23,17 @@ name = "fake-s1-commit"
 harness = "fake"
 model = "s1-sql-injection"
 commit = true
+
+# Tries the network from inside the sandbox. The test points its `hosts`
+# at a local echo server; a cell's `hosts` replaces its harness's list in
+# config/network.toml.
+[[cells]]
+name = "fake-netprobe"
+harness = "fake"
+model = "netprobe"
+
+# The same probe with no hosts: the sandbox must have no network at all.
+[[cells]]
+name = "fake-netprobe-offline"
+harness = "fake"
+model = "netprobe"

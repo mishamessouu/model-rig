@@ -1,11 +1,14 @@
 import contextlib
 import io
 import json
+import socket
+import socketserver
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
-from rig import ROOT, STATE, check, prices, report, run
+from rig import ROOT, STATE, check, prices, proxy, report, run
 from rig.__main__ import main
 from rig.harness import parse_claude, parse_codex
 
@@ -15,9 +18,9 @@ assert "model-rig-state-" in str(STATE)
 MATRIX = run.load_matrix(ROOT / "tests" / "matrix-fake.toml")
 
 
-def batch(cells, prompts=("open",)):
+def batch(cells, prompts=("open",), matrix=MATRIX):
     results = tempfile.mkdtemp(prefix="model-rig-results-")
-    out, rows = run.run_batch("booking-ladder", MATRIX, list(cells), list(prompts),
+    out, rows = run.run_batch("booking-ladder", matrix, list(cells), list(prompts),
                               1, results_root=results, echo=lambda *_: None)
     return out, {row["cell"]: row for row in rows}
 
@@ -119,6 +122,56 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("| fake-none | open | 1 | no change x1 | 0/1 |", text)
 
 
+class NetworkTest(unittest.TestCase):
+    """The sandbox has no network of its own. A cell with hosts reaches
+    them through the proxy only, and the run records what it tried."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.echo = cls.enterClassContext(echo_server())
+        matrix = json.loads(json.dumps(MATRIX))
+        for cell in matrix["cells"]:
+            if cell["name"] == "fake-netprobe":
+                cell["hosts"] = [cls.echo]
+        cls.out, cls.rows = batch(["fake-netprobe", "fake-netprobe-offline", "fake-none"],
+                                  matrix=matrix)
+
+    def probe(self, cell):
+        final = self.rows[cell]["final"]
+        self.assertTrue(final.startswith("NETPROBE "), final)
+        return json.loads(final[len("NETPROBE "):])
+
+    def test_allowed_host_through_proxy_and_nothing_else(self):
+        seen = self.probe("fake-netprobe")
+        # A direct connect fails at once: the namespace has loopback only.
+        self.assertNotEqual(seen["direct"], "open")
+        self.assertLess(seen["direct_seconds"], 2)
+        self.assertEqual(seen["dns"], "fails")
+        self.assertEqual(seen["proxy"], "http://127.0.0.1:3128")
+        self.assertEqual(seen["allowed"], {self.echo: "echo"})
+        self.assertEqual(seen["denied"], 403)
+        self.assertEqual(self.rows["fake-netprobe"]["network"],
+                         {"allowed": ["127.0.0.1"], "denied": ["denied.example.invalid"]})
+        log = self.out / "runs" / "fake-netprobe.open.r1" / "network.jsonl"
+        self.assertEqual(len(log.read_text().splitlines()), 2)
+
+    def test_cells_without_hosts_get_no_network(self):
+        seen = self.probe("fake-netprobe-offline")
+        self.assertNotEqual(seen["direct"], "open")
+        self.assertEqual(seen["dns"], "fails")
+        self.assertIsNone(seen["proxy"])
+        self.assertEqual(seen["bridge"], "ECONNREFUSED")
+        for cell in ("fake-netprobe-offline", "fake-none"):
+            self.assertEqual(self.rows[cell]["network"], {"allowed": [], "denied": []})
+            log = self.out / "runs" / f"{cell}.open.r1" / "network.jsonl"
+            self.assertEqual(log.read_text(), "")
+
+    def test_report_names_runs_with_a_denied_host(self):
+        text = report.markdown(self.out)
+        self.assertIn("fake-netprobe.open.r1 (denied.example.invalid)", text)
+        self.assertNotIn("fake-none.open.r1 (", text)
+
+
 class RescoreTest(unittest.TestCase):
     def test_rescore_keeps_score_and_history(self):
         from rig.rescore import rescore
@@ -186,8 +239,10 @@ class CostTest(unittest.TestCase):
         self.assertEqual(prices.cost(sheet, {}), (None, ["no usage recorded"]))
 
 
-def result(cell="c", fixed=("s1",), error=None, timed_out=False, by_model=None):
+def result(cell="c", fixed=("s1",), error=None, timed_out=False, by_model=None,
+           fix_after_cutoff=None):
     return {"cell": cell, "prompt": "open", "fixed": list(fixed), "regression_pass": True,
+            "fix_after_cutoff": fix_after_cutoff,
             "error": error, "timed_out": timed_out, "diff": {"files": 1, "added": 1,
             "removed": 0}, "by_model": by_model if by_model is not None else
             {"m": {"input": 1_000_000, "output": 0, "cache_read": 0, "cache_write": 0}},
@@ -218,11 +273,57 @@ class ReportTest(unittest.TestCase):
         self.assertIsNone(row["mean_cost"])
         self.assertIsNone(row["cost_per_success"])
 
+    def test_fix_after_cutoff_column(self):
+        for value, shown in ((True, "yes"), (False, "no"), (None, "unknown")):
+            with self.subTest(value=value):
+                row = self.row([result(fix_after_cutoff=value)])
+                self.assertEqual(row["fix_after_cutoff"], shown)
+
     def test_three_of_three_has_a_wide_interval(self):
         low, high = report.wilson(3, 3)
         self.assertAlmostEqual(low, 0.438, places=3)
         self.assertEqual(high, 1.0)
         self.assertIsNone(report.wilson(0, 0))
+
+
+class CutoffTest(unittest.TestCase):
+    def test_fix_after_cutoff_compares_months(self):
+        cases = {("2026-05-08", "2026-01"): True,
+                 # The fix month itself counts as known: the model may have seen it.
+                 ("2026-05-08", "2026-05"): False,
+                 ("2026-05-08", "2026-09"): False,
+                 (None, "2026-01"): None,
+                 ("2026-05-08", None): None}
+        for (fix, cutoff), expected in cases.items():
+            with self.subTest(fix=fix, cutoff=cutoff):
+                self.assertIs(run.fix_after_cutoff(fix, cutoff), expected)
+
+    def test_run_warns_and_records_but_does_not_refuse(self):
+        import dataclasses
+        from unittest import mock
+
+        from rig import scenario as scenarios
+        real = scenarios.load("booking-ladder")
+        dated = dataclasses.replace(real, fix_date="2026-05-08")
+        matrix = json.loads(json.dumps(MATRIX))
+        base = next(c for c in matrix["cells"] if c["name"] == "fake-none")
+        matrix["cells"] += [{**base, "name": "fake-late", "cutoff": "2026-06"},
+                            {**base, "name": "fake-early", "cutoff": "2026-01"}]
+        said = []
+        with mock.patch("rig.run.scenarios.load", return_value=dated):
+            out, rows = run.run_batch(
+                "booking-ladder", matrix, ["fake-late", "fake-early", "fake-none"],
+                ["open"], 1, results_root=tempfile.mkdtemp(prefix="model-rig-results-"),
+                echo=said.append)
+        warnings = [line for line in said if line.startswith("WARNING")]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("fake-late", warnings[0])
+        self.assertEqual([r["fix_after_cutoff"] for r in rows], [False, True, None])
+        text = report.markdown(out)
+        self.assertIn("Fix after cutoff |", text)
+        self.assertRegex(text, r"\| fake-late \| open \|.*\| no \|\n")
+        self.assertRegex(text, r"\| fake-early \| open \|.*\| yes \|\n")
+        self.assertRegex(text, r"\| fake-none \| open \|.*\| unknown \|\n")
 
 
 class CodexParseTest(unittest.TestCase):
@@ -276,6 +377,102 @@ class ClaudeInvocationTest(unittest.TestCase):
                      "EnterWorktree"):
             self.assertIn(tool, denied)
         self.assertEqual(invocation.env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"], "1")
+        self.assertEqual(invocation.env["DISABLE_TELEMETRY"], "1")
+
+    def test_hosts_come_from_network_config(self):
+        import tomllib
+        lists = tomllib.loads((ROOT / "config" / "network.toml").read_text())["hosts"]
+        for cell in run.load_matrix()["cells"]:
+            with self.subTest(cell=cell["name"]):
+                self.assertTrue(cell["hosts"])
+                self.assertEqual(cell["hosts"], lists[cell["harness"]])
+        self.assertTrue(all(not c["hosts"] for c in MATRIX["cells"]))
+
+
+class _EchoHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        while data := self.request.recv(4096):
+            self.request.sendall(data)
+
+
+@contextlib.contextmanager
+def echo_server():
+    """A TCP echo server on 127.0.0.1, standing in for a provider host.
+    Yields its "host:port"."""
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _EchoHandler)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def ask_proxy(path, request):
+    """Send one request head to the proxy socket. Return the socket and
+    the reply head."""
+    client = socket.socket(socket.AF_UNIX)
+    client.settimeout(5)
+    client.connect(str(path))
+    client.sendall(request.encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        chunk = client.recv(1)
+        if not chunk:
+            break
+        head += chunk
+    return client, head.decode()
+
+
+class ProxyTest(unittest.TestCase):
+    def test_allowed_host_tunnels_and_others_get_403(self):
+        with echo_server() as echo, tempfile.TemporaryDirectory() as folder:
+            log = Path(folder) / "network.jsonl"
+            with proxy.serve([echo], log) as gate:
+                client, head = ask_proxy(gate.socket, f"CONNECT {echo} HTTP/1.1\r\n\r\n")
+                self.assertTrue(head.startswith("HTTP/1.1 200"), head)
+                client.sendall(b"ping")
+                self.assertEqual(client.recv(4), b"ping")
+                client.close()
+                denied, head = ask_proxy(
+                    gate.socket, "CONNECT github.com:443 HTTP/1.1\r\n\r\n")
+                self.assertTrue(head.startswith("HTTP/1.1 403"), head)
+                self.assertEqual(denied.recv(1), b"")
+                denied.close()
+                # A plain proxied GET is not a CONNECT, so it is refused too.
+                plain, head = ask_proxy(
+                    gate.socket, "GET http://example.com/ HTTP/1.1\r\n\r\n")
+                self.assertTrue(head.startswith("HTTP/1.1 403"), head)
+                plain.close()
+            lines = [json.loads(line) for line in log.read_text().splitlines()]
+            self.assertFalse(Path(gate.socket).exists())
+            summary = proxy.summary(log)
+        host, port = echo.split(":")
+        self.assertEqual([(l["host"], l["port"], l["allowed"]) for l in lines],
+                         [(host, int(port), True), ("github.com", 443, False),
+                          ("example.com", 80, False)])
+        self.assertTrue(all("time" in line for line in lines))
+        self.assertEqual(summary, {"allowed": [host],
+                                              "denied": ["example.com", "github.com"]})
+
+    def test_allow_rule(self):
+        hosts = ["api.anthropic.com", "*.example.com", "127.0.0.1:8080"]
+        cases = {
+            ("api.anthropic.com", 443): True,
+            ("API.Anthropic.com.", 443): True,
+            ("api.anthropic.com", 80): False,   # a bare host means port 443
+            ("api.anthropic.com.evil.test", 443): False,
+            ("evil.api.anthropic.com", 443): False,  # no wildcard, no subdomain
+            ("a.b.example.com", 443): True,
+            ("example.com", 443): False,        # "*." matches subdomains only
+            ("badexample.com", 443): False,
+            ("127.0.0.1", 8080): True,
+            ("127.0.0.1", 443): False,
+        }
+        for (host, port), expected in cases.items():
+            with self.subTest(host=host, port=port):
+                self.assertIs(proxy.allowed(host, port, hosts), expected)
 
 
 class GuardTest(unittest.TestCase):

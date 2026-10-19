@@ -1,5 +1,8 @@
 # The agents to compare. Model and effort are configuration, not code.
 # harness: claude (Claude Code) or codex (Codex CLI). Run one cell first.
+# A cell may set cutoff = "YYYY-MM", the model's training cutoff, only when
+# a primary source states it. A cell may set hosts = [...]; it replaces
+# its harness's list in config/network.toml.
 
 repeats = 3
 timeout_seconds = 1800

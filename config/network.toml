@@ -1,0 +1,30 @@
+# The hosts each harness may reach from its sandbox, through the rig's
+# CONNECT proxy (rig/proxy.py). Nothing else is reachable, and a harness
+# not named here gets no network at all. A cell in config/matrix.toml may
+# set its own `hosts`; that list replaces this one for the cell.
+#
+# The rule: an entry is "host" or "host:port". A bare host means port 443.
+# "*.example.com" means every subdomain of example.com, not example.com.
+#
+# Found on 2026-10-19 by reading the installed CLIs, then checked by one
+# real run each (results/20261019T065231Z-booking-ladder). Tighten from
+# the logs of later runs.
+
+[hosts]
+# Claude Code 2.1.302 with a subscription sign-in. Its production OAuth
+# config names BASE_API_URL "https://api.anthropic.com" (model calls) and
+# TOKEN_URL "https://platform.claude.com/v1/oauth/token" (token refresh).
+# Telemetry and other nonessential traffic are off by environment, so
+# Datadog and the like are refused if they are tried.
+# Smoke run: it used both hosts and tried nothing else.
+claude = ["api.anthropic.com", "platform.claude.com"]
+
+# Codex 0.163.0 with a ChatGPT sign-in. The binary calls
+# "https://chatgpt.com/backend-api/codex" (model calls) and
+# "https://auth.openai.com/oauth/token" (token refresh).
+# Smoke run: all model calls went to chatgpt.com. It also tried
+# ab.chatgpt.com (experiment flags) and *.oaiusercontent.com (file
+# storage); both were refused and the run still worked, so they stay off.
+# api.openai.com (the API-key base URL) was not used, so it is off too.
+# auth.openai.com stays for the token refresh, which this run did not need.
+codex = ["chatgpt.com", "auth.openai.com"]

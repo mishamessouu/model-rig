@@ -47,6 +47,16 @@ def _pick(result):
     return "other change" if result["diff"]["files"] else "no change"
 
 
+# result.json "fix_after_cutoff": true, false, or null (unknown).
+CUTOFF_WORDS = {True: "yes", False: "no", None: "unknown"}
+
+
+def _cutoff(runs):
+    """Yes, no, or unknown. A resumed batch with mixed values lists each."""
+    words = dict.fromkeys(CUTOFF_WORDS[r.get("fix_after_cutoff")] for r in runs)
+    return "/".join(words)
+
+
 def _interval(pair):
     return "n/a" if pair is None else f"{pair[0]:.0%} to {pair[1]:.0%}"
 
@@ -84,6 +94,7 @@ def summarise(results, sheet="copilot", sheets=None):
             "mean_usd_reported": _mean([r["usd_reported"] for r in runs]),
             "mean_seconds": _mean([r["seconds"] for r in runs]),
             "mean_lines": _mean([r["diff"]["added"] + r["diff"]["removed"] for r in runs]),
+            "fix_after_cutoff": _cutoff(runs),
         })
     return rows
 
@@ -101,8 +112,9 @@ def markdown(batch_dir, sheet="copilot"):
         "success rate. With three runs it is wide, so rank two cells only "
         "with a test on the runs, such as Fisher's exact test.", "",
         "| Cell | Prompt | n | Picks | Success | 95% interval | Regressions | Errors | "
-        f"Mean {unit} | {unit} per success | Mean reported USD | Mean s | Mean lines changed |",
-        "|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+        f"Mean {unit} | {unit} per success | Mean reported USD | Mean s | Mean lines changed | "
+        "Fix after cutoff |",
+        "|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for r in rows:
         lines.append(
@@ -111,7 +123,12 @@ def markdown(batch_dir, sheet="copilot"):
             f"{r['regressions']} | {r['errors']} | "
             f"{_fmt(r['mean_cost'], 3)} | {_fmt(r['cost_per_success'], 3)} | "
             f"{_fmt(r['mean_usd_reported'], 3)} | {_fmt(r['mean_seconds'])} | "
-            f"{_fmt(r['mean_lines'])} |")
+            f"{_fmt(r['mean_lines'])} | {r['fix_after_cutoff']} |")
+    refused = [f"{r['run_id']} ({', '.join(r['network']['denied'])})"
+               for r in results if (r.get("network") or {}).get("denied")]
+    if refused:
+        lines += ["", "The network proxy refused a host in these runs: "
+                  + "; ".join(refused) + ". See each run's `network.jsonl`."]
     lines += ["", "## Mean tokens per run", "",
               "| Cell | Prompt | Input | Output | Cache read | Cache write |",
               "|---|---|---:|---:|---:|---:|"]

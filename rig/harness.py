@@ -20,7 +20,9 @@ class Invocation:
     # (master file, run file) pairs: copied in before the run, and copied
     # back after it when the agent refreshed its sign-in.
     auth: list = field(default_factory=list)
-    network: bool = True
+    # Hosts the agent may reach through the rig's proxy (rig/proxy.py).
+    # Empty means no network at all. They come from config/network.toml.
+    hosts: list = field(default_factory=list)
     final_file: Path | None = None
 
 
@@ -68,11 +70,13 @@ def claude(cell, prompt, run_dir, budget_usd):
         "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
         "ENABLE_CLAUDEAI_MCP_SERVERS": "false",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "DISABLE_TELEMETRY": "1",
         "DISABLE_AUTOUPDATER": "1",
     }
     return Invocation(
         argv=argv, env=env, read=[argv[0]],
         auth=[(CLAUDE_FOLDER / ".credentials.json", config / ".credentials.json")],
+        hosts=list(cell.get("hosts", [])),
     )
 
 
@@ -134,6 +138,7 @@ def codex(cell, prompt, run_dir, budget_usd):
     return Invocation(
         argv=argv, env=env, read=[argv[0], package],
         auth=[(CODEX_FOLDER / "auth.json", home / "auth.json")],
+        hosts=list(cell.get("hosts", [])),
         final_file=final,
     )
 
@@ -189,6 +194,10 @@ def fake(cell, prompt, run_dir, budget_usd, scenario=None):
                  CLAUDE_FOLDER, CODEX_FOLDER, STATE / "fixtures",
                  "/run/docker.sock", "/var/snap",
                  *([scenario.env] if scenario.env else [])]
+    if cell["model"] == "netprobe":
+        # The hosts it should reach; it also tries a direct connect and a
+        # host that is not on the list.
+        argv += cell.get("hosts", [])
     solution = scenario.solution(cell["model"]) if scenario else None
     if solution and solution.is_dir():
         argv.append(solution)
@@ -196,7 +205,7 @@ def fake(cell, prompt, run_dir, budget_usd, scenario=None):
     if cell.get("commit"):
         argv.append("--commit")
     return Invocation(argv=argv, env={"HOME": run_dir / "home"}, read=read,
-                      network=False)
+                      hosts=list(cell.get("hosts", [])))
 
 
 HARNESSES = {"claude": (claude, parse_claude), "codex": (codex, parse_codex),

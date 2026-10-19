@@ -40,6 +40,9 @@ class Scenario:
     pristine: list = field(default_factory=list)
     # Seconds one scoring test command may take.
     timeout: int = 120
+    # "YYYY-MM-DD" of the upstream fix, for a reinjected real fix. A model
+    # whose training cutoff is on or after it may know the fix.
+    fix_date: str | None = None
 
     @property
     def fixture(self):
@@ -135,6 +138,7 @@ def load(name):
         visible=tests.get("visible", []),
         pristine=tests.get("pristine", []),
         timeout=tests.get("timeout_seconds", 120),
+        fix_date=str(data["fix_date"]) if data.get("fix_date") else None,
     )
 
 
