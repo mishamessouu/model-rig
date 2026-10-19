@@ -211,7 +211,7 @@ state folder from `~/.model-rig/`.
  +--------------+   fresh copy   +------------------------+
  |    runner    | -------------> | agent sandbox (bwrap)  |
  |  one run at  |                | Claude Code or Codex,  |
- |  a time      | <------------- | headless, network on   |
+ |  a time      | <------------- | headless, provider only|
  +--------------+  log + diff    +------------------------+
         |
         v
@@ -234,6 +234,16 @@ state folder from `~/.model-rig/`.
   socket. Only the run folder is writable. A prepared venv, and its base
   Python if that lives under a hidden folder, is bound read-only and comes
   first on `PATH`.
+- **Network.** The sandbox has no network of its own. The agent reaches
+  its model provider through a proxy on the host, which allows only the
+  hosts that `config/network.toml` names for its harness. Every other
+  host gets a refusal, so the agent cannot look up the fix or the
+  advisory. Each run saves `network.jsonl`, one line per request, and
+  `result.json` lists the hosts it reached and the hosts it was refused.
+- **Fix date.** A scenario from a real fix names its `fix_date`, and a
+  cell may name its model's training `cutoff` when a primary source
+  states it. `result.json` records whether the fix came after the
+  cutoff, and `rig run` warns when it did not.
 - **Scorer.** Copies the agent's result, restores the visible test files
   the regression set uses, adds the hidden tests, and runs each test id
   in a sandbox with no network.
@@ -276,6 +286,9 @@ and model, not about extra tools one side had.
 - **No memory.** Claude Code runs with no session persistence; Codex runs
   ephemeral and ignores user configuration.
 - **MCP off.** No MCP servers, so no tool reaches outside the sandbox.
+- **Provider hosts only.** Since 2026-10-19 the agent reaches only its
+  provider's hosts. The wger batch above ran before that, on the host
+  network with web tools off. Its logs show no fetch of the fix.
 
 ## Limitations
 

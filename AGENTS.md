@@ -26,6 +26,8 @@ Run before every commit. The tests use a fake agent and make no model call.
   first. Commit only its small files, never the fixture or the venv.
 - Do not edit `results/`. Results are evidence.
 - Model and effort are configuration in `config/matrix.toml`, not code.
+- The hosts an agent may reach are in `config/network.toml`. Widen them
+  only with a reason from a run's `network.jsonl`.
 - Standard library only. No new runtime dependency.
 - No secrets in the repo. Sign-ins live in `~/.model-rig/`.
 

@@ -1,6 +1,7 @@
 # Design
 
-Status: v0.1, 2026-10-16. Each decision says what would change it.
+Status: v0.1, 2026-10-16; network allowlist 2026-10-19. Each decision
+says what would change it.
 
 ## The question
 
@@ -50,10 +51,8 @@ private, subscription sign-ins, and the "choice" measure.
    the rig runs Claude Code and Codex, not raw API calls. Changes if: we
    want to measure the model alone, without its harness.
 4. **bubblewrap, not Docker.** bwrap needs no daemon, no root, and no
-   group membership, and starts in milliseconds. The agent sandbox shares
-   the network, because the agent must reach its provider. The scoring
-   sandbox has no network. Changes if: we need a network allowlist; then
-   put a filtering proxy in front of the agent.
+   group membership, and starts in milliseconds. The network is decision
+   10. Changes if: a scenario needs a service that bwrap cannot hold.
 5. **Separate sign-ins.** Each run gets a copy of the rig's own sign-in
    from `~/.model-rig/`, and a refreshed token is copied back. Sharing
    your everyday sign-in could rotate its refresh token under a running
@@ -91,6 +90,44 @@ private, subscription sign-ins, and the "choice" measure.
 9. **One run at a time.** Runs share one sign-in copy, and a refresh
    during a parallel run could race. Changes if: each cell gets its own
    sign-in, or a batch grows too slow to run serially.
+10. **No network but the provider, through a host proxy.** Every sandbox
+   gets its own network namespace (`--unshare-net`), with loopback only
+   and no name resolution. A real run also gets a Unix socket bound in.
+   On the host, `rig/proxy.py` listens on it, accepts only `CONNECT
+   host:port` to a host in `config/network.toml`, resolves the name on
+   the host, and logs one JSON line per request. In the sandbox,
+   `rig/netbridge.py` listens on `127.0.0.1:3128`, forwards to the
+   socket, and starts the agent with the proxy variables set. This is
+   the pattern of Anthropic's sandbox-runtime, in the standard library.
+   Why: an agent's shell could fetch the upstream fix or the advisory,
+   and a security reader asks "could it look up the CVE?" first. The log
+   answers that per run. Why not the harnesses' own sandboxes: they
+   differ between Claude Code and Codex, so the two would not run under
+   one rule. They are also part of the harness under test, and a model
+   can ask to turn some of them off. The proxy sits outside the agent's
+   reach, and its log is written to the results folder, which the
+   sandbox hides. The host lists come from reading the CLI binaries:
+   Claude Code 2.1.302 names `api.anthropic.com` and
+   `platform.claude.com` (token refresh); Codex 0.163.0 names
+   `chatgpt.com`, `auth.openai.com` (token refresh), and
+   `api.openai.com`. One real run per harness on 2026-10-19 confirmed the
+   Claude list. Codex used only `chatgpt.com`, and its refused tries
+   (`ab.chatgpt.com`, `*.oaiusercontent.com`) did not stop the run, so
+   `api.openai.com` came off the list.
+   Limit: the proxy cannot see inside a tunnel, so a provider's own
+   server-side tools, such as web search, pass through an allowed host.
+   Decision 8 still turns those tools off in each harness. Changes if: a
+   CLI stops honouring `HTTPS_PROXY` for some transport (the log then
+   shows nothing, and the run fails), or a scenario needs a package
+   index, which then gets its own entry.
+11. **Fix date against training cutoff.** A scenario from a real fix
+   sets `fix_date`. A cell sets `cutoff = "YYYY-MM"` only when a primary
+   source states the model's training cutoff. `result.json` records
+   `fix_after_cutoff` as true, false, or null for unknown. The fix month
+   itself counts as known. The report shows it per cell, and `rig run`
+   warns but does not refuse. On 2026-10-19 no cell has a sourced
+   cutoff: the matrix uses aliases such as `opus`, and the Claude API
+   reference names no training cutoff for Claude Opus 5.5.
 
 ## Where things live
 
@@ -100,16 +137,24 @@ private, subscription sign-ins, and the "choice" measure.
 | `scenarios/<name>/` | `scenario.toml`, `hidden/`, `solutions/`, and `repo/` or an upstream fixture |
 | `config/matrix.toml` | Cells: harness, model, effort; repeats, timeout, budget |
 | `config/prices.toml` | Price sheets per 1M tokens |
+| `config/network.toml` | The hosts each harness may reach through the proxy |
 | `results/<batch>/` | One folder per batch; see `results/README.md` |
 | `~/.model-rig/` | Sign-ins, prepared fixtures and venvs, run work folders |
 
 ## What ages, what stays
 
-Better models will clear the booking-ladder rungs. Fixtures age; add
+Better models will clear the booking-ladder rungs. The fixtures age; add
 harder rungs and new scenarios. A reinjected real fix ages faster in one
-way: once its fix date is before a model's training cutoff, the model may
-know the fix. Record the fix date in each scenario and compare it with
-each model's cutoff before a batch. The runner, the scorer, the stored
-token split, and the "cost per successful fix" measure stay. Ten times
-the agents means ten times the cells, so the runner may need parallel
-runs then (see decision 9).
+way: once the fix date is before a model's training cutoff, the model may
+know the fix. Each scenario records its fix date, and each result says
+whether the fix came after the model's cutoff, where that is known. The
+runner, the scorer, the stored token split, and the "cost per successful
+fix" measure stay. Ten times the
+agents means ten times the cells, so the runner may need parallel runs
+then; today it runs one at a time to keep the sign-in copy safe.
+
+The host lists age with each CLI release, so read them again from the
+logs. The harnesses' own sandboxes will improve. When both CLIs offer the
+same allowlist with a log the rig can read, the proxy may go. The
+namespace boundary and a log kept outside the agent's reach stay: a
+stronger model is better at finding a way out, not worse.
