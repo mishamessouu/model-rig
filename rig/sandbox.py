@@ -2,8 +2,9 @@
 
 The root file system is read-only. Home, /data, /tmp, /run, and /var are
 replaced by empty folders, so an agent cannot read the rig repo, the hidden
-tests, the person's files, or a Docker or LXD socket. Only the paths a run
-names come back.
+tests, the person's files, or a Docker or LXD socket. The rig repo and its
+state folder are emptied too, wherever they are, for a checkout under /root
+or /opt. Only the paths a run names come back.
 
 The sandbox always has its own network namespace, with loopback only. A
 run that names a proxy socket (rig/proxy.py) gets it bound in, and the
@@ -11,8 +12,11 @@ command starts behind rig/netbridge.py, which listens on 127.0.0.1:3128
 and forwards to that socket. The proxy variables point there. Without a
 proxy there is no network at all, and no name resolution.
 """
+import hashlib
 import shutil
 from pathlib import Path
+
+from . import ROOT, STATE
 
 EMPTIED = ("/home", "/data", "/tmp", "/run", "/var", "/mnt", "/media", "/srv", "/snap")
 PATH = "/usr/local/bin:/usr/bin:/bin"
@@ -29,6 +33,24 @@ PROXY_ENV = {
 }
 
 
+def opaque(text):
+    """A folder name that tells an agent nothing. Agents read the work
+    folder's name as a hint when it named the scenario."""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def hidden():
+    """The folders the sandbox empties: the fixed list, then the rig repo
+    and its state folder when no folder on that list holds them."""
+    out = [Path(path) for path in EMPTIED]
+    for path in (ROOT, STATE):
+        path = Path(path)
+        if (path != Path("/") and path.exists()
+                and not any(path.is_relative_to(folder) for folder in out)):
+            out.append(path)
+    return out
+
+
 def command(argv, *, cwd, read=(), write=(), env=None, proxy=None):
     """Return the bwrap argv. `write` binds in order, so a later bind may
     sit inside an earlier one. `proxy` is the host path of a running
@@ -37,9 +59,9 @@ def command(argv, *, cwd, read=(), write=(), env=None, proxy=None):
     if bwrap is None:
         raise RuntimeError("bubblewrap (bwrap) is not installed")
     out = [bwrap, "--ro-bind", "/", "/"]
-    for path in EMPTIED:
-        if Path(path).exists():
-            out += ["--tmpfs", path]
+    for path in hidden():
+        if path.exists():
+            out += ["--tmpfs", str(path)]
     out += ["--dev", "/dev", "--proc", "/proc"]
     for path in read:
         out += ["--ro-bind", str(path), str(path)]

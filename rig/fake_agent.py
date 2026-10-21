@@ -2,10 +2,13 @@
 
     fake_agent.py none                 change nothing
     fake_agent.py probe                report what the sandbox lets it see
+    fake_agent.py leakprobe            report its folder, environment, and mounts
     fake_agent.py netprobe [host:port ...]
                                        report what the network lets it reach
     fake_agent.py <defect> <solution>  copy a reference fix into the repo
     ... --commit                       then commit it, as some agents do
+    ... --escape-git <file>            then plant git settings that would run
+                                       a command on the host and hide the diff
 """
 import errno
 import json
@@ -79,6 +82,11 @@ final = f"CHOICE: fake {mode}"
 if mode == "probe":
     seen = [path for path in sys.argv[2:] if Path(path).exists()]
     final = "PROBE " + json.dumps(seen)
+elif mode == "leakprobe":
+    final = "LEAKPROBE " + json.dumps({
+        "cwd": os.getcwd(), "env": dict(os.environ),
+        "mounts": [line.split()[4] for line in
+                   Path("/proc/self/mountinfo").read_text().splitlines()]})
 elif mode == "netprobe":
     final = "NETPROBE " + json.dumps(netprobe(sys.argv[2:]))
 elif len(sys.argv) > 2:
@@ -90,6 +98,12 @@ elif len(sys.argv) > 2:
     if "--commit" in sys.argv:
         subprocess.run(["git", "-c", "user.name=fake", "-c", "user.email=fake@example.invalid",
                         "commit", "-qam", "fake fix"], check=True)
+    if "--escape-git" in sys.argv:
+        canary = sys.argv[sys.argv.index("--escape-git") + 1]
+        # git runs the fsmonitor command with extra arguments; ":" takes them.
+        for key, value in (("core.fsmonitor", f"touch {canary}; :"),
+                           ("diff.external", "true")):
+            subprocess.run(["git", "config", key, value], check=True)
 print(json.dumps({
     "type": "result", "is_error": False, "num_turns": 1, "result": final,
     "total_cost_usd": 0.01,

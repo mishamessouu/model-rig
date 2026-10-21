@@ -63,7 +63,7 @@ private, subscription sign-ins, and the "choice" measure.
    scenario may name an upstream git URL, a commit, and an optional
    revert patch. `model-rig prepare` fetches the commit into
    `~/.model-rig/fixtures/<name>` and builds a venv in
-   `~/.model-rig/envs/<name>` from the project's own lock file, with the
+   `~/.model-rig/envs/<hash of name>` from the project's own lock file, with the
    network on. The repo keeps only the scenario file, the hidden tests,
    the reference fix, and any patch. The venv is bound read-only into the
    agent sandbox and the scoring sandbox, first on `PATH`, so the agent

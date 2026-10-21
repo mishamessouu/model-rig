@@ -24,6 +24,21 @@ harness = "fake"
 model = "s1-sql-injection"
 commit = true
 
+# Fixes s1, then writes git settings that would run a command on the host
+# and hide the change, if the host ran git with the agent's settings.
+[[cells]]
+name = "fake-s1-escape-git"
+harness = "fake"
+model = "s1-sql-injection"
+escape_git = true
+
+# Reports its folder, environment, and mounts, to show that no path the
+# agent can see names the scenario, the cell, or the run.
+[[cells]]
+name = "fake-leakprobe"
+harness = "fake"
+model = "leakprobe"
+
 # Tries the network from inside the sandbox. The test points its `hosts`
 # at a local echo server; a cell's `hosts` replaces its harness's list in
 # config/network.toml.

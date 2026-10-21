@@ -52,7 +52,8 @@ class Scenario:
 
     @property
     def env(self):
-        return STATE / "envs" / self.name if self.setup is not None else None
+        # The agent sees this path, so it must not name the scenario.
+        return STATE / "envs" / sandbox.opaque(self.name) if self.setup is not None else None
 
     @property
     def hidden(self):
@@ -114,7 +115,7 @@ def base_interpreter(env):
             out = []
             for prefix in (named, named.resolve()):
                 if prefix not in out and any(
-                        prefix.is_relative_to(folder) for folder in sandbox.EMPTIED):
+                        prefix.is_relative_to(folder) for folder in sandbox.hidden()):
                     out.append(prefix)
             return out
     return []

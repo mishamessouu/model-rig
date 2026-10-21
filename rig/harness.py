@@ -204,6 +204,10 @@ def fake(cell, prompt, run_dir, budget_usd, scenario=None):
         read.append(solution)
     if cell.get("commit"):
         argv.append("--commit")
+    if cell.get("escape_git"):
+        # A host path the agent cannot see. The file appears only if the
+        # host ran a command the agent planted.
+        argv += ["--escape-git", STATE / "git-escaped"]
     return Invocation(argv=argv, env={"HOME": run_dir / "home"}, read=read,
                       hosts=list(cell.get("hosts", [])))
 

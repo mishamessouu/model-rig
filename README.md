@@ -61,6 +61,11 @@ What it shows:
   score counts only the planted hole.
 
 Limits: one app, 3 runs per cell, and Sonnet ran once per prompt.
+The agents' work folder was named after the scenario
+(`...-wger-log-idor/...`), and at least one run read it as a hint
+(`claude-sonnet-medium.open.r1`). So the open-prompt results may
+overstate what a model finds unprompted. The rig hashes those names since
+2026-10-21.
 Harness and model are mixed, and "medium" effort means different
 settings in Claude Code and Codex. Credits use the GitHub Copilot price
 sheet, which does not list Astra or Sonnet. 12 more Codex runs used a
@@ -231,9 +236,14 @@ state folder from `~/.model-rig/`.
 - **Sandbox.** bubblewrap with a read-only root. Home, `/tmp`, `/run`,
   `/var`, and other data folders are empty, so the agent cannot see the
   rig repo, the hidden tests, your files, the sign-ins, or the Docker
-  socket. Only the run folder is writable. A prepared venv, and its base
-  Python if that lives under a hidden folder, is bound read-only and comes
-  first on `PATH`.
+  socket. The rig repo and `~/.model-rig/` are emptied wherever they
+  are, for a checkout under `/root` or `/opt`. Only the run folder is
+  writable. A prepared venv, and its base Python if that lives under a
+  hidden folder, is bound read-only and comes first on `PATH`. The run
+  folder and the venv have hashed names, so no path the agent sees names
+  the scenario, the cell, or the run. After the run, the host diffs the
+  work with its own copy of the baseline history and reads none of the
+  agent's git settings, which could run commands or hide changes.
 - **Network.** The sandbox has no network of its own. The agent reaches
   its model provider through a proxy on the host, which allows only the
   hosts that `config/network.toml` names for its harness. Every other

@@ -43,9 +43,25 @@ def _text(value):
     return value or ""
 
 
-def _git(repo, *args):
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
-                          text=True, check=True).stdout
+def work_dir(batch, run_id):
+    """A run's work folder. The agent sees its path, so the name is opaque."""
+    return STATE / "work" / sandbox.opaque(f"{batch}/{run_id}")
+
+
+# The agent can write its repo's .git, and settings there can run commands
+# (core.fsmonitor) or rewrite the diff (diff.external, filters). So the host
+# diffs with its own copy of the baseline history, outside the sandbox, and
+# reads no settings but these.
+HOST_GIT = ["-c", "core.bare=false", "-c", "core.fsmonitor=false",
+            "-c", "core.hooksPath=/dev/null", "-c", "core.untrackedCache=false"]
+HOST_GIT_ENV = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull}
+
+
+def _git(git_dir, repo, *args):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    return subprocess.run(["git", f"--git-dir={git_dir}", f"--work-tree={repo}",
+                           *HOST_GIT, *args], capture_output=True, text=True,
+                          check=True, env={**env, **HOST_GIT_ENV}).stdout
 
 
 def _kill_group(process):
@@ -89,12 +105,18 @@ def fix_after_cutoff(fix_date, cutoff):
 
 def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=False):
     run_id = f"{cell['name']}.{prompt_name}.r{rep}"
-    run_dir = STATE / "work" / batch / run_id
+    run_dir = work_dir(batch, run_id)
+    # Outside run_dir, so the sandbox never binds it.
+    git_dir = run_dir.with_name(run_dir.name + ".git")
     # A stopped run can leave its work folder behind; a resume starts it clean.
     shutil.rmtree(run_dir, ignore_errors=True)
+    shutil.rmtree(git_dir, ignore_errors=True)
     (run_dir / "home").mkdir(parents=True)
     repo = scenarios.copy_repo(scenario, run_dir / "repo")
-    base = _git(repo, "rev-parse", "HEAD").strip()
+    # Copied, not linked, before the agent starts: its objects stay the host's.
+    subprocess.run(["git", "clone", "-q", "--bare", "--no-hardlinks", str(repo),
+                    str(git_dir)], check=True, capture_output=True)
+    base = _git(git_dir, repo, "rev-parse", "HEAD").strip()
     start, parse = HARNESSES[cell["harness"]]
     extra = {"scenario": scenario} if cell["harness"] == "fake" else {}
     invocation = start(cell, scenario.prompts[prompt_name], run_dir,
@@ -142,6 +164,7 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
             _kill_group(process)
             _restore_sign_in(snapshots)
             shutil.rmtree(run_dir, ignore_errors=True)
+            shutil.rmtree(git_dir, ignore_errors=True)
             raise
     seconds = round(time.time() - started, 1)
     _restore_sign_in(snapshots)
@@ -163,11 +186,12 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         usage["error"] = f"timed out after {matrix['timeout_seconds']} s"
     # Diff against the baseline commit, not HEAD: an agent that commits its
     # work must not leave an empty patch behind.
-    _git(repo, "add", "-A")
-    patch = _git(repo, "diff", "--cached", "--binary", "--no-color", base)
+    _git(git_dir, repo, "add", "-A")
+    diff = ["diff", "--cached", "--no-ext-diff", "--no-textconv", "--no-color"]
+    patch = _git(git_dir, repo, *diff, "--binary", base)
     (out / "diff.patch").write_text(patch)
     files = added = removed = 0
-    for line in _git(repo, "diff", "--cached", "--numstat", base).splitlines():
+    for line in _git(git_dir, repo, *diff, "--numstat", base).splitlines():
         plus, minus, _ = line.split("\t", 2)
         files += 1
         added += int(plus) if plus.isdigit() else 0
@@ -201,6 +225,7 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         **scored,
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+    shutil.rmtree(git_dir)
     if not keep:
         shutil.rmtree(run_dir)
     return result
@@ -267,5 +292,7 @@ def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
         result = run_one(scenario, cell, prompt, rep, batch, matrix, out_root, keep)
         echo(f"    fixed={result['fixed'] or 'none'} regression_pass="
              f"{result['regression_pass']} seconds={result['seconds']} error={result['error']}")
+        if keep:
+            echo(f"    work folder: {work_dir(batch, result['run_id'])}")
         results.append(result)
     return out_root, results

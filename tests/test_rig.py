@@ -203,6 +203,66 @@ class RescoreTest(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text())["fixed"], ["s1-sql-injection"])
 
 
+class HostGitTest(unittest.TestCase):
+    """The host diffs the agent's work after the run. The agent can write
+    its repo's git settings, so the host must not read them."""
+
+    def test_planted_git_settings_neither_run_nor_hide_the_diff(self):
+        canary = STATE / "git-escaped"
+        canary.unlink(missing_ok=True)
+        out, rows = batch(["fake-s1-escape-git"])
+        self.assertFalse(canary.exists(), "the host ran the agent's fsmonitor command")
+        row = rows["fake-s1-escape-git"]
+        self.assertEqual(row["fixed"], ["s1-sql-injection"])
+        self.assertEqual(row["diff"]["files"], 1)
+        patch = (out / "runs" / "fake-s1-escape-git.open.r1" / "diff.patch").read_text()
+        self.assertIn("diff --git", patch)
+
+
+class LeakTest(unittest.TestCase):
+    """No path or variable the agent can see names the scenario, the
+    defects, the cell, or the run. The work folder once did, and agents
+    read it as a hint (claude-sonnet-medium.open.r1 in the wger batch)."""
+
+    def test_agent_sees_no_scenario_cell_or_run_name(self):
+        out, rows = batch(["fake-leakprobe"])
+        final = rows["fake-leakprobe"]["final"]
+        self.assertTrue(final.startswith("LEAKPROBE "), final)
+        seen = final[len("LEAKPROBE "):]
+        from rig import scenario as scenarios
+        scenario = scenarios.load("booking-ladder")
+        batch_name = json.loads((out / "batch.json").read_text())["batch"]
+        names = [scenario.name, batch_name, "fake-leakprobe", "leakprobe.open",
+                 *(defect["id"] for defect in scenario.defects)]
+        for name in names:
+            with self.subTest(name=name):
+                self.assertNotIn(name, seen)
+
+    def test_environment_folder_does_not_name_its_scenario(self):
+        from rig import scenario as scenarios
+        scenario = scenarios.load("wger-log-idor")
+        self.assertNotIn(scenario.name, str(scenario.env))
+        self.assertNotIn(scenario.name, json.dumps(
+            {key: str(value) for key, value in scenario.sandbox_env().items()}))
+
+    def test_state_and_rig_folders_are_hidden_wherever_they_are(self):
+        # Under /root or /opt, nothing else would hide them: the sandbox
+        # empties only a fixed list of folders.
+        from unittest import mock
+
+        from rig import sandbox
+        with mock.patch.object(sandbox, "STATE", Path("/usr/share")), \
+                mock.patch.object(sandbox, "ROOT", Path("/usr/lib")):
+            argv = sandbox.command(["true"], cwd="/usr/share/x",
+                                   write=["/usr/share/x"])
+        text = " ".join(argv)
+        self.assertIn("--tmpfs /usr/share", text)
+        self.assertIn("--tmpfs /usr/lib", text)
+        # The run's own folder comes back after the tmpfs.
+        self.assertLess(text.index("--tmpfs /usr/share"),
+                        text.index("--bind /usr/share/x"))
+
+
 class ResumeTest(unittest.TestCase):
     def test_resume_runs_only_missing(self):
         out, _ = batch(["fake-none"])
@@ -216,7 +276,7 @@ class ResumeTest(unittest.TestCase):
         out, _ = batch(["fake-none"])
         batch_name = json.loads((out / "batch.json").read_text())["batch"]
         # A stopped run leaves its work folder behind.
-        (STATE / "work" / batch_name / "fake-s1.open.r1" / "home").mkdir(parents=True)
+        (run.work_dir(batch_name, "fake-s1.open.r1") / "home").mkdir(parents=True)
         _, rows = run.run_batch("booking-ladder", MATRIX, ["fake-s1"], ["open"], 1,
                                 echo=lambda *_: None, resume=out)
         self.assertEqual(rows[0]["fixed"], ["s1-sql-injection"])
