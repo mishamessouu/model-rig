@@ -10,6 +10,39 @@ output = 2000
 cache_read = 20
 cache_write = 500
 
+# The rows below come from GitHub's Copilot models and pricing page
+# (https://docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing,
+# github/docs commit 3a444c0, 2026-10-20), at 100 credits per dollar. A
+# longer key comes first, because a key matches any id it starts with.
+[sheets.copilot.models."claude-sonnet-5-5"]
+input = 200
+output = 1000
+cache_read = 10
+cache_write = 250
+
+[sheets.copilot.models."claude-sonnet-5"]
+input = 200
+output = 1000
+cache_read = 20
+cache_write = 250
+
+[sheets.copilot.models."claude-fable-5-1"]
+input = 1000
+output = 5000
+cache_read = 25
+cache_write = 1250
+
+# Up to 272K tokens of context, the same tier as the gpt-6.1-sol row.
+[sheets.copilot.models."gpt-6-astra"]
+input = 1000
+output = 5000
+cache_read = 100
+cache_write = 1250
+
+# Not listed: claude-haiku-5-5. Its price rises fivefold past 100K tokens
+# of context, which most turns of a wger run pass, and this sheet has one
+# price per model. Its cost stays unknown rather than wrong.
+
 [sheets.copilot.models."gpt-6.1-sol"]
 input = 200
 output = 1000

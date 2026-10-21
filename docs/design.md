@@ -125,9 +125,10 @@ private, subscription sign-ins, and the "choice" measure.
    source states the model's training cutoff. `result.json` records
    `fix_after_cutoff` as true, false, or null for unknown. The fix month
    itself counts as known. The report shows it per cell, and `rig run`
-   warns but does not refuse. On 2026-10-19 no cell has a sourced
-   cutoff: the matrix uses aliases such as `opus`, and the Claude API
-   reference names no training cutoff for Claude Opus 5.5.
+   warns but does not refuse. Since 2026-10-21 the Claude cells name
+   pinned ids and the June 2026 cutoff from the Claude models overview.
+   No Codex cell has one: no OpenAI source we could reach states a
+   cutoff for the GPT-6 models.
 
 ## Where things live
 
