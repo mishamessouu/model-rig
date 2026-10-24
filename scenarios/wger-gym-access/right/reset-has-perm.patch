@@ -1,0 +1,29 @@
+Right fix in another shape, for two defects: upstream's rule, but it
+reads the target's roles with has_perm(). It closes every path to an
+active account (s3, s5, and the active half of s4). has_perm() is False
+for every permission of an inactive account, so a deactivated trainer
+(s4) and a deactivated general manager or admin (s6) stay open.
+
+Fixes: s3-reset-password-higher-role, s5-reset-password-general-manager
+
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..2a0e7f2 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -266,6 +266,16 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # Resetting a password hands over the account, so the target must hold
++    # fewer gym privileges than the user
++    if not request.user.is_superuser:
++        if user.is_superuser or user.has_perm('gym.manage_gyms'):
++            return HttpResponseForbidden()
++        if not request.user.has_perm('gym.manage_gyms') and (
++            user.has_perm('gym.manage_gym') or user.has_perm('gym.gym_trainer')
++        ):
++            return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

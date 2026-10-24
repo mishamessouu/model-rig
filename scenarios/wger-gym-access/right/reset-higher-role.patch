@@ -1,0 +1,42 @@
+Right fix in another shape, for two defects: a user without manage_gyms
+may not reset a superuser or an account that holds manage_gyms, read
+from the permission tables, so a deactivated account counts too. It
+closes the gym manager's path up to the admin, a general manager, or a
+superuser, active (s3) or deactivated (s6). Trainers and fellow managers
+stay open (s4), and general managers still reset each other (s5).
+
+Fixes: s3-reset-password-higher-role, s6-reset-password-deactivated-role
+
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..2b39eb9 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -28,8 +28,10 @@ from django.contrib.auth.mixins import (
+ )
+ from django.contrib.auth.models import (
+     Group,
++    Permission,
+     User,
+ )
++from django.db.models import Q
+ from django.http.response import (
+     HttpResponse,
+     HttpResponseForbidden,
+@@ -266,6 +268,17 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # A user below general manager may not take over a general manager
++    if not request.user.has_perm('gym.manage_gyms') and (
++        user.is_superuser
++        or Permission.objects.filter(
++            Q(user=user) | Q(group__user=user),
++            content_type__app_label='gym',
++            codename='manage_gyms',
++        ).exists()
++    ):
++        return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

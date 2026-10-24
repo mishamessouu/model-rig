@@ -1,0 +1,33 @@
+Wrong fix: protects the nested run.modelVersions field with a READ
+check on the run (its experiment). The user who can read the run passes
+that check, so every version of every model still shows. The hole is the
+missing per-model check, not a missing run check.
+
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5118,7 +5118,10 @@
+         """
+         field_name = info.field_name
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        nested_model_versions = (
++            info.parent_type.name == "MlflowRunExtension" and field_name == "modelVersions"
++        )
++        if field_name not in self.PROTECTED_FIELDS and not nested_model_versions:
+             return next(root, info, **args)
+ 
+         try:
+@@ -5132,6 +5135,12 @@
+         except Exception:
+             _logger.warning("GraphQL authorization failed: auth system error", exc_info=True)
+             return None
++
++        if nested_model_versions:
++            # The parent run decides who may list the versions created from it.
++            if not _graphql_can_read_run(root.info.run_id, username):
++                return None
++            return next(root, info, **args)
+ 
+         try:
+             if not self._check_authorization(field_name, args, username):

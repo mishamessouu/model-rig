@@ -1,0 +1,55 @@
+Over-broad fix: refuses, with a 403, any zip that names a category, tag,
+tool, or sub-recipe id that another group owns. No other group's row is
+touched or shown, so it closes all three holes. But every export names
+the exporting group's ids, so a legitimate copy of a recipe from one group
+to another on the same instance is refused too. The regression set must
+catch it.
+
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..b775b97 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
+ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+-from fastapi import UploadFile
++from fastapi import HTTPException, UploadFile, status
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -425,7 +425,34 @@ class RecipeService(RecipeServiceBase):
+ 
+         return recipe
+ 
++    def _refuse_foreign_ids(self, recipe: dict[str, Any]) -> None:
++        """Refuse a zip that names an organizer or sub-recipe of another group."""
++        all_repos = get_repositories(self.repos.session, group_id=None, household_id=None)
++        organizers = {
++            "recipe_category": (self.repos.categories, all_repos.categories),
++            "recipeCategory": (self.repos.categories, all_repos.categories),
++            "tags": (self.repos.tags, all_repos.tags),
++            "tools": (self.repos.tools, all_repos.tools),
++        }
++        for key, (own, every) in organizers.items():
++            for item in recipe.get(key) or []:
++                item_id = item.get("id")
++                if item_id and not own.get_one(item_id) and every.get_one(item_id):
++                    raise HTTPException(status.HTTP_403_FORBIDDEN, "The zip names data from another group")
++
++        for ingredient in recipe.get("recipe_ingredient") or recipe.get("recipeIngredient") or []:
++            reference = ingredient.get("referenced_recipe") or ingredient.get("referencedRecipe") or {}
++            recipe_id = reference.get("id")
++            if (
++                recipe_id
++                and not self.group_recipes.get_one(recipe_id, key="id")
++                and all_repos.recipes.get_one(recipe_id, key="id")
++            ):
++                raise HTTPException(status.HTTP_403_FORBIDDEN, "The zip names data from another group")
++
+     def clean_recipe_dict(self, recipe: dict[str, Any]) -> dict[str, Any]:
++        # a zip may only name data that the importing group owns
++        self._refuse_foreign_ids(recipe)
+         return self._process_recipe_data("recipe", self._replace_taken_id(recipe))
+ 
+     def create_from_zip(self, archive: UploadFile, temp_path: Path) -> Recipe:

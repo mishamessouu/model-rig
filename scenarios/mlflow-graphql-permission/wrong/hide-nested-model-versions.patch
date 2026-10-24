@@ -1,0 +1,30 @@
+Wrong fix: protects the nested run.modelVersions field, then fails
+closed and returns no versions to any user who is not an admin. The leak
+is gone, but a user with READ on a model no longer sees its versions under
+a run they can read, and the owner sees none of their own.
+
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5118,7 +5118,10 @@
+         """
+         field_name = info.field_name
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        nested_model_versions = (
++            info.parent_type.name == "MlflowRunExtension" and field_name == "modelVersions"
++        )
++        if field_name not in self.PROTECTED_FIELDS and not nested_model_versions:
+             return next(root, info, **args)
+ 
+         try:
+@@ -5196,6 +5199,9 @@
+         """Apply post-resolution filtering on GraphQL results."""
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if field_name == "modelVersions":
++            # Fail closed: list model versions through mlflowSearchModelVersions.
++            return []
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):

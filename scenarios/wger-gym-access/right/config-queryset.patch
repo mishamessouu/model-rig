@@ -1,0 +1,23 @@
+Right fix in another place: the view's queryset holds only the config of
+the user's own gym, so another gym's config is a 404 for GET and POST.
+The dispatch() check stays as it was.
+
+Fixes: s1-gym-config-other-gym
+
+diff --git a/wger/gym/views/config.py b/wger/gym/views/config.py
+index 928f81f..9e91e0a 100644
+--- a/wger/gym/views/config.py
++++ b/wger/gym/views/config.py
+@@ -54,6 +54,12 @@ class GymConfigUpdateView(WgerFormMixin, LoginRequiredMixin, PermissionRequiredM
+                 return HttpResponseForbidden()
+         return super(GymConfigUpdateView, self).dispatch(request, *args, **kwargs)
+ 
++    def get_queryset(self):
++        """
++        Only the config of the user's own gym
++        """
++        return GymConfig.objects.filter(gym_id=self.request.user.userprofile.gym_id)
++
+     def get_success_url(self):
+         """
+         Return to the gym user overview

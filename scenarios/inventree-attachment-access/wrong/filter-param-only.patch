@@ -1,0 +1,35 @@
+Wrong fix: the list endpoint checks view permission only for the
+model_type the client names in the query. A list with no model_type
+filter still returns every attachment, and the detail endpoint is
+unchanged. The unfiltered list and detail tests must catch it.
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..ffadee7 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -806,6 +806,25 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Check view permission for the model type the client asks for."""
++        queryset = super().get_queryset()
++
++        model_type = self.request.query_params.get('model_type')
++
++        if model_type:
++            from common.validators import attachment_model_class_from_label
++            from users.permissions import check_user_permission
++
++            model_class = attachment_model_class_from_label(model_type)
++
++            if not check_user_permission(self.request.user, model_class, 'view'):
++                raise PermissionDenied(
++                    _('User does not have permission to view these attachments')
++                )
++
++        return queryset
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)

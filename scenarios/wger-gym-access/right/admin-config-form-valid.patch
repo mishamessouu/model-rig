@@ -1,0 +1,30 @@
+Right fix in another place: form_valid() refuses the save when the user
+lacks the permission, so the config never changes. A GET still shows
+the owner's own form, which leaks nothing.
+
+Fixes: s2-admin-config-no-permission
+
+diff --git a/wger/gym/views/admin_config.py b/wger/gym/views/admin_config.py
+index 80846ed..4ae93ba 100644
+--- a/wger/gym/views/admin_config.py
++++ b/wger/gym/views/admin_config.py
+@@ -18,6 +18,7 @@
+ import logging
+ 
+ # Django
++from django.core.exceptions import PermissionDenied
+ from django.urls import reverse
+ from django.utils.translation import (
+     gettext as _,
+@@ -43,6 +44,11 @@ class ConfigUpdateView(WgerFormMixin, UpdateView):
+     permission_required = 'gym.change_gymadminconfig'
+     title = gettext_lazy('Configuration')
+ 
++    def form_valid(self, form):
++        if not self.request.user.has_perm(self.permission_required):
++            raise PermissionDenied
++        return super().form_valid(form)
++
+     def get_success_url(self):
+         """
+         Return to the gym user overview

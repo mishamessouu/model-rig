@@ -1,0 +1,51 @@
+Wrong fix: refuses every `__` in a filter or ordering column. It closes
+both holes, but it also refuses task.data lookups, the allowlisted columns,
+and names that never reach the ORM. The "still allowed" tests catch it.
+
+diff --git a/label_studio/data_manager/prepare_params.py b/label_studio/data_manager/prepare_params.py
+index 52f0917..fe93993 100644
+--- a/label_studio/data_manager/prepare_params.py
++++ b/label_studio/data_manager/prepare_params.py
+@@ -3,7 +3,15 @@
+ from enum import Enum
+ from typing import Any, List, Optional, Union
+ 
+-from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr, model_validator
++from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator, model_validator
++from rest_framework.exceptions import ValidationError as APIValidationError
++
++
++def reject_double_underscore(column: str) -> str:
++    # Block every relation traversal in data manager columns (CVE-2023-47117)
++    if '__' in column:
++        raise APIValidationError(f'"__" is not allowed in column "{column}"')
++    return column
+ 
+ 
+ class FilterIn(BaseModel):
+@@ -35,6 +43,11 @@ class Filter(BaseModel):
+             normalized['child_filters'] = [] if child_filter is None else [child_filter]
+         return normalized
+ 
++    @field_validator('filter')
++    @classmethod
++    def check_filter_column(cls, column: str) -> str:
++        return reject_double_underscore(column)
++
+     @property
+     def child_filter(self) -> Optional['Filter']:
+         """Compatibility accessor for callers that still consume one child."""
+@@ -76,6 +89,13 @@ class PrepareParams(BaseModel):
+     data: Optional[dict] = None
+     request: Optional[Any] = None
+ 
++    @field_validator('ordering')
++    @classmethod
++    def check_ordering_columns(cls, ordering: List[str]) -> List[str]:
++        for column in ordering:
++            reject_double_underscore(column)
++        return ordering
++
+     @property
+     def projects(self) -> List[int]:
+         """Get project IDs as a list, whether single or multiple were provided."""

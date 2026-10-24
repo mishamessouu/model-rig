@@ -1,0 +1,19 @@
+Wrong fix: strips "../" from the config file name before the join. What
+is left of "../../../../tmp/x/pwned" is "/tmp/x/pwned", an absolute path,
+and os.path.join() then drops the watch folder. The write still escapes.
+
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..9ae1e2d 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -353,6 +353,10 @@ class difference_detection_processor():
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
++        # Strip directory traversal sequences from the file name
++        while '../' in filename:
++            filename = filename.replace('../', '')
++
+         filepath = os.path.join(data_dir, filename)
+ 
+         try:

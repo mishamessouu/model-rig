@@ -1,0 +1,35 @@
+Wrong fix: one get_queryset() on AttachmentMixin hides every attachment
+whose linked model the user may not view, for every method. Reads are
+safe, but a user with "change" and no "view" permission on parts can no
+longer edit a part's attachment: the detail view answers 404 to PATCH.
+Upstream's own test_upload_via_api (common/tests.py, in the regression
+set) must catch it. right/queryset-for-reads.patch is the same fix for
+reads only.
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..c21a3bd 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,22 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Hide attachments whose linked model the user may not view."""
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        viewable = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'view')
++        ]
++
++        return queryset.filter(model_type__in=viewable)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

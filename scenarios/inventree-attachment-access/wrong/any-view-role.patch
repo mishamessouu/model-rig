@@ -1,0 +1,59 @@
+Wrong fix: attachments are hidden only from a user who can view no
+attached model at all. A user with view permission on parts still lists
+and reads a stock item's attachments. The part-role defect tests must
+catch it.
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..5f05f3d 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -789,6 +789,17 @@ class AttachmentFilter(FilterSet):
+     tag_name = common.filters.TagsFilter()
+ 
+ 
++def user_can_view_attachments(user) -> bool:
++    """Return True if the user may view any model that takes attachments."""
++    from common.validators import attachment_model_types
++    from users.permissions import check_user_permission
++
++    return any(
++        check_user_permission(user, model, 'view')
++        for model in attachment_model_types()
++    )
++
++
+ class AttachmentMixin:
+     """Mixin class for Attachment views."""
+ 
+@@ -806,6 +817,15 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Hide attachments from users who cannot view any attached model."""
++        queryset = super().get_queryset()
++
++        if not user_can_view_attachments(self.request.user):
++            return queryset.none()
++
++        return queryset
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +852,15 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an attachment, if the user can view attached models."""
++        if not user_can_view_attachments(request.user):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()

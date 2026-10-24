@@ -1,0 +1,40 @@
+Partial fix: checks an ordering column only when it starts with `tasks:`.
+The `-tasks:` and bare spellings still reach F(), and filters stay open.
+The ordering test sends all three spellings.
+
+diff --git a/label_studio/data_manager/prepare_params.py b/label_studio/data_manager/prepare_params.py
+index 52f0917..7763e37 100644
+--- a/label_studio/data_manager/prepare_params.py
++++ b/label_studio/data_manager/prepare_params.py
+@@ -3,7 +3,9 @@
+ from enum import Enum
+ from typing import Any, List, Optional, Union
+ 
+-from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr, model_validator
++from django.conf import settings
++from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, StrictStr, field_validator, model_validator
++from rest_framework.exceptions import ValidationError as APIValidationError
+ 
+ 
+ class FilterIn(BaseModel):
+@@ -76,6 +78,20 @@ class PrepareParams(BaseModel):
+     data: Optional[dict] = None
+     request: Optional[Any] = None
+ 
++    @field_validator('ordering')
++    @classmethod
++    def check_ordering_columns(cls, ordering: List[str]) -> List[str]:
++        # Same rule as FilterSerializer.validate_column, for task columns
++        for column in ordering:
++            if not column.startswith('tasks:'):
++                continue
++            name = column[len('tasks:') :].lstrip('-')
++            if name.startswith('data.') or name in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++                continue
++            if '__' in name:
++                raise APIValidationError(f'"__" is not allowed in ordering "{column}"')
++        return ordering
++
+     @property
+     def projects(self) -> List[int]:
+         """Get project IDs as a list, whether single or multiple were provided."""

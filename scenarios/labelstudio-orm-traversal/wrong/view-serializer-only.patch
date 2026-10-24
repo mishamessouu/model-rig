@@ -1,0 +1,21 @@
+Wrong fix: checks ordering in the View serializer only, next to the
+existing filter check. Inline filters and inline ordering from ?query= or
+a POST body still reach the ORM unchecked.
+
+diff --git a/label_studio/data_manager/serializers.py b/label_studio/data_manager/serializers.py
+index 41a2179..4e097b2 100644
+--- a/label_studio/data_manager/serializers.py
++++ b/label_studio/data_manager/serializers.py
+@@ -393,6 +393,12 @@ class ViewSerializer(serializers.ModelSerializer):
+                     data['filter_group']['filters'].append(_convert_filter(f))
+ 
+         ordering = _data.pop('ordering', {})
++        # Ordering columns reach the ORM like filter columns (CVE-2023-47117)
++        for column in ordering or []:
++            try:
++                FilterSerializer().validate_column('filter:' + str(column).lstrip('-'))
++            except serializers.ValidationError as e:
++                raise serializers.ValidationError({'ordering': e.detail})
+         data['ordering'] = ordering
+ 
+         return super().to_internal_value(data)

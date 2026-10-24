@@ -1,0 +1,21 @@
+Partial fix: drops a sub-recipe from another group, but only under the
+snake_case key referenced_recipe. A camelCase zip (referencedRecipe) skips
+the check and still links and exposes the other group's recipe.
+
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..07a2fba 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -396,6 +396,12 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_food(data)
+         elif key == "unit":
+             return self._transform_unit(data)
++        elif key == "referenced_recipe":
++            # only link a sub-recipe from the importing group
++            recipe_id = data.get("id")
++            if not recipe_id or not self.group_recipes.get_one(recipe_id, key="id"):
++                return None
++            return data
+         # recursively process other objects
+         for k, v in data.items():
+             data[k] = self._process_recipe_data(k, v)

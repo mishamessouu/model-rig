@@ -1,0 +1,50 @@
+Wrong fix: copies the write check, so reading an attachment needs
+"change" permission on the linked model. A user with view permission
+only can no longer list or read the attachments of parts they may view.
+Secure, but the view-role regression tests must catch it.
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..1f2626b 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -806,6 +806,22 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Only list attachments the user may edit."""
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        allowed = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'change')
++        ]
++
++        return queryset.filter(model_type__in=allowed)
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +848,17 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an attachment, if the user may edit it."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('change', request.user):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()

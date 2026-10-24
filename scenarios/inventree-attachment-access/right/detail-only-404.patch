@@ -1,0 +1,26 @@
+Partial fix, correct for the detail view only: retrieve() answers 404
+when the user may not view the attachment's linked model. The list view
+is unchanged and still shows every attachment.
+
+Fixes: s2-attachment-detail-read
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..6b95d3a 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -832,6 +832,15 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an attachment, if the user may view its linked model."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('view', request.user):
++            raise NotFound()
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()

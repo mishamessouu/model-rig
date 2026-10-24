@@ -1,0 +1,19 @@
+Wrong fix: only a superuser may reset any password. No account is taken
+over, but no gym manager resets an ordinary member's password any more.
+The regression tests must catch it.
+
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..5842817 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -266,6 +266,10 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # Only superusers may reset passwords
++    if not request.user.is_superuser:
++        return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

@@ -1,0 +1,787 @@
+from __future__ import annotations
+
+import json
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+from shutil import copytree, rmtree
+from textwrap import dedent
+from typing import Any
+from uuid import UUID, uuid4
+from zipfile import ZipFile
+
+import sqlalchemy as sa
+from fastapi import UploadFile
+
+from mealie.core import exceptions
+from mealie.lang.providers import Translator
+from mealie.pkgs import cache
+from mealie.repos.all_repositories import get_repositories
+from mealie.repos.repository_factory import AllRepositories
+from mealie.repos.repository_generic import RepositoryGeneric
+from mealie.schema import mapper
+from mealie.schema.household.household import HouseholdInDB, HouseholdRecipeUpdate
+from mealie.schema.recipe.recipe import CreateRecipe, Recipe, create_recipe_slug
+from mealie.schema.recipe.recipe_ingredient import (
+    CreateIngredientFood,
+    CreateIngredientUnit,
+    RecipeIngredient,
+    SaveIngredientFood,
+    SaveIngredientUnit,
+)
+from mealie.schema.recipe.recipe_settings import RecipeSettings
+from mealie.schema.recipe.recipe_step import RecipeStep
+from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
+from mealie.schema.recipe.recipe_tool import RecipeToolSave
+from mealie.schema.recipe.request_helpers import RecipeDuplicate
+from mealie.schema.user.user import PrivateUser, UserRatingCreate
+from mealie.services._base_service import BaseService
+from mealie.services.household_services.household_service import HouseholdService
+from mealie.services.parser_services._base import DataMatcher
+from mealie.services.recipe.recipe_data_service import RecipeDataService
+
+from .template_service import TemplateService
+
+RECIPE_CREATED_EVENT_SUBJECT = "recipe.recipe-created"
+
+
+class RecipeServiceBase(BaseService):
+    def __init__(self, repos: AllRepositories, user: PrivateUser, household: HouseholdInDB, translator: Translator):
+        self.repos = repos
+        self.user = user
+        self.household = household
+
+        if repos.group_id != user.group_id != household.group_id:
+            raise Exception("group ids do not match")
+        if repos.household_id != user.household_id != household.id:
+            raise Exception("household ids do not match")
+
+        self._data_matcher: DataMatcher | None = None
+        self.group_recipes = get_repositories(repos.session, group_id=repos.group_id, household_id=None).recipes
+        """Recipes repo without a Household filter"""
+
+        self.translator = translator
+        self.t = translator.t
+
+        super().__init__()
+
+
+class RecipeService(RecipeServiceBase):
+    def _get_recipe(self, data: str | UUID, key: str | None = None) -> Recipe:
+        recipe = self.group_recipes.get_one(data, key)
+        if recipe is None:
+            raise exceptions.NoEntryFound("Recipe not found.")
+        return recipe
+
+    def can_delete(self, recipe_slugs: list[str]) -> bool:
+        if self.user.admin:
+            return True
+
+        # Deletion requires ownership; collaborative editing rules (can_update) do not apply
+        model = self.group_recipes.model
+        owned_count = self.group_recipes.session.scalar(
+            sa.select(sa.func.count())
+            .select_from(model)
+            .where(
+                model.slug.in_(recipe_slugs),
+                model.group_id == self.user.group_id,
+                model.user_id == self.user.id,
+            )
+        )
+        return owned_count == len(recipe_slugs)
+
+    def can_update(self, recipe_slugs: list[str]) -> bool:
+        if self.user.admin:
+            return True
+
+        sql = dedent(
+            """
+            SELECT
+                CASE
+                    WHEN COUNT(*) = SUM(
+                        CASE
+                            -- User owns the recipe
+                            WHEN r.user_id = :user_id THEN 1
+
+                            -- Not owner: check if recipe is locked
+                            WHEN COALESCE(rs.locked, TRUE) = TRUE THEN 0
+
+                            -- Different household: check household policy
+                            WHEN
+                                u.household_id != :household_id
+                                AND COALESCE(hp.lock_recipe_edits_from_other_households, TRUE) = TRUE
+                            THEN 0
+
+                            -- All other cases: can update
+                            ELSE 1
+                        END
+                    ) THEN 1
+                    ELSE 0
+                END AS all_can_update
+            FROM recipes r
+            LEFT JOIN recipe_settings rs ON rs.recipe_id = r.id
+            LEFT JOIN users u ON u.id = r.user_id
+            LEFT JOIN households h ON h.id = u.household_id
+            LEFT JOIN household_preferences hp ON hp.household_id = h.id
+            WHERE r.slug IN :recipe_slugs AND r.group_id = :group_id;
+            """
+        )
+
+        result = self.repos.session.execute(
+            sa.text(sql).bindparams(sa.bindparam("recipe_slugs", expanding=True)),
+            params={
+                "user_id": self.repos.uuid_to_str(self.user.id),
+                "household_id": self.repos.uuid_to_str(self.household.id),
+                "group_id": self.repos.uuid_to_str(self.user.group_id),
+                "recipe_slugs": recipe_slugs,
+            },
+        ).scalar()
+
+        return bool(result)
+
+    def can_lock_unlock(self, recipe: Recipe) -> bool:
+        return recipe.user_id == self.user.id
+
+    def check_assets(self, recipe: Recipe, original_slug: str) -> None:
+        """Checks if the recipe slug has changed, and if so moves the assets to a new file with the new slug."""
+        if original_slug != recipe.slug:
+            current_dir = self.directories.RECIPE_DATA_DIR.joinpath(original_slug)
+
+            try:
+                copytree(current_dir, recipe.directory, dirs_exist_ok=True)
+                self.logger.debug(f"Renaming Recipe Directory: {original_slug} -> {recipe.slug}")
+            except FileNotFoundError:
+                self.logger.error(f"Recipe Directory not Found: {original_slug}")
+
+        if recipe.assets is None:
+            recipe.assets = []
+
+        all_asset_files = [x.file_name for x in recipe.assets]
+
+        for file in recipe.asset_dir.iterdir():
+            if file.is_dir():
+                continue
+            if file.name not in all_asset_files:
+                file.unlink()
+
+    def delete_assets(self, recipe: Recipe) -> None:
+        recipe_dir = recipe.directory
+        rmtree(recipe_dir, ignore_errors=True)
+        self.logger.info(f"Recipe Directory Removed: {recipe.slug}")
+
+    def _recipe_creation_factory(self, name: str, additional_attrs: dict | None = None) -> Recipe:
+        """
+        The main creation point for recipes. The factor method returns an instance of the
+        Recipe Schema class with the appropriate defaults set. Recipes should not be created
+        elsewhere to avoid conflicts.
+        """
+        additional_attrs = additional_attrs or {}
+        additional_attrs["name"] = name
+        additional_attrs["user_id"] = self.user.id
+        additional_attrs["household_id"] = self.household.id
+        additional_attrs["group_id"] = self.household.group_id
+
+        if additional_attrs.get("tags"):
+            for i in range(len(additional_attrs.get("tags", []))):
+                additional_attrs["tags"][i]["group_id"] = self.user.group_id
+
+        if not additional_attrs.get("recipe_ingredient"):
+            additional_attrs["recipe_ingredient"] = [
+                RecipeIngredient(note=self.t("recipe.recipe-defaults.ingredient-note"))
+            ]
+
+        if not additional_attrs.get("recipe_instructions"):
+            additional_attrs["recipe_instructions"] = [RecipeStep(text=self.t("recipe.recipe-defaults.step-text"))]
+
+        return Recipe(**additional_attrs)
+
+    def get_one(self, slug_or_id: str | UUID) -> Recipe:
+        if isinstance(slug_or_id, str):
+            try:
+                slug_or_id = UUID(slug_or_id)
+            except ValueError:
+                pass
+
+        if isinstance(slug_or_id, UUID):
+            return self._get_recipe(slug_or_id, "id")
+
+        else:
+            return self._get_recipe(slug_or_id, "slug")
+
+    def create_one(self, create_data: Recipe | CreateRecipe) -> Recipe:
+        if create_data.name is None:
+            create_data.name = "New Recipe"
+
+        data: Recipe = self._recipe_creation_factory(name=create_data.name, additional_attrs=create_data.model_dump())
+
+        if isinstance(create_data, CreateRecipe) or create_data.settings is None:
+            if self.household.preferences is not None:
+                data.settings = RecipeSettings(
+                    public=self.household.preferences.recipe_public,
+                    show_nutrition=self.household.preferences.recipe_show_nutrition,
+                    show_assets=self.household.preferences.recipe_show_assets,
+                    landscape_view=self.household.preferences.recipe_landscape_view,
+                    disable_comments=self.household.preferences.recipe_disable_comments,
+                )
+            else:
+                data.settings = RecipeSettings()
+
+        rating_input = data.rating
+        data.last_made = None
+        new_recipe = self.repos.recipes.create(data)
+
+        # convert rating into user rating
+        if rating_input:
+            self.repos.user_ratings.create(
+                UserRatingCreate(
+                    user_id=self.user.id,
+                    recipe_id=new_recipe.id,
+                    rating=rating_input,
+                    is_favorite=False,
+                )
+            )
+
+        # create first timeline entry
+        timeline_event_data = RecipeTimelineEventCreate(
+            user_id=new_recipe.user_id,
+            recipe_id=new_recipe.id,
+            subject=RECIPE_CREATED_EVENT_SUBJECT,
+            event_type=TimelineEventType.system,
+            timestamp=new_recipe.created_at or datetime.now(UTC),
+        )
+
+        self.repos.recipe_timeline_events.create(timeline_event_data)
+        return new_recipe
+
+    def _transform_user_id(self, user_id: str) -> str:
+        query = self.repos.users.get_one(user_id)
+        if query:
+            return user_id
+        else:
+            # default to the current user
+            return str(self.user.id)
+
+    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict | None:
+        slug = data.get("slug")
+        if not slug:
+            # nothing to resolve by, and passing the incoming id through would let the recipe model
+            # link, and overwrite, an organizer from another group
+            return None
+
+        # if the item exists, return the actual data
+        query = repo.get_one(slug, "slug")
+        if query:
+            return query.model_dump()
+
+        # otherwise, create the item
+        new_item = repo.create(data)
+        return new_item.model_dump()
+
+    def _transform_tool(self, data: dict) -> dict | None:
+        """Resolve a tool within the importing group, never through an id from another group.
+
+        The recipe model links tools by primary key and copies the incoming fields onto the row it
+        finds, so passing a foreign id through would move and rename another group's tool.
+        """
+        tool = None
+        if tool_id := self._parse_uuid(data.get("id")):
+            tool = self.repos.tools.get_one(tool_id)
+        if tool is None and (slug := data.get("slug")):
+            tool = self.repos.tools.get_one(slug, "slug")
+        if tool is None:
+            name = self._non_empty_str(data.get("name"))
+            if not name:
+                return None
+            tool = self.repos.tools.create(RecipeToolSave(name=name, group_id=self.user.group_id))
+
+        return {"id": str(tool.id), "group_id": str(tool.group_id), "name": tool.name, "slug": tool.slug}
+
+    def _transform_referenced_recipe(self, data: dict) -> dict | None:
+        """Keep a sub-recipe reference only when that recipe belongs to the importing group.
+
+        The reference is resolved by primary key without a group filter, and reading the recipe
+        serializes the referenced recipe in full, so a foreign id would expose another group's recipe.
+        """
+        recipe_id = self._parse_uuid(data.get("id"))
+        if recipe_id and self.group_recipes.get_one(recipe_id, key="id"):
+            return data
+
+        return None
+
+    def _get_data_matcher(self) -> DataMatcher:
+        if self._data_matcher is None:
+            # Exact matches only: zip imports should rematch name/plural/alias/abbreviation,
+            # not fuzzy-merge distinct foods or units from another server.
+            self._data_matcher = DataMatcher(
+                self.repos,
+                food_fuzzy_match_threshold=100,
+                unit_fuzzy_match_threshold=100,
+            )
+        return self._data_matcher
+
+    def _reset_data_matcher(self) -> None:
+        self._data_matcher = None
+
+    @staticmethod
+    def _non_empty_str(value: Any) -> str | None:
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _transform_food(self, data: dict[str, Any] | Any) -> dict[str, Any] | None:
+        # Ensures the food from the source instance exists in this group, creating it if necessary.
+        if not isinstance(data, dict):
+            return None
+
+        name = self._non_empty_str(data.get("name"))
+        if not name:
+            return None
+
+        if data.get("id") and self.repos.ingredient_foods.get_one(data["id"]):
+            return data
+
+        existing_food = self._get_data_matcher().find_food_match(name)
+        if existing_food:
+            data["id"] = existing_food.id
+            return data
+
+        create_data = CreateIngredientFood(
+            name=name,
+            plural_name=data.get("plural_name"),
+            description=data.get("description") or "",
+            aliases=data.get("aliases") or [],
+            label_id=None,
+        )
+        save_data = mapper.cast(create_data, SaveIngredientFood, group_id=self.user.group_id)
+        new_food = self.repos.ingredient_foods.create(save_data)
+        data["id"] = new_food.id
+        self._reset_data_matcher()
+        return data
+
+    def _transform_unit(self, data: dict[str, Any] | Any) -> dict[str, Any] | None:
+        # Ensures the unit from the source instance exists in this group, creating it if necessary.
+        if not isinstance(data, dict):
+            return None
+
+        name = self._non_empty_str(data.get("name"))
+        abbreviation = self._non_empty_str(data.get("abbreviation"))
+        match_value = name or abbreviation
+        if not match_value:
+            return None
+
+        if data.get("id") and self.repos.ingredient_units.get_one(data["id"]):
+            return data
+
+        matcher = self._get_data_matcher()
+        existing_unit = matcher.find_unit_match(match_value)
+        if existing_unit is None and abbreviation and abbreviation != match_value:
+            existing_unit = matcher.find_unit_match(abbreviation)
+        if existing_unit:
+            data["id"] = existing_unit.id
+            return data
+
+        create_data = CreateIngredientUnit(
+            name=match_value,
+            plural_name=data.get("plural_name"),
+            description=data.get("description") or "",
+            abbreviation=abbreviation or "",
+            plural_abbreviation=data.get("plural_abbreviation") or "",
+            fraction=data.get("fraction", True),
+            use_abbreviation=data.get("use_abbreviation", False),
+            aliases=data.get("aliases") or [],
+            standard_quantity=data.get("standard_quantity"),
+            standard_unit=data.get("standard_unit"),
+        )
+        save_data = mapper.cast(create_data, SaveIngredientUnit, group_id=self.user.group_id)
+        new_unit = self.repos.ingredient_units.create(save_data)
+        data["id"] = new_unit.id
+        self._reset_data_matcher()
+        return data
+
+    def _process_recipe_data(self, key: str, data: list | dict | Any) -> Any:
+        if isinstance(data, list):
+            items = [self._process_recipe_data(key, item) for item in data]
+            if key in ("recipe_category", "tags", "tools"):
+                # organizers that could not be resolved within the importing group are dropped
+                items = [item for item in items if item is not None]
+            return items
+
+        elif isinstance(data, str):
+            # make sure the user is valid
+            if key == "user_id":
+                return self._transform_user_id(str(data))
+
+            return data
+
+        elif not isinstance(data, dict):
+            return data
+
+        # extras is free-form user data, so it is copied as-is: walking into it would add the
+        # group and household keys stamped below to whatever the user stored there.
+        if key == "extras":
+            return data
+
+        # force group_id and household_id to match the group id of the current user
+        data["group_id"] = str(self.user.group_id)
+        data["household_id"] = str(self.user.household_id)
+
+        # make sure categories and tags and food/unit are valid
+        if key == "recipe_category":
+            return self._transform_category_or_tag(data, self.repos.categories)
+        elif key == "tags":
+            return self._transform_category_or_tag(data, self.repos.tags)
+        elif key == "food":
+            return self._transform_food(data)
+        elif key == "unit":
+            return self._transform_unit(data)
+        elif key == "tools":
+            return self._transform_tool(data)
+        elif key == "referenced_recipe":
+            return self._transform_referenced_recipe(data)
+        # recursively process other objects
+        for k, v in data.items():
+            data[k] = self._process_recipe_data(k, v)
+
+        return data
+
+    def _replace_taken_id(self, recipe: dict[str, Any]) -> dict[str, Any]:
+        """Drop the exported id when this instance already has a recipe using it.
+
+        An export carries the id of the recipe it came from, which collides as soon as the file is
+        imported back into the instance that produced it. Recipe ids are unique across every group,
+        so the lookup deliberately runs without the group and household filters, and matches on
+        `id` because the recipe repository is keyed by slug.
+        """
+        recipe_id = self._parse_uuid(recipe.get("id"))
+        if not recipe_id:
+            return recipe
+
+        all_recipes = get_repositories(self.repos.session, group_id=None, household_id=None).recipes
+        if all_recipes.get_one(recipe_id, key="id"):
+            recipe["id"] = str(uuid4())
+
+        return recipe
+
+    @staticmethod
+    def _parse_uuid(value: Any) -> UUID | None:
+        if not value:
+            return None
+        try:
+            return UUID(str(value))
+        except ValueError:
+            return None
+
+    def clean_recipe_dict(self, recipe: dict[str, Any]) -> dict[str, Any]:
+        # The checks below only recognise snake_case keys. camelCase input would skip them, and its
+        # `groupId` would win over the group stamped on each object, so normalise the keys first.
+        recipe = Recipe.model_validate(recipe).model_dump(mode="json")
+        return self._process_recipe_data("recipe", self._replace_taken_id(recipe))
+
+    def create_from_zip(self, archive: UploadFile, temp_path: Path) -> Recipe:
+        """
+        `create_from_zip` creates a recipe in the database from a zip file exported from Mealie. This is NOT
+        a generic import from a zip file.
+        """
+        with temp_path.open("wb") as buffer:
+            shutil.copyfileobj(archive.file, buffer)
+
+        recipe_dict: dict | None = None
+        recipe_image: bytes | None = None
+
+        with ZipFile(temp_path) as myzip:
+            for file in myzip.namelist():
+                if file.endswith(".json"):
+                    with myzip.open(file) as myfile:
+                        recipe_dict = json.loads(myfile.read())
+                elif file.endswith(".webp"):
+                    with myzip.open(file) as myfile:
+                        recipe_image = myfile.read()
+
+        if recipe_dict is None:
+            raise exceptions.UnexpectedNone("No json data found in Zip")
+
+        recipe = self.create_one(Recipe(**self.clean_recipe_dict(recipe_dict)))
+
+        if recipe and recipe.id:
+            data_service = RecipeDataService(recipe.id)
+
+        if recipe_image:
+            data_service.write_image(recipe_image, "webp")
+
+        return recipe
+
+    def duplicate_one(self, old_slug_or_id: str | UUID, dup_data: RecipeDuplicate) -> Recipe:
+        """Duplicates a recipe and returns the new recipe."""
+
+        old_recipe = self.get_one(old_slug_or_id)
+        new_recipe_data = old_recipe.model_dump(exclude={"id", "name", "slug", "image", "comments"}, round_trip=True)
+        new_recipe = Recipe.model_validate(new_recipe_data)
+
+        # Asset images in steps directly link to the original recipe, so we
+        # need to update them to references to the assets we copy below
+        def replace_recipe_step(step: RecipeStep) -> RecipeStep:
+            new_id = uuid4()
+            new_text = step.text.replace(str(old_recipe.id), str(new_recipe.id))
+            new_step = step.model_copy(update={"id": new_id, "text": new_text})
+            return new_step
+
+        # Copy ingredients to make them independent of the original
+        def copy_recipe_ingredient(ingredient: RecipeIngredient):
+            new_reference_id = uuid4()
+            new_ingredient = ingredient.model_copy(update={"reference_id": new_reference_id})
+            return new_ingredient
+
+        new_name = dup_data.name if dup_data.name else old_recipe.name or ""
+        new_recipe.id = uuid4()
+        new_recipe.slug = create_recipe_slug(new_name)
+        new_recipe.image = cache.cache_key.new_key() if old_recipe.image else None
+        new_recipe.recipe_instructions = (
+            None
+            if old_recipe.recipe_instructions is None
+            else list(map(replace_recipe_step, old_recipe.recipe_instructions))
+        )
+        new_recipe.recipe_ingredient = (
+            None
+            if old_recipe.recipe_ingredient is None
+            else list(map(copy_recipe_ingredient, old_recipe.recipe_ingredient))
+        )
+        new_recipe.last_made = None
+
+        new_recipe = self._recipe_creation_factory(new_name, additional_attrs=new_recipe.model_dump())
+
+        new_recipe = self.repos.recipes.create(new_recipe)
+
+        # Copy all assets (including images) to the new recipe directory
+        # This assures that replaced links in recipe steps continue to work when the old recipe is deleted
+        try:
+            new_service = RecipeDataService(new_recipe.id)
+            old_service = RecipeDataService(old_recipe.id)
+            copytree(
+                old_service.dir_data,
+                new_service.dir_data,
+                dirs_exist_ok=True,
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to copy assets from {old_recipe.slug} to {new_recipe.slug}: {e}")
+
+        return new_recipe
+
+    def has_recursive_recipe_link(self, recipe: Recipe, path: set[str] | None = None):
+        """Recursively checks if a recipe links to itself through its ingredients."""
+        if path is None:
+            path = set()
+
+        recipe_id = str(getattr(recipe, "id", None))
+
+        # Check if this recipe is already in the current path (cycle detected)
+        if recipe_id in path:
+            return True
+
+        # Add to the current path
+        path.add(recipe_id)
+
+        try:
+            ingredients = getattr(recipe, "recipe_ingredient", [])
+            for ing in ingredients:
+                try:
+                    sub_recipe = self.get_one(ing.referenced_recipe.id)
+                except AttributeError, exceptions.NoEntryFound:
+                    continue
+
+                # Recursively check - path is modified in place and cleaned up via backtracking
+                if self.has_recursive_recipe_link(sub_recipe, path):
+                    return True
+        finally:
+            # Backtrack: remove this recipe from the path when done exploring this branch
+            path.discard(recipe_id)
+
+        return False
+
+    def _pre_update_check(self, slug_or_id: str | UUID, new_data: Recipe) -> Recipe:
+        """
+        gets the recipe from the database and performs a check to see if the user can update the recipe.
+        If the user can't update the recipe, an exception is raised.
+
+        Checks:
+            - That the recipe exists
+            - That the user can update the recipe (recipe is not locked or the user is the owner)
+            - _if_ the user is locking the recipe, that they can lock the recipe (user is the owner)
+
+        Args:
+            slug_or_id (str | UUID): recipe slug or id
+            new_data (Recipe): the new recipe data
+
+        Raises:
+            exceptions.PermissionDenied (403)
+        """
+
+        recipe = self.get_one(slug_or_id)
+
+        if recipe is None or recipe.settings is None:
+            raise exceptions.NoEntryFound("Recipe not found.")
+
+        if not self.can_update([recipe.slug]):
+            raise exceptions.PermissionDenied("You do not have permission to edit this recipe.")
+
+        setting_lock = new_data.settings is not None and recipe.settings.locked != new_data.settings.locked
+        if setting_lock and not self.can_lock_unlock(recipe):
+            raise exceptions.PermissionDenied("You do not have permission to lock/unlock this recipe.")
+
+        if self.has_recursive_recipe_link(new_data):
+            raise exceptions.RecursiveRecipe("Recursive recipe link detected. Update aborted.")
+
+        return recipe
+
+    @staticmethod
+    def _preserve_omitted_image(recipe: Recipe, update_data: Recipe) -> Recipe:
+        """Keeps the stored image when the payload doesn't mention it.
+
+        Updates are a full overwrite, so a client that round-trips a recipe without echoing
+        `image` back would otherwise clear it. The image files stay on disk, leaving a recipe
+        that has a picture but no longer says so - which reads to the frontend as "no image".
+        The image is owned by the `/{slug}/image` endpoints; an update only carries it along.
+        """
+        if "image" not in update_data.model_fields_set:
+            update_data.image = recipe.image
+
+        return update_data
+
+    def _remove_non_existent_ingredient_references(self, update_data: Recipe) -> Recipe:
+        """Removes the references of ingredients from steps that no longer exist."""
+
+        current_ingredient_reference_ids = set()  # set of current ingredient(s) reference id's
+        for ingredient in update_data.recipe_ingredient:
+            current_ingredient_reference_ids.add(ingredient.reference_id)
+
+        recipe_instructions = update_data.recipe_instructions
+        if recipe_instructions is not None:
+            for instruction in recipe_instructions:
+                instruction.ingredient_references = [
+                    ref
+                    for ref in instruction.ingredient_references
+                    if ref.reference_id in current_ingredient_reference_ids
+                ]
+
+        return update_data
+
+    def _remove_non_existent_note_references(self, update_data: Recipe) -> Recipe:
+        """Removes the references to notes from steps when the note no longer exists on the recipe."""
+
+        current_note_reference_ids = {note.reference_id for note in (update_data.notes or [])}
+
+        recipe_instructions = update_data.recipe_instructions
+        if recipe_instructions is not None:
+            for instruction in recipe_instructions:
+                instruction.note_references = [
+                    ref for ref in instruction.note_references if ref.reference_id in current_note_reference_ids
+                ]
+
+        return update_data
+
+    def _resolve_ingredient_sub_recipes(self, update_data: Recipe) -> Recipe:
+        """Resolve all referenced_recipe slugs to IDs within the current group."""
+        if not update_data.recipe_ingredient:
+            return update_data
+
+        for ingredient in update_data.recipe_ingredient:
+            if ingredient.referenced_recipe:
+                ref = ingredient.referenced_recipe
+                # If no id, resolve by slug
+                if not ref.id and ref.slug:
+                    recipe = self.group_recipes.get_by_slug(self.user.group_id, ref.slug)
+                    if not recipe:
+                        raise exceptions.NoEntryFound(f"Referenced recipe '{ref.slug}' not found in this group")
+                    ref.id = recipe.id
+                # If id is provided, verify it belongs to this group
+                elif ref.id:
+                    recipe = self.group_recipes.get_one(ref.id, key="id")
+                    if not recipe:
+                        raise exceptions.NoEntryFound(f"Referenced recipe with id '{ref.id}' not found in this group")
+
+        return update_data
+
+    def update_one(self, slug_or_id: str | UUID, update_data: Recipe) -> Recipe:
+        recipe = self._pre_update_check(slug_or_id, update_data)
+
+        # A PUT replaces the whole recipe, so a body that omits the name would blank it out.
+        # Nothing downstream can cope with that, so reject it before the update rather than
+        # failing deeper in. This runs after the checks above so that a missing or forbidden
+        # recipe still answers 404 or 403 regardless of what the body contains.
+        if not update_data.name:
+            raise exceptions.MissingRequiredData("Recipe name is required")
+
+        update_data = self._preserve_omitted_image(recipe, update_data)
+        update_data = self._remove_non_existent_ingredient_references(update_data)
+        update_data = self._remove_non_existent_note_references(update_data)
+        update_data = self._resolve_ingredient_sub_recipes(update_data)
+
+        new_data = self.group_recipes.update(recipe.slug, update_data)
+        self.check_assets(new_data, recipe.slug)
+        return new_data
+
+    def update_recipe_image(self, slug: str, image: bytes, extension: str):
+        recipe = self.get_one(slug)
+        if not self.can_update([recipe.slug]):
+            raise exceptions.PermissionDenied("You do not have permission to edit this recipe.")
+
+        data_service = RecipeDataService(recipe.id)
+        data_service.write_image(image, extension)
+
+        return self.group_recipes.update_image(slug, extension)
+
+    def delete_recipe_image(self, slug: str) -> None:
+        recipe = self.get_one(slug)
+        if not self.can_update([recipe.slug]):
+            raise exceptions.PermissionDenied("You do not have permission to edit this recipe.")
+
+        data_service = RecipeDataService(recipe.id)
+        data_service.delete_image()
+
+        self.group_recipes.delete_image(slug)
+        return None
+
+    def patch_one(self, slug_or_id: str | UUID, patch_data: Recipe) -> Recipe:
+        recipe: Recipe = self._pre_update_check(slug_or_id, patch_data)
+
+        new_data = self.group_recipes.patch(recipe.slug, patch_data.model_dump(exclude_unset=True))
+
+        self.check_assets(new_data, recipe.slug)
+        return new_data
+
+    def update_last_made(self, slug_or_id: str | UUID, timestamp: datetime) -> Recipe:
+        # we bypass the pre update check since any user can update a recipe's last made date, even if it's locked,
+        # or if the user belongs to a different household
+
+        household_service = HouseholdService(self.user.group_id, self.user.household_id, self.repos)
+        household_service.set_household_recipe(slug_or_id, HouseholdRecipeUpdate(last_made=timestamp))
+
+        return self.get_one(slug_or_id)
+
+    def delete_one(self, slug_or_id: str | UUID) -> Recipe:
+        recipe = self.get_one(slug_or_id)
+        resp = self.delete_many([recipe.slug])
+        return resp[0]
+
+    def delete_many(self, recipe_slugs: list[str]) -> list[Recipe]:
+        if not self.can_delete(recipe_slugs):
+            if len(recipe_slugs) == 1:
+                msg = "You do not have permission to delete this recipe."
+            else:
+                msg = "You do not have permission to delete all of these recipes."
+            raise exceptions.PermissionDenied(msg)
+
+        data = self.group_recipes.delete_many(recipe_slugs)
+        for r in data:
+            try:
+                self.delete_assets(r)
+            except Exception:
+                self.logger.exception(f"Failed to delete recipe assets for {r.slug}")
+
+        return data
+
+    # =================================================================
+    # Recipe Template Methods
+
+    def render_template(self, recipe: Recipe, temp_dir: Path, template: str) -> Path:
+        t_service = TemplateService(temp_dir)
+        return t_service.render(recipe, template)

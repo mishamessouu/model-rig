@@ -1,0 +1,54 @@
+Wrong fix: filters the nested run.modelVersions field by the user's
+registered-model grants, but reads the grants of the default workspace
+only. Without workspaces it works. With workspaces on, a grant in the
+requested workspace does not count, so a permitted model is hidden, and a
+grant in the default workspace counts in every workspace.
+
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5085,6 +5085,22 @@
+     return _graphql_get_permission_for_model(model_name, username).can_read
+ 
+ 
++def _default_workspace_readable_models(username: str) -> Callable[[str], bool]:
++    user = store.get_user(username)
++    names: set[str] = set()
++    wildcard = False
++    for pattern, permission in store.list_role_grants_for_user_in_workspace(
++        user.id, DEFAULT_WORKSPACE_NAME, "registered_model"
++    ):
++        if not get_permission(permission).can_read:
++            continue
++        if pattern == "*":
++            wildcard = True
++        else:
++            names.add(pattern)
++    return lambda name: wildcard or name in names
++
++
+ class GraphQLAuthorizationMiddleware:
+     """
+     Graphene middleware that enforces per-object authorization for GraphQL queries.
+@@ -5118,7 +5134,10 @@
+         """
+         field_name = info.field_name
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        nested_model_versions = (
++            info.parent_type.name == "MlflowRunExtension" and field_name == "modelVersions"
++        )
++        if field_name not in self.PROTECTED_FIELDS and not nested_model_versions:
+             return next(root, info, **args)
+ 
+         try:
+@@ -5196,6 +5215,9 @@
+         """Apply post-resolution filtering on GraphQL results."""
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if field_name == "modelVersions":
++            readable = _default_workspace_readable_models(username)
++            return [mv for mv in result if readable(mv.name)]
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):

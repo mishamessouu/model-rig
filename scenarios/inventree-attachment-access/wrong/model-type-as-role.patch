@@ -1,0 +1,50 @@
+Wrong fix: uses the attachment's model_type as the role name. That
+works for "part", where model and role share a name, but no role is
+named "stockitem" (stock items sit under the "stock" role). So no
+non-superuser can see a stock item's attachments any more, even with
+stock view permission. Secure, but the both-roles regression test must
+catch it.
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..765f3e2 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -806,6 +806,18 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Only list attachments whose model type the user has the view role for."""
++        from users.permissions import check_user_role
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        model_types = queryset.values_list('model_type', flat=True).distinct()
++        allowed = [mt for mt in model_types if check_user_role(user, mt, 'view')]
++
++        return queryset.filter(model_type__in=allowed)
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +844,19 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an attachment, if the user has the view role for its model type."""
++        from users.permissions import check_user_role
++
++        attachment = self.get_object()
++
++        if not check_user_role(request.user, attachment.model_type, 'view'):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()

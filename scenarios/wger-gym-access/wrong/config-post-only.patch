@@ -1,0 +1,17 @@
+Partial fix: compares the config's gym on POST only. The write is
+refused, but a GET still shows the other gym's config in the edit form.
+The not-shown test must catch it.
+
+diff --git a/wger/gym/views/config.py b/wger/gym/views/config.py
+index 928f81f..ab77b1d 100644
+--- a/wger/gym/views/config.py
++++ b/wger/gym/views/config.py
+@@ -50,7 +50,7 @@ class GymConfigUpdateView(WgerFormMixin, LoginRequiredMixin, PermissionRequiredM
+         """
+         if request.user.has_perm('gym.change_gymconfig'):
+             gym_id = request.user.userprofile.gym_id
+-            if gym_id != int(self.kwargs['pk']):
++            if request.method == 'POST' and gym_id != self.get_object().gym_id:
+                 return HttpResponseForbidden()
+         return super(GymConfigUpdateView, self).dispatch(request, *args, **kwargs)
+ 

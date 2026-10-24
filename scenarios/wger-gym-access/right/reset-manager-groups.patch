@@ -1,0 +1,29 @@
+Right fix in another shape, for three defects: a user without
+manage_gyms may reset only an account in no staff group, and not a
+staff account or a superuser. It reads group names, not permissions, so
+a deactivated account counts too (s6). General managers still reset
+each other (s5).
+
+Fixes: s3-reset-password-higher-role, s4-reset-password-gym-staff, s6-reset-password-deactivated-role
+
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..230c696 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -266,6 +266,16 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # A gym manager may only reset the password of a member without a role
++    if not request.user.has_perm('gym.manage_gyms') and (
++        user.is_superuser
++        or user.is_staff
++        or user.groups.filter(
++            name__in=('admin', 'general_gym_manager', 'gym_manager', 'gym_trainer')
++        ).exists()
++    ):
++        return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

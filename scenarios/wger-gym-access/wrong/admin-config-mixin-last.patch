@@ -1,0 +1,28 @@
+Wrong fix: adds WgerPermissionMixin after UpdateView in the bases.
+View.dispatch() does not call super(), so the mixin's dispatch() never
+runs, and an owner without the permission still edits. The defect tests
+must catch it.
+
+diff --git a/wger/gym/views/admin_config.py b/wger/gym/views/admin_config.py
+index 80846ed..5dd065a 100644
+--- a/wger/gym/views/admin_config.py
++++ b/wger/gym/views/admin_config.py
+@@ -27,13 +27,16 @@ from django.views.generic import UpdateView
+ 
+ # wger
+ from wger.gym.models import GymAdminConfig
+-from wger.utils.generic_views import WgerFormMixin
++from wger.utils.generic_views import (
++    WgerFormMixin,
++    WgerPermissionMixin,
++)
+ 
+ 
+ logger = logging.getLogger(__name__)
+ 
+ 
+-class ConfigUpdateView(WgerFormMixin, UpdateView):
++class ConfigUpdateView(WgerFormMixin, UpdateView, WgerPermissionMixin):
+     """
+     View to update an existing admin gym configuration
+     """

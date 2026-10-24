@@ -1,0 +1,52 @@
+Partial fix: checks the top-level filter items and the ordering of the
+request in get_prepare_params(). Child filters still reach Q(), and an
+ordering stored in a View still reaches F(). The child filter test and the
+added View ordering test must catch it.
+
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..e08b94d 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -276,6 +277,19 @@ def get_all_columns(project, *_):
+     return result
+ 
+ 
++def _check_inline_column(column, prefixes):
++    """Apply the FilterSerializer.validate_column rule to a column from the request."""
++    name = str(column).lstrip('-')
++    for prefix in prefixes:
++        if name.startswith(prefix):
++            name = name[len(prefix) :]
++    name = name.lstrip('-')
++    if name.startswith('data.') or name in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++        return
++    if '__' in name:
++        raise ValidationError(f'"__" is not generally allowed in filters: "{column}"')
++
++
+ def get_prepare_params(request, project):
+     """This function extract prepare_params from
+     * view_id if it's inside of request data
+@@ -320,6 +334,14 @@ def get_prepare_params(request, project):
+                 )
+         filters = data.get('filters', None)
+         ordering = data.get('ordering', [])
++        # Inline filters and ordering skip FilterSerializer, so check them here
++        if isinstance(filters, dict):
++            for item in filters.get('items') or []:
++                column = item.get('filter', '') if isinstance(item, dict) else ''
++                if column.startswith('filter:tasks:'):
++                    _check_inline_column(column, ('filter:', 'tasks:'))
++        for column in ordering or []:
++            _check_inline_column(column, ('filter:', 'tasks:'))
+         prepare_params = PrepareParams(
+             project=project.id, selectedItems=selected, data=data, filters=filters, ordering=ordering, request=request
+         )

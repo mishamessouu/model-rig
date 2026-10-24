@@ -1,0 +1,22 @@
+Wrong fix: only a superuser may reset the password of a staff account or
+a superuser. It protects the admin, who is staff, but a general manager
+is not staff, so a gym manager still takes over a general manager of
+their gym, and a general manager still takes over another one. Several
+Codex runs on 2026-10-20 chose this shape. The defect tests must catch
+it.
+
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..a8a5fba 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -266,6 +266,10 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # Staff and superuser accounts can only be reset by a superuser
++    if (user.is_staff or user.is_superuser) and not request.user.is_superuser:
++        return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

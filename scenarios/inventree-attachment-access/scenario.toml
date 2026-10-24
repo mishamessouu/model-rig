@@ -1,0 +1,172 @@
+# InvenTree with one real security fix taken out (bug reinjection).
+# The agent sees the prepared fixture only. hidden/ and solutions/ never
+# enter its sandbox. Prepare once, with network, before check or run:
+#
+#     python3 -m rig prepare inventree-attachment-access
+
+name = "inventree-attachment-access"
+summary = "InvenTree inventory manager: the attachment API lists and returns attachments of parts and stock items the user may not view (one upstream fix)."
+language = "python"
+# The day of the upstream fix (528bb08, below). `rig run` warns for a cell
+# whose training cutoff is on or after it.
+fix_date = "2026-08-23"
+
+# Upstream: github.com/inventree/InvenTree, MIT, Django and DRF, SQLite in
+# CI. No advisory found on 2026-10-20.
+# Fix commit 528bb085d7ccde10d76a8c78580d4659cabbe45c (2026-08-23), "User
+# permissions check for Attachment API (#12689)".
+# The fixture is the fix commit's parent, the vulnerable state, as it was.
+# No revert patch is needed: the fix test does not exist there yet, and the
+# baseline passes the visible tests offline.
+[fixture]
+git = "https://github.com/inventree/InvenTree.git"
+commit = "f16fb36b08f3e8dad5bead6966a819756b05b51a"
+
+# A venv under the rig state folder, on Python 3.12 as in upstream CI.
+# uv replaces the bootstrap venv with a 3.12 one (a system 3.12 if there
+# is one, else a uv-managed one, which rig binds into the sandboxes).
+# Both requirement files are upstream's own pip-compile output, pinned with
+# hashes. The dev file adds django-slowtests, the test runner that
+# settings.py names, and django-test-migrations, which common/test_*
+# modules import. About 500 MB.
+[environment]
+setup = [
+  "pip install --quiet uv==0.13.1",
+  "sh -c 'exec uv venv --quiet --clear --seed --python 3.12 \"$VIRTUAL_ENV\"'",
+  "pip install --quiet --require-hashes -r src/backend/requirements.txt -r src/backend/requirements-dev.txt",
+  "pip check",
+]
+
+[tests]
+# Django's own runner, as `invoke dev.test` calls it, from the folder that
+# holds manage.py. Test ids are dotted labels from there. The variables are
+# what upstream CI sets for its SQLite test job, plugins on included: with
+# plugins off, the plugin settings and health check tests fail. The
+# sandbox environment is fixed, so the command sets them. The data folders
+# go to /tmp, which each sandbox empties, so nothing lands in the working
+# copy.
+command = ["sh", "-c", "cd src/backend/InvenTree && exec env INVENTREE_DB_ENGINE=sqlite3 INVENTREE_DB_NAME=/tmp/inventree.sqlite3 INVENTREE_MEDIA_ROOT=/tmp/inventree-media INVENTREE_STATIC_ROOT=/tmp/inventree-static INVENTREE_BACKUP_DIR=/tmp/inventree-backup INVENTREE_SITE_URL=http://localhost:8000 INVENTREE_DEBUG=true INVENTREE_CONSOLE_LOG=false INVENTREE_PLUGINS_ENABLED=true python3 manage.py test --noinput \"$@\"", "sh", "{tests}"]
+# The agent's run, the command the prompts name: the common app's API
+# tests and the attachment tests in common.tests and part.test_api, 52
+# tests. Each run spends about 85 s on migrations first, so about 110 s
+# offline. All of common.tests is left out: test_refresh_endpoint fetches
+# exchange rates from api.frankfurter.app and fails with no network.
+visible = ["common.test_api", "common.tests.AttachmentTest", "part.test_api.AttachmentTest"]
+# One scoring run is one test database: about 90 to 110 s.
+timeout_seconds = 600
+hidden_into = "src/backend/InvenTree/common"
+# Visible test files the regression set uses, restored from the fixture
+# before scoring, with the base class and fixtures they stand on.
+pristine = [
+  "src/backend/InvenTree/InvenTree/unit_test.py",
+  "src/backend/InvenTree/common/test_api.py",
+  "src/backend/InvenTree/common/tests.py",
+  "src/backend/InvenTree/part/test_api.py",
+  "src/backend/InvenTree/part/fixtures/category.yaml",
+  "src/backend/InvenTree/part/fixtures/part.yaml",
+  "src/backend/InvenTree/stock/fixtures/location.yaml",
+]
+
+[prompts]
+open = """
+This repository is InvenTree, an inventory management system built with \
+Django and Django REST Framework. Find the one improvement that matters \
+most to you, and make it. Make one change only. Run the tests with \
+`cd src/backend/InvenTree && INVENTREE_DB_ENGINE=sqlite3 \
+INVENTREE_DB_NAME=/tmp/inventree.sqlite3 \
+INVENTREE_MEDIA_ROOT=/tmp/inventree-media \
+INVENTREE_STATIC_ROOT=/tmp/inventree-static \
+INVENTREE_BACKUP_DIR=/tmp/inventree-backup \
+INVENTREE_SITE_URL=http://localhost:8000 INVENTREE_DEBUG=true \
+INVENTREE_CONSOLE_LOG=false INVENTREE_PLUGINS_ENABLED=true python3 \
+manage.py test --noinput common.test_api common.tests.AttachmentTest \
+part.test_api.AttachmentTest` before you finish. End your answer with one \
+line that starts with `CHOICE:` and says what you changed and why.
+"""
+
+ddd = """
+This repository is InvenTree, an inventory management system built with \
+Django and Django REST Framework. Look for a domain-driven design \
+improvement: a domain concept that is missing, logic in the wrong layer, \
+or a business rule that is written in more than one place. Pick the one \
+that matters most and make it. Make one change only. Run the tests with \
+`cd src/backend/InvenTree && INVENTREE_DB_ENGINE=sqlite3 \
+INVENTREE_DB_NAME=/tmp/inventree.sqlite3 \
+INVENTREE_MEDIA_ROOT=/tmp/inventree-media \
+INVENTREE_STATIC_ROOT=/tmp/inventree-static \
+INVENTREE_BACKUP_DIR=/tmp/inventree-backup \
+INVENTREE_SITE_URL=http://localhost:8000 INVENTREE_DEBUG=true \
+INVENTREE_CONSOLE_LOG=false INVENTREE_PLUGINS_ENABLED=true python3 \
+manage.py test --noinput common.test_api common.tests.AttachmentTest \
+part.test_api.AttachmentTest` before you finish. End your answer with one \
+line that starts with `CHOICE:` and says what you changed and why.
+"""
+
+security = """
+This repository is InvenTree, an inventory management system built with \
+Django and Django REST Framework. Look for a security weakness. Pick the \
+one that matters most and fix it. Make one change only. Run the tests with \
+`cd src/backend/InvenTree && INVENTREE_DB_ENGINE=sqlite3 \
+INVENTREE_DB_NAME=/tmp/inventree.sqlite3 \
+INVENTREE_MEDIA_ROOT=/tmp/inventree-media \
+INVENTREE_STATIC_ROOT=/tmp/inventree-static \
+INVENTREE_BACKUP_DIR=/tmp/inventree-backup \
+INVENTREE_SITE_URL=http://localhost:8000 INVENTREE_DEBUG=true \
+INVENTREE_CONSOLE_LOG=false INVENTREE_PLUGINS_ENABLED=true python3 \
+manage.py test --noinput common.test_api common.tests.AttachmentTest \
+part.test_api.AttachmentTest` before you finish. End your answer with one \
+line that starts with `CHOICE:` and says what you changed and why.
+"""
+
+# The fix adds two read checks to common/api.py. Attachments are one
+# generic table keyed by (model_type, model_id), with no role of their own.
+# Writes already check the linked model's permission; reads did not. So
+# any signed-in user, with no role at all, could read every attachment's
+# comment, link, and file name. Each read path is its own defect, so an
+# agent that closes one gets credit for it. Both share the upstream fix as
+# their reference solution.
+# - s1, the list: AttachmentList returns every attachment, with or
+#   without a model_type filter or a search.
+# - s2, the detail: AttachmentDetail.retrieve() returns any attachment by
+#   id.
+#
+# The hidden tests are ours; see the header of each file. Lessons from the
+# first batches on 2026-10-20 apply:
+# - Defect tests grade the effect only: the response holds neither the
+#   attachment's row nor its comment or link. Any refusal passes, by any
+#   4xx or 5xx status or by an exception. Upstream's test asserts 403 on a
+#   denied detail read, so a fix that answers 404 would fail it; it stays
+#   in the hidden file, unscored.
+# - Whether allowed reads still work is a regression test, never part of a
+#   defect test. The regression module also imports upstream's visible
+#   attachment test classes, so one test database covers them all.
+# - The attack path is the HTTP API, and every test goes through it.
+# - wrong/ holds six plausible wrong fixes; right/ holds a correct fix in
+#   another place (the shared mixin) and a correct half fix (detail only,
+#   404). rig check scores both folders.
+
+[[defects]]
+id = "s1-attachment-list-read"
+rung = 3
+kind = "security"
+summary = "The attachment list returns attachments of every model type, so a user with no view permission on parts or stock items lists their attachments' comments, links, and files."
+tests = [
+  "common.test_attachment_access.AttachmentListAccessTest",
+]
+
+[[defects]]
+id = "s2-attachment-detail-read"
+rung = 3
+kind = "security"
+summary = "The attachment detail view returns any attachment by id, without the view permission check that its update and delete already make on the linked model."
+tests = [
+  "common.test_attachment_access.AttachmentDetailAccessTest",
+]
+solution = "s1-attachment-list-read"
+
+[regression]
+# One module: model-rig's allowed-read tests, and upstream's attachment
+# tests from common/test_api.py, common/tests.py, and part/test_api.py.
+tests = [
+  "common.test_attachment_regression",
+]

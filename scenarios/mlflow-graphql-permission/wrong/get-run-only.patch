@@ -1,0 +1,29 @@
+Wrong fix: filters the nested run.modelVersions field by model
+permission when the query starts at mlflowGetRun, but not when it starts
+at mlflowSearchRuns. The same versions still leak through runs { ... }.
+
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5118,7 +5118,10 @@
+         """
+         field_name = info.field_name
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        nested_model_versions = (
++            field_name == "modelVersions" and info.path.as_list()[0] == "mlflowGetRun"
++        )
++        if field_name not in self.PROTECTED_FIELDS and not nested_model_versions:
+             return next(root, info, **args)
+ 
+         try:
+@@ -5196,6 +5199,9 @@
+         """Apply post-resolution filtering on GraphQL results."""
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if field_name == "modelVersions":
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):

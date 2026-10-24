@@ -1,0 +1,18 @@
+Over-broad fix: drops every sub-recipe link in an imported zip, under both
+key spellings, own sub-recipes too. A reimport of the group's own recipe
+loses its sub-recipes, so the regression set must catch it.
+
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..d5f618f 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -396,6 +396,9 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_food(data)
+         elif key == "unit":
+             return self._transform_unit(data)
++        elif key in ("referenced_recipe", "referencedRecipe"):
++            # a zip cannot prove where a sub-recipe came from, so never link one
++            return None
+         # recursively process other objects
+         for k, v in data.items():
+             data[k] = self._process_recipe_data(k, v)

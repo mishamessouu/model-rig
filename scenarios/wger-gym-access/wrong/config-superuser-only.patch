@@ -1,0 +1,17 @@
+Wrong fix: refuses the edit to every user who is not a superuser. No
+other gym's config changes, but no manager edits their own gym's config
+any more. The own-gym regression tests must catch it.
+
+diff --git a/wger/gym/views/config.py b/wger/gym/views/config.py
+index 928f81f..aafd5ae 100644
+--- a/wger/gym/views/config.py
++++ b/wger/gym/views/config.py
+@@ -48,6 +48,8 @@ class GymConfigUpdateView(WgerFormMixin, LoginRequiredMixin, PermissionRequiredM
+         """
+         Only managers for this gym can add new members
+         """
++        if not request.user.is_superuser:
++            return HttpResponseForbidden()
+         if request.user.has_perm('gym.change_gymconfig'):
+             gym_id = request.user.userprofile.gym_id
+             if gym_id != int(self.kwargs['pk']):

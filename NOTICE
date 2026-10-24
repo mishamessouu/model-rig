@@ -6,12 +6,30 @@ This product is licensed under the Apache License, Version 2.0. See LICENSE.
 Third-party files
 -----------------
 
-The files under scenarios/wger-log-idor/hidden/ and
-scenarios/wger-log-idor/solutions/ are copied unchanged from wger
-(https://github.com/wger-project/wger). They are licensed under the
-GNU Affero General Public License, version 3 or (at your option) any later
-version, not under Apache-2.0. See scenarios/wger-log-idor/LICENSE-NOTICE.md
-for the upstream commit ids and the exact file list.
+Some files under scenarios/<name>/hidden/, scenarios/<name>/solutions/,
+scenarios/<name>/wrong/, and scenarios/<name>/right/ are copied from, or
+contain lines of, the upstream project that the scenario tests. They keep
+the upstream licence. Each scenario folder with such files has a
+LICENSE-NOTICE.md with the upstream commit ids, the exact file list, and
+what changed.
 
-The rig does not include or distribute the wger application itself.
-`model-rig prepare wger-log-idor` fetches it from upstream at a pinned commit.
+  scenarios/wger-log-idor/          wger, AGPL-3.0-or-later
+  scenarios/wger-gym-access/        wger, AGPL-3.0-or-later
+  scenarios/mealie-zip-import-idor/ mealie, AGPL-3.0-only
+  scenarios/changedetection-processor-traversal/
+                                    changedetection.io, Apache-2.0
+  scenarios/labelstudio-orm-traversal/
+                                    Label Studio, Apache-2.0
+                                    (Copyright (c) 2019-2021 Heartex, Inc.)
+  scenarios/mlflow-graphql-permission/
+                                    MLflow, Apache-2.0
+                                    (Copyright 2018 Databricks, Inc.)
+  scenarios/inventree-attachment-access/
+                                    InvenTree, MIT
+                                    (Copyright (c) 2017 - InvenTree Developers)
+
+The AGPL files are not licensed under Apache-2.0.
+
+The rig does not include or distribute any of these applications.
+`model-rig prepare <scenario>` fetches each one from upstream at a pinned
+commit.

@@ -1,0 +1,64 @@
+Right fix in another place, for one defect: a helper in wger/gym/helpers.py
+says whether an account is a general manager or a superuser, from the
+permission tables, and the view refuses a general manager who targets
+one. The gym manager's paths (s3, s4) stay open.
+
+Fixes: s5-reset-password-general-manager
+
+diff --git a/wger/gym/helpers.py b/wger/gym/helpers.py
+index 2fa3f30..13ab9fc 100644
+--- a/wger/gym/helpers.py
++++ b/wger/gym/helpers.py
+@@ -76,6 +76,25 @@ def is_same_gym(user_a, user_b):
+     return gym_a is not None and gym_a == gym_b
+ 
+ 
++def is_top_account(user):
++    """
++    Whether the account is a superuser or holds manage_gyms, also when it
++    is deactivated
++    """
++    # Django
++    from django.contrib.auth.models import Permission
++    from django.db.models import Q
++
++    return (
++        user.is_superuser
++        or Permission.objects.filter(
++            Q(user=user) | Q(group__user=user),
++            content_type__app_label='gym',
++            codename='manage_gyms',
++        ).exists()
++    )
++
++
+ def is_any_gym_admin(user):
+     """
+     Small utility that checks that the user object has any administrator
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..688d135 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -74,6 +74,7 @@ from wger.gym.helpers import (
+     get_permission_list,
+     is_any_gym_admin,
+     is_same_gym,
++    is_top_account,
+     sanitize_csv_cell,
+ )
+ from wger.gym.models import (
+@@ -266,6 +267,14 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # Only a superuser resets a general manager or a superuser
++    if (
++        request.user.has_perm('gym.manage_gyms')
++        and not request.user.is_superuser
++        and is_top_account(user)
++    ):
++        return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

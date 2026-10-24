@@ -1,0 +1,25 @@
+Wrong fix: hides every attachment from a user who is not staff, and
+shows every attachment to a staff user. A staff user with no role still
+lists and reads the attachments of parts and stock items. The test user
+is staff, as in upstream's tests, so the defect tests must catch it.
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..73fc26a 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,15 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Only staff users may see attachments."""
++        queryset = super().get_queryset()
++
++        if not self.request.user.is_staff:
++            return queryset.none()
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

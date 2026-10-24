@@ -1,0 +1,20 @@
+Wrong fix: add_watch() drops every processor but the default, so an
+import or API call can no longer create a restock watch. The
+known-processor regression test must catch it.
+
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..557c8a7 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -778,6 +778,11 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+         if apply_extras.get('tags'):
+             apply_extras['tags'] = list(set(apply_extras.get('tags')))
+ 
++        # Only the default processor is trusted from add_watch() callers
++        if apply_extras.get('processor') and apply_extras['processor'] != 'text_json_diff':
++            logger.error(f"Ignoring processor {apply_extras['processor']!r} when adding '{url}'")
++            del apply_extras['processor']
++
+         # If the processor also has its own Watch implementation
+         watch_class = get_custom_watch_obj_for_processor(apply_extras.get('processor'))
+         new_watch = watch_class(datastore_path=self.datastore_path, __datastore=self.__data, url=url)

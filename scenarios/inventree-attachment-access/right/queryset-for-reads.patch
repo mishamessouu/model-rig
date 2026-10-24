@@ -1,0 +1,40 @@
+Right fix in another place: one get_queryset() on AttachmentMixin hides,
+for reads, every attachment whose linked model the user may not view. It
+covers the list and the detail view at once. A hidden detail answers
+404, not 403. Writes keep the checks they already have.
+
+Fixes: s1-attachment-list-read, s2-attachment-detail-read
+
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..bbdd37a 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,28 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """For reads, hide attachments whose linked model the user may not view."""
++        from rest_framework.permissions import SAFE_METHODS
++
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        if self.request.method not in SAFE_METHODS:
++            # Writes keep their own checks against the linked model
++            return queryset
++
++        viewable = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'view')
++        ]
++
++        return queryset.filter(model_type__in=viewable)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

@@ -1,0 +1,35 @@
+Wrong fix: refuses a processor name that holds "..", in
+save_processor_config() and in add_watch(). An absolute name such as
+"/tmp/x/pwned" has no ".." and still escapes the watch folder. The
+absolute-name tests (model-rig additions) must catch it.
+
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..523078e 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -456,6 +456,10 @@ def save_processor_config(datastore, watch_uuid, config_data):
+ 
+         processor_name = watch.get('processor', 'text_json_diff')
+ 
++        if '..' in processor_name:
++            logger.error(f"Refusing processor name with a parent reference: {processor_name!r}")
++            return False
++
+         # Create a processor instance to access config methods
+         processor_instance = difference_detection_processor(datastore, watch_uuid)
+ 
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..bf7a2fe 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -778,6 +778,10 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+         if apply_extras.get('tags'):
+             apply_extras['tags'] = list(set(apply_extras.get('tags')))
+ 
++        if '..' in (apply_extras.get('processor') or ''):
++            logger.error(f"Ignoring processor with a parent reference when adding '{url}'")
++            del apply_extras['processor']
++
+         # If the processor also has its own Watch implementation
+         watch_class = get_custom_watch_obj_for_processor(apply_extras.get('processor'))
+         new_watch = watch_class(datastore_path=self.datastore_path, __datastore=self.__data, url=url)

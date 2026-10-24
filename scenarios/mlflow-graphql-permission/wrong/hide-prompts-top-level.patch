@@ -1,0 +1,23 @@
+Wrong fix: changes only the top-level mlflowSearchModelVersions
+filter, and drops every prompt version for a user who is not an admin.
+The prompt leak is gone, but a user with a prompt grant still sees no
+prompt version, unlike the REST search. The nested run.modelVersions
+field stays unfiltered.
+
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5202,7 +5202,12 @@
+         """Filter model versions the user doesn't have read access to."""
+         can_read = _role_based_read_predicate(username, "registered_model")
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            # Prompt versions share this response; keep them out of GraphQL.
++            filtered = [
++                mv
++                for mv in result.model_versions
++                if not _entity_is_prompt(mv) and can_read(mv.name)
++            ]
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result

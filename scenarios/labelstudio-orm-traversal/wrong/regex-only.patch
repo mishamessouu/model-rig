@@ -1,0 +1,24 @@
+Wrong fix: refuses only the regex operator on a related column. Any other
+operator, such as contains, still leaks the value, and ordering stays open.
+The added contains test must catch it.
+
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..bf874be 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -797,6 +797,15 @@ def apply_filters(queryset, filters, project, request):
+ 
+             # django orm loop expression attached to column name
+             field_name, _ = preprocess_field_name(_filter.filter, project)
++            # A regex over a related column is a character-by-character oracle
++            # (CVE-2023-47117), so refuse it outside task.data and the allowlist
++            if (
++                _filter.operator == Operator.REGEX
++                and '__' in field_name
++                and not field_name.startswith('data__')
++                and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++            ):
++                raise ValidationError(f'Regex filters over related fields are not allowed: "{field_name}"')
+             if _is_stale_agreement_field(queryset, field_name):
+                 logger.warning('Skipping stale agreement filter field: %s', field_name)
+                 continue

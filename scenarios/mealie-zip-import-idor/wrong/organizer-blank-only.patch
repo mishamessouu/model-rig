@@ -1,0 +1,35 @@
+Partial fix: drops a category or tag with a blank slug instead of passing
+its id through, but leaves camelCase input alone. A recipeCategory key
+skips the check, and its groupId wins, so another group's category is
+still linked. Tools and sub-recipes stay open too.
+
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..8214c90 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -260,10 +260,11 @@ class RecipeService(RecipeServiceBase):
+             # default to the current user
+             return str(self.user.id)
+ 
+-    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
++    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict | None:
+         slug = data.get("slug")
+         if not slug:
+-            return data
++            # no slug to resolve within the group, so drop the incoming id
++            return None
+ 
+         # if the item exists, return the actual data
+         query = repo.get_one(slug, "slug")
+@@ -366,7 +367,10 @@ class RecipeService(RecipeServiceBase):
+ 
+     def _process_recipe_data(self, key: str, data: list | dict | Any) -> Any:
+         if isinstance(data, list):
+-            return [self._process_recipe_data(key, item) for item in data]
++            items = [self._process_recipe_data(key, item) for item in data]
++            if key in ("recipe_category", "tags"):
++                items = [item for item in items if item is not None]
++            return items
+ 
+         elif isinstance(data, str):
+             # make sure the user is valid

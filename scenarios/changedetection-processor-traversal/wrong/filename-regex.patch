@@ -1,0 +1,21 @@
+Wrong fix: applies a safe-name pattern to the whole config file name in
+update_extra_watch_config(). The pattern has no dot, so it refuses every
+"<processor>.json" and no processor config is saved any more. The
+legitimate-save regression test must catch it.
+
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..18e31b2 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -350,6 +350,11 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        import re
++        if not re.fullmatch(r'[A-Za-z0-9_-]+', filename or ''):
++            logger.error(f"Refusing unsafe watch config filename {filename!r}")
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 

@@ -1,0 +1,18 @@
+Wrong fix: lets a manager in when the URL pk or the config's gym matches
+the manager's gym. It repairs the own-gym edit, but config 2 of gym 3
+still opens for a manager of gym 2, because the URL pk matches. The
+other-gym tests must catch it.
+
+diff --git a/wger/gym/views/config.py b/wger/gym/views/config.py
+index 928f81f..52e2a78 100644
+--- a/wger/gym/views/config.py
++++ b/wger/gym/views/config.py
+@@ -50,7 +50,7 @@ class GymConfigUpdateView(WgerFormMixin, LoginRequiredMixin, PermissionRequiredM
+         """
+         if request.user.has_perm('gym.change_gymconfig'):
+             gym_id = request.user.userprofile.gym_id
+-            if gym_id != int(self.kwargs['pk']):
++            if gym_id != int(self.kwargs['pk']) and gym_id != self.get_object().gym_id:
+                 return HttpResponseForbidden()
+         return super(GymConfigUpdateView, self).dispatch(request, *args, **kwargs)
+ 
