@@ -367,8 +367,8 @@ Design decisions and their reasons: [`docs/design.md`](docs/design.md).
 Each real scenario pins the parent of an upstream fix, so its defects are
 real. Its folder has a `LICENSE-NOTICE.md` with the upstream commits.
 Every fix and its test are public upstream, so none of these is a
-held-out test. The two scenarios with no public results have batches in
-the lab that are not published yet.
+held-out test. wger-gym-access has its Claude batch public. Its Codex
+batch is held, because one run in it touches an unfixed hole.
 
 Every scenario has three prompts: `open` (find the improvement that
 matters most), `ddd` (a domain-design improvement), and `security`. Each
