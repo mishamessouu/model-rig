@@ -24,8 +24,8 @@ Check the demo scenario.
 
     model-rig check booking-ladder
 
-The tests need `bwrap`, git, and Python 3.11 or later. They do not need a
-prepared wger fixture or a sign-in.
+The tests need `bwrap`, git, Node.js with npm, and Python 3.11 or later.
+They do not need a prepared fixture, the network, or a sign-in.
 
 ## Rules
 
@@ -42,6 +42,10 @@ prepared wger fixture or a sign-in.
 - **Third-party files keep their licence.** Add a `LICENSE-NOTICE.md`
   next to them with the upstream URL and commit, and name them in
   `NOTICE`.
+- **Report unfixed holes privately.** A run can find a real hole that
+  upstream has not fixed. Report it to upstream privately, and do not
+  describe it in a public issue or pull request until upstream has
+  answered or 90 days have passed.
 - **Real runs cost money or quota.** Fake cells in
   `tests/matrix-fake.toml` are free; use them to test the pipeline.
 

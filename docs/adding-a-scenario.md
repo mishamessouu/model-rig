@@ -15,6 +15,10 @@ scenarios/<name>/
   solutions/<id>/    one reference fix per defect, as files that overlay the app
   repo/              the app itself (only when there is no [fixture])
   revert.patch       optional: a patch that takes the fix out again
+  wrong/*.patch      optional: known wrong fixes; none may score as a success
+  right/*.patch      optional: known correct fixes in another place or shape
+  triage.toml        optional: real holes that runs found outside the defects
+  LICENSE-NOTICE.md  the upstream licence of copied files
 ```
 
 ## Bug reinjection, step by step
@@ -46,9 +50,12 @@ scenarios/<name>/
 |---|---|---|
 | `name` | yes | Must match the folder name |
 | `summary`, `language` | no | For people reading the file |
+| `fix_date` | no | Date of the upstream fix, `"YYYY-MM-DD"`. Each result records whether it came after the cell's training `cutoff` |
+| `control` | no | `true` for a control scenario with no defects (design decision 12) |
 | `[fixture] git`, `commit` | no | Upstream app; without it the rig uses `repo/` |
 | `[fixture] patch` | no | Patch applied after checkout, relative to the scenario folder |
 | `[environment] setup` | no | Commands run in the fixture with a fresh venv first on `PATH` |
+| `[environment] kind` | no | `python` (default) or `node`. A Node environment is a `node_modules` folder bound read-only over the copy (design decision 11) |
 | `[tests] command` | no | Test command; `{tests}` becomes zero or more test ids. Default `python3 -m unittest -q {tests}` |
 | `[tests] visible` | no | Test ids for the visible run; empty runs the bare command |
 | `[tests] hidden_into` | no | Where `hidden/` lands in the scoring copy. Default `hidden` |
@@ -79,6 +86,14 @@ Check the scenario. This makes no model call.
 - Each reference fix fixes exactly the defects that name it, no more and
   no fewer.
 - No reference fix breaks the visible tests or the regression tests.
+- No patch in `wrong/` scores as a success.
+- Each patch in `right/` fixes exactly the defects that its `Fixes: <id>`
+  line names, with the regression tests passing. So a hidden test that
+  grades where a fix sits, not what it does, fails the check.
+
+A control scenario has no defects, so `check` asks only that the fixture
+passes its visible and regression tests, and that it has no
+`solutions/`, `wrong/`, or `right/` folder.
 
 Then run fake cells end to end, for free:
 
@@ -95,8 +110,9 @@ A model that has seen a fix, or this scenario's hidden files, is no
 longer tested on finding it.
 
 - **Keep held-out scenarios private.** Build them in a private copy of
-  this repository and publish results, not `hidden/` or `solutions/`. A public scenario is a
-  demo and a regression test for the rig, not a held-out test.
+  this repository and publish results, not `hidden/` or `solutions/`. A
+  public scenario is a demo and a regression test for the rig, not a
+  held-out test.
 - **Prefer fixes after a model's training cutoff.** Record the fix date
   in `scenario.toml` and compare it with each model's cutoff before a
   batch. Fixes with no published advisory yet are less likely to be known.
@@ -104,3 +120,18 @@ longer tested on finding it.
   agent cannot look up the advisory during a run.
 - **Never paste** hidden tests or reference fixes into a prompt, an issue,
   or a chat with a model you plan to test.
+
+## Triage records
+
+A run can fix a real hole that the scenario did not plant. The hidden
+tests then score it as "other change". After you read such runs, you may
+list the real holes in `triage.toml` (design decision 13). Each
+`[[finds]]` has a short opaque `id`, a `status`, `evidence`, a `summary`,
+and the `runs` that found it. `scripts/scoreboard.py` then counts them as
+confirmed finds in its second table.
+
+If a find is real and upstream has not fixed it, report it to upstream
+privately first. Do not describe it in a public issue, pull request, or
+`triage.toml` until upstream has answered or 90 days have passed. Its
+status is then `open-held`, with an empty summary and an opaque note as
+evidence.

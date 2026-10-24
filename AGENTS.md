@@ -25,6 +25,11 @@ Run before every commit. The tests use a fake agent and make no model call.
   scenario with an upstream fixture needs `python3 -m rig prepare <name>`
   first. Commit only its small files, never the fixture or the venv.
 - Do not edit `results/`. Results are evidence.
+- Disclosure hold. A run can find a real hole that upstream has not
+  fixed. Do not describe such a hole in an issue, a pull request, a
+  commit, a doc, or a `triage.toml` summary. A scenario whose runs found
+  one stays out of this repository, with its results, until upstream has
+  answered a private report or 90 days have passed (design decision 13).
 - Model and effort are configuration in `config/matrix.toml`, not code.
 - The hosts an agent may reach are in `config/network.toml`. Widen them
   only with a reason from a run's `network.jsonl`.
