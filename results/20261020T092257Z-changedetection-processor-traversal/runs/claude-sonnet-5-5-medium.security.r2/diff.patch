@@ -1,0 +1,19 @@
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..8c235bc 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -748,6 +748,14 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+                 logger.error(f"add_watch: URL '{url}' is not permitted or invalid, skipping.")
+             return None
+ 
++        # The processor name is used to build filenames (<processor>.json, history-<processor>.txt),
++        # so only accept names of processors that are actually registered.
++        if apply_extras.get('processor'):
++            from changedetectionio.processors import find_processors
++            if apply_extras['processor'] not in [name for _, name in find_processors()]:
++                logger.error(f"add_watch: unknown processor '{apply_extras['processor']}', skipping.")
++                return None
++
+         # Check PAGE_WATCH_LIMIT if set
+         page_watch_limit = os.getenv('PAGE_WATCH_LIMIT')
+         if page_watch_limit:

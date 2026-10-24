@@ -1,0 +1,93 @@
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..95ab724 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -456,6 +456,13 @@ def save_processor_config(datastore, watch_uuid, config_data):
+ 
+         processor_name = watch.get('processor', 'text_json_diff')
+ 
++        # Watch metadata can come from imports as well as the API. Only registered
++        # processor names may become filenames; otherwise paths such as
++        # '../changedetection' could overwrite application settings.
++        if not any(name == processor_name for _, name in find_processors()):
++            logger.error(f"Cannot save config for unregistered processor: {processor_name}")
++            return False
++
+         # Create a processor instance to access config methods
+         processor_instance = difference_detection_processor(datastore, watch_uuid)
+ 
+diff --git a/changedetectionio/tests/unit/test_processor_config_security.py b/changedetectionio/tests/unit/test_processor_config_security.py
+new file mode 100644
+index 0000000..8a172a1
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_security.py
+@@ -0,0 +1,69 @@
++import json
++from types import SimpleNamespace
++
++import pytest
++
++from changedetectionio import processors
++
++
++class ConfigWatch(dict):
++    def __init__(self, data_dir, processor):
++        super().__init__(processor=processor)
++        self.data_dir = str(data_dir)
++
++    def ensure_data_dir_exists(self):
++        from pathlib import Path
++        Path(self.data_dir).mkdir(parents=True, exist_ok=True)
++
++
++@pytest.fixture
++def registered_processors(monkeypatch):
++    monkeypatch.setattr(processors, 'find_processors', lambda: [
++        (None, 'text_json_diff'),
++        (None, 'restock_diff'),
++        (None, 'plugin_processor'),
++    ])
++
++
++@pytest.mark.parametrize('processor_name', [
++    '../changedetection',
++    '../other-watch/watch',
++    'absolute',
++    '..\\changedetection',
++    'watch',
++    'unknown_processor',
++])
++def test_unregistered_processor_cannot_write_config(tmp_path, registered_processors, processor_name):
++    settings_file = tmp_path / 'changedetection.json'
++    settings = {'settings': {'application': {'password': 'keep-this-password'}}}
++    settings_file.write_text(json.dumps(settings))
++    other_watch_dir = tmp_path / 'other-watch'
++    other_watch_dir.mkdir()
++    other_watch_file = other_watch_dir / 'watch.json'
++    other_watch_file.write_text(json.dumps({'url': 'https://example.com'}))
++    watch_dir = tmp_path / 'watch'
++    watch_dir.mkdir()
++    if processor_name == 'absolute':
++        processor_name = str(tmp_path / 'changedetection')
++    watch = ConfigWatch(watch_dir, processor_name)
++    datastore = SimpleNamespace(data={'watching': {'test-watch': watch}})
++
++    assert processors.save_processor_config(datastore, 'test-watch', {
++        'settings': {'application': {'password': False}},
++    }) is False
++
++    assert json.loads(settings_file.read_text()) == settings
++    assert json.loads(other_watch_file.read_text()) == {'url': 'https://example.com'}
++    assert list(watch_dir.iterdir()) == []
++
++
++@pytest.mark.parametrize('processor_name', ['text_json_diff', 'restock_diff', 'plugin_processor'])
++def test_registered_processor_config_still_merges(tmp_path, registered_processors, processor_name):
++    watch = ConfigWatch(tmp_path, processor_name)
++    datastore = SimpleNamespace(data={'watching': {'test-watch': watch}})
++    config_file = tmp_path / f'{processor_name}.json'
++    config_file.write_text(json.dumps({'keep': True, 'update': 'old'}))
++
++    assert processors.save_processor_config(datastore, 'test-watch', {'update': 'new'}) is True
++
++    assert json.loads(config_file.read_text()) == {'keep': True, 'update': 'new'}

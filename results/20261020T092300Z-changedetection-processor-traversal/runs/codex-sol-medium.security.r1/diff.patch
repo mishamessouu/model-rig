@@ -1,0 +1,31 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..9ba3e29 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -319,7 +319,12 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        # Config files must stay directly inside this watch's directory, including
++        # when the filename contains traversal or points through a symlink.
++        filepath = os.path.realpath(os.path.join(data_dir, filename))
++        if os.path.dirname(filepath) != os.path.realpath(data_dir):
++            logger.warning(f"Refusing extra watch config outside watch directory: {filename}")
++            return {}
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -353,7 +358,11 @@ class difference_detection_processor():
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
++        # Apply the same confinement before reading for merge or writing.
++        filepath = os.path.realpath(os.path.join(data_dir, filename))
++        if os.path.dirname(filepath) != os.path.realpath(data_dir):
++            logger.warning(f"Refusing extra watch config outside watch directory: {filename}")
++            return
+ 
+         try:
+             # If merge is enabled, read existing data first

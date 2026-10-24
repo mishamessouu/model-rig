@@ -1,0 +1,46 @@
+diff --git a/wger/gym/tests/test_user.py b/wger/gym/tests/test_user.py
+index 4b2b04f..a62191e 100644
+--- a/wger/gym/tests/test_user.py
++++ b/wger/gym/tests/test_user.py
+@@ -382,6 +382,20 @@ class GymScopeGuardsTestCase(WgerTestCase):
+         self.assertEqual(response.status_code, 200)
+         self.assertNotEqual(User.objects.get(pk=self.VICTIM_USER_PK).password, old_password_hash)
+ 
++    def test_reset_password_blocked_for_gym_staff(self):
++        """
++        A gym manager must not reset the password of other staff in the same
++        gym (admin, general manager, fellow manager or trainer)
++        """
++        self.user_login('manager1')
++        for staff_pk in (1, 4, 10, 12):  # admin, trainer1, manager2, general_manager1
++            old_password_hash = User.objects.get(pk=staff_pk).password
++            response = self.client.post(
++                reverse('gym:gym:reset-user-password', kwargs={'user_pk': staff_pk})
++            )
++            self.assertEqual(response.status_code, 403)
++            self.assertEqual(User.objects.get(pk=staff_pk).password, old_password_hash)
++
+     def test_permissions_edit_blocked_when_both_gyms_none(self):
+         self._both_gyms_none(attacker_pk=9)
+         self.user_login('manager1')
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..b07db68 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -263,7 +263,15 @@ def reset_user_password(request, user_pk):
+     if not request.user.has_perm('gym.manage_gyms') and not request.user.has_perm('gym.manage_gym'):
+         return HttpResponseForbidden()
+ 
+-    if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
++    # Gym managers may only reset passwords of regular members of their own gym,
++    # never those of other staff (that would allow taking over their accounts).
++    # General managers can reset all passwords.
++    if not request.user.has_perm('gym.manage_gyms') and (
++        not is_same_gym(request.user, user)
++        or user.has_perm('gym.manage_gym')
++        or user.has_perm('gym.gym_trainer')
++        or user.has_perm('gym.manage_gyms')
++    ):
+         return HttpResponseForbidden()
+ 
+     if request.method != 'POST':

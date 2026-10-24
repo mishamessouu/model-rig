@@ -1,0 +1,13 @@
+diff --git a/changedetectionio/llm/bm25_trim.py b/changedetectionio/llm/bm25_trim.py
+index 619cb1c..5981944 100644
+--- a/changedetectionio/llm/bm25_trim.py
++++ b/changedetectionio/llm/bm25_trim.py
+@@ -43,7 +43,7 @@ def trim_to_relevant(text: str, query: str, max_chars: int = MAX_CONTEXT_CHARS)
+     selected_indices, total = [], 0
+     for idx, (_score, line) in ranked:
+         if total + len(line) + 1 > max_chars:
+-            break
++            continue
+         selected_indices.append(idx)
+         total += len(line) + 1
+ 

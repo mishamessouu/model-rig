@@ -1,0 +1,4 @@
+{"time": "2026-10-20T09:55:08.841+00:00", "host": "api.anthropic.com", "port": 443, "allowed": true}
+{"time": "2026-10-20T09:55:08.920+00:00", "host": "api.anthropic.com", "port": 443, "allowed": true}
+{"time": "2026-10-20T09:56:08.271+00:00", "host": "example.com", "port": 80, "allowed": false}
+{"time": "2026-10-20T09:56:08.490+00:00", "host": "raw.githubusercontent.com", "port": 443, "allowed": false}

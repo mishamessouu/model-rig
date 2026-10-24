@@ -1,0 +1,32 @@
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..673ee72 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -191,7 +191,7 @@ def get_plugin_processor_metadata():
+     return metadata
+ 
+ @lru_cache(maxsize=32)
+-def _available_processors_cached(locale_str):
++def _available_processors_cached(locale_str, disabled_processors_env):
+     """
+     Internal cached function that includes locale in cache key.
+     This ensures translations are cached per-language instead of globally.
+@@ -202,7 +202,7 @@ def _available_processors_cached(locale_str):
+     processor_classes = find_processors()
+ 
+     # Check if DISABLED_PROCESSORS env var is set
+-    disabled_processors_env = os.getenv('DISABLED_PROCESSORS', 'image_ssim_diff').strip()
++    disabled_processors_env = disabled_processors_env.strip()
+     disabled_processors = []
+     if disabled_processors_env:
+         # Parse comma-separated list and strip whitespace
+@@ -271,7 +271,8 @@ def available_processors():
+     # Convert Babel Locale object to string for use as cache key
+     locale = get_locale()
+     locale_str = str(locale) if locale else 'en'
+-    return _available_processors_cached(locale_str)
++    disabled_processors_env = os.getenv('DISABLED_PROCESSORS', 'image_ssim_diff')
++    return _available_processors_cached(locale_str, disabled_processors_env)
+ 
+ 
+ def get_default_processor():

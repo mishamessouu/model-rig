@@ -1,0 +1,34 @@
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..117ead9 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -29,11 +29,17 @@ def find_processors():
+     package_name = "changedetectionio.processors"  # Name of the current package/module
+ 
+     processors = []
+-    sub_packages = find_sub_packages(package_name)
++    package = importlib.import_module(package_name)
++    processor_modules = sorted(
++        module_name
++        for _, module_name, is_pkg in pkgutil.walk_packages(
++            package.__path__, prefix=f"{package_name}."
++        )
++        if module_name.endswith(".processor")
++    )
+     from changedetectionio.processors.base import difference_detection_processor
+ 
+-    for sub_package in sub_packages:
+-        module_name = f"{package_name}.{sub_package}.processor"
++    for module_name in processor_modules:
+         try:
+             module = importlib.import_module(module_name)
+ 
+@@ -43,7 +49,7 @@ def find_processors():
+                 if (issubclass(obj, difference_detection_processor) and
+                     obj is not difference_detection_processor and
+                     obj.__module__ == module.__name__):
+-                    processors.append((module, sub_package))
++                    processors.append((module, module_name.rsplit('.', 2)[-2]))
+                     break  # Only need one processor per module
+         except (ModuleNotFoundError, ImportError) as e:
+             logger.warning(f"Failed to import module {module_name}: {e} (find_processors())")

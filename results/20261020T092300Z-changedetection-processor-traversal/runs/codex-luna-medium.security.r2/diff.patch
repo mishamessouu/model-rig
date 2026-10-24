@@ -1,0 +1,32 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..f74d5ac 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -313,6 +313,13 @@ class difference_detection_processor():
+         import json
+         import os
+ 
++        # Config names are commonly built from the watch's processor setting.
++        # Treat them as leaf filenames only; joining an untrusted name here
++        # would allow reads outside the watch data directory.
++        if not isinstance(filename, str) or filename in ('', '.', '..') or os.path.basename(filename) != filename:
++            logger.warning("Rejected invalid extra watch config filename")
++            return {}
++
+         watch = self.datastore.data['watching'].get(self.watch_uuid)
+         data_dir = watch.data_dir
+ 
+@@ -343,6 +350,13 @@ class difference_detection_processor():
+         import json
+         import os
+ 
++        # Config names are commonly built from the watch's processor setting.
++        # Treat them as leaf filenames only to prevent writes outside the
++        # watch data directory.
++        if not isinstance(filename, str) or filename in ('', '.', '..') or os.path.basename(filename) != filename:
++            logger.warning("Rejected invalid extra watch config filename")
++            return
++
+         watch = self.datastore.data['watching'].get(self.watch_uuid)
+         data_dir = watch.data_dir
+ 

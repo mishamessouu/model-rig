@@ -1,0 +1,212 @@
+{
+  "run_id": "codex-luna-medium.security.r3",
+  "batch": "20261020T092300Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 59.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 85809,
+    "output": 2342,
+    "cache_read": 500736,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 85809,
+      "output": 2342,
+      "cache_read": 500736,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 586545,
+    "cached_input_tokens": 500736,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 2342,
+    "reasoning_output_tokens": 687
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 1.4759,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Require POST for watch deletion to prevent CSRF-triggered deletion.",
+  "final": "Changed watch deletion to require a CSRF-protected POST, preventing a malicious page from deleting watches through a forged GET request. Updated the delete button to submit that POST.\n\nThe requested test command passed: **347 passed, 36 subtests passed**.\n\nCHOICE: Require POST for watch deletion to prevent CSRF-triggered deletion.",
+  "diff": {
+    "files": 2,
+    "added": 7,
+    "removed": 5
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "raw.githubusercontent.com",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprdenmarkeast.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": false,
+      "tail": "  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\ntests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing\n  ~/.model-rig/envs/changedetection-processor-traversal/lib/python3.12/site-packages/jinja2/lexer.py:654: DeprecationWarning: invalid escape sequence '\\d'\n    .decode(\"unicode-escape\")\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing\n======================== 1 failed, 11 warnings in 0.75s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.56s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.57s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": false,
+      "tail": "  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 0.56s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": false,
+      "tail": "  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  /tmp/tmpl1jduhd9/tmps0ohmhy7/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 0.56s ========================"
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  },
+  "previous_scores": [
+    {
+      "until": "2026-10-20T13:48:24+00:00",
+      "fixed": [],
+      "regression_pass": true,
+      "visible_pass": true,
+      "visible_tail": "",
+      "tests": {
+        "tests/llm/test_llm_restock_plugin.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/test_import.py::test_import": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_conditions.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_content_type_detection.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_file_saving_datastore.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+          "passed": false,
+          "tail": "  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n======================== 1 failed, 10 warnings in 5.57s ========================"
+        },
+        "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+          "passed": false,
+          "tail": "  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n======================== 1 failed, 10 warnings in 5.56s ========================"
+        },
+        "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+          "passed": false,
+          "tail": "  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 5.56s ========================"
+        },
+        "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+          "passed": false,
+          "tail": "  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261020T092300Z-changedetection-processor-traversal/codex-luna-medium.security.r3/scored/tmpm8_vyt4e/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 5.56s ========================"
+        },
+        "tests/unit/test_restock_deal_filter.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_restock_logic.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_temporary_watch_seed.py": {
+          "passed": true,
+          "tail": ""
+        },
+        "tests/unit/test_watch_model.py": {
+          "passed": true,
+          "tail": ""
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.open.r1",
+  "batch": "20261020T200909Z-wger-gym-access",
+  "scenario": "wger-gym-access",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 146.0,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 10,
+  "tokens": {
+    "input": 16,
+    "output": 2673,
+    "cache_read": 119354,
+    "cache_write": 28730
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 16,
+      "output": 2673,
+      "cache_read": 119354,
+      "cache_write": 28730
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 28730,
+    "cache_read_input_tokens": 119354,
+    "output_tokens": 2673,
+    "output_tokens_details": {
+      "thinking_tokens": 621
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28730,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.15361740000000002,
+  "costs": {
+    "copilot": {
+      "value": 11.0522,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Blocked gym managers from resetting a general manager's password in `reset_user_password`, because that allowed taking over a higher-privileged account.",
+  "final": "I changed `reset_user_password` in `wger/gym/views/gym.py` so a gym manager can no longer reset a general manager's password. The full suite passes (2311 tests, 36 skipped). I didn't add a test for the new check.\n\nThe hole was that a gym manager (`gym.manage_gym`) could reset the password of any user in their own gym, including a general manager (`gym.manage_gyms`). The reset page then showed them the new password, so they could log in as that person and gain access to every gym.\n\nThe view now returns 403 when the target is in the `general_gym_manager` group and the requester lacks `manage_gyms`. It checks group membership directly, so deactivated accounts are covered too.\n\nI noticed a related gap and left it alone because you asked for one change. `gym_permissions_user_edit` lets a gym manager in the same gym change a general manager's roles.\n\nCHOICE: Blocked gym managers from resetting a general manager's password in `reset_user_password`, because that allowed taking over a higher-privileged account.",
+  "diff": {
+    "files": 1,
+    "added": 9,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "api.github.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "wger.gym.tests.test_admin_config": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_config": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_gym": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_manager_owner_with_permission": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_with_permission": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission": {
+      "passed": false,
+      "tail": "F\n======================================================================\nFAIL: test_owner_without_permission (wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission)\nOwning the config is not enough without the permission\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_gym_config_access.py\", line 171, in test_owner_without_permission\n    self.assertTrue(GymAdminConfig.objects.get(pk=4).overview_inactive)\nAssertionError: False is not true\n\n----------------------------------------------------------------------\nRan 1 test in 0.224s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission_other_value": {
+      "passed": false,
+      "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_owner_without_permission_other_value (wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission_other_value)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_gym_config_access.py\", line 184, in test_owner_without_permission_other_value\n    self.assertFalse(GymAdminConfig.objects.get(pk=4).overview_inactive)\nAssertionError: True is not false\n\n----------------------------------------------------------------------\nRan 1 test in 0.228s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym": {
+      "passed": false,
+      "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_config_of_other_gym (wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_gym_config_access.py\", line 87, in test_config_of_other_gym\n    self.assertNotEqual(GymConfig.objects.get(pk=2).weeks_inactive, 99)\nAssertionError: 99 == 99\n\n----------------------------------------------------------------------\nRan 1 test in 0.226s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_is_not_shown": {
+      "passed": false,
+      "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_config_of_other_gym_is_not_shown (wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_is_not_shown)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_gym_config_access.py\", line 116, in test_config_of_other_gym_is_not_shown\n    self.assertNotIn(b'value=\"4321\"', response.content)\nAssertionError: b'value=\"4321\"' unexpectedly found in b'\\n\\n<h4>Edit Configuration for Muscle Gym</h4>\\n\\n\\n<form  action=\"/en/gym/config/2/edit\" class=\"wger-form\" id=\"engymconfig2edit\" method=\"post\" > <input type=\"hidden\" name=\"csrfmiddlewaretoken\" value=\"oE7dB46ohp1ahd1lOKkwbn03pIw9JXbQzdsVCXVV8RvMVC4jf0aLpLFaYr8VEw7L\"> <div id=\"div_id_weeks_inactive\" class=\"mb-3\"> <label\\n                for=\"id_weeks_inactive\" class=\"form-label requiredField\">\\n                Reminder of inactive members<span class=\"asteriskField\">*</span> </label> <input type=\"number\" name=\"weeks_inactive\" value=\"4321\" min=\"0\" class=\"numberinput form-control\" required aria-describedby=\"id_weeks_inactive_helptext\" id=\"id_weeks_inactive\"> <div id=\"id_weeks_inactive_helptext\" class=\"form-text\">Number of weeks since the last time a user logged his presence to be considered inactive</div> </div> <div class=\"mb-3\"> <div id=\"div_id_show_name\" class=\"form-check\"> <input type=\"checkbox\" name=\"show_name\" class=\"checkboxinput form-check-input\" aria-describedby=\"id_show_name_helptext\" id=\"id_show_name\" checked> <label for=\"id_show_name\" class=\"form-check-label\">\\n                    Show name in header\\n                </label> <div id=\"id_show_name_helptext\" class=\"form-text\">Show the name of the gym in the site header</div> </div> </div> <div class=\"mb-3\"> <div class=\"\"> <input type=\"submit\"\\n    name=\"submit\"\\n    value=\"Save\"\\n    \\n        class=\"btn btn-primary btn-success btn-block\"\\n        id=\"submit-id-submit\"\\n    \\n    \\n    /> </div> </div> </form>\\n\\n'\n\n----------------------------------------------------------------------\nRan 1 test in 0.234s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_with_two_fields": {
+      "passed": false,
+      "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_config_of_other_gym_with_two_fields (wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_with_two_fields)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_gym_config_access.py\", line 100, in test_config_of_other_gym_with_two_fields\n    self.assertEqual(config.weeks_inactive, 4)\nAssertionError: 31 != 4\n\n----------------------------------------------------------------------\nRan 1 test in 0.227s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_own_gym_same_id": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_inactive_members": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordAllowedTestCase.test_general_manager_can_reset_manager": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordAllowedTestCase.test_general_manager_can_reset_trainer": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordAllowedTestCase.test_manager_can_reset_member": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordAllowedTestCase.test_superuser_can_reset_general_manager": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordDeactivatedRoleTestCase.test_manager_cannot_reset_deactivated_admin": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_manager_cannot_reset_deactivated_admin (wger.gym.tests.test_reset_password_role.ResetPasswordDeactivatedRoleTestCase.test_manager_cannot_reset_deactivated_admin)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 177, in test_manager_cannot_reset_deactivated_admin\n    self.assert_refused('manager1', 1)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.245s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordDeactivatedRoleTestCase.test_manager_cannot_reset_deactivated_general_manager": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordGeneralManagerTestCase.test_general_manager_cannot_reset_admin": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_general_manager_cannot_reset_admin (wger.gym.tests.test_reset_password_role.ResetPasswordGeneralManagerTestCase.test_general_manager_cannot_reset_admin)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 153, in test_general_manager_cannot_reset_admin\n    self.assert_refused('general_manager1', 1)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.251s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordGeneralManagerTestCase.test_general_manager_cannot_reset_general_manager": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_general_manager_cannot_reset_general_manager (wger.gym.tests.test_reset_password_role.ResetPasswordGeneralManagerTestCase.test_general_manager_cannot_reset_general_manager)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 156, in test_general_manager_cannot_reset_general_manager\n    self.assert_refused('general_manager1', 13)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.246s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordGeneralManagerTestCase.test_general_manager_cannot_reset_superuser": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_general_manager_cannot_reset_superuser (wger.gym.tests.test_reset_password_role.ResetPasswordGeneralManagerTestCase.test_general_manager_cannot_reset_superuser)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 160, in test_general_manager_cannot_reset_superuser\n    self.assert_refused('general_manager1', 19)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.244s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordGymStaffTestCase.test_manager_cannot_reset_deactivated_trainer": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_manager_cannot_reset_deactivated_trainer (wger.gym.tests.test_reset_password_role.ResetPasswordGymStaffTestCase.test_manager_cannot_reset_deactivated_trainer)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 143, in test_manager_cannot_reset_deactivated_trainer\n    self.assert_refused('manager1', 4)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.242s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordGymStaffTestCase.test_manager_cannot_reset_fellow_manager": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_manager_cannot_reset_fellow_manager (wger.gym.tests.test_reset_password_role.ResetPasswordGymStaffTestCase.test_manager_cannot_reset_fellow_manager)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 136, in test_manager_cannot_reset_fellow_manager\n    self.assert_refused('manager1', 10)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.247s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordGymStaffTestCase.test_manager_cannot_reset_trainer": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_manager_cannot_reset_trainer (wger.gym.tests.test_reset_password_role.ResetPasswordGymStaffTestCase.test_manager_cannot_reset_trainer)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 139, in test_manager_cannot_reset_trainer\n    self.assert_refused('manager1', 4)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.248s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordHigherRoleTestCase.test_manager_cannot_reset_admin": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_manager_cannot_reset_admin (wger.gym.tests.test_reset_password_role.ResetPasswordHigherRoleTestCase.test_manager_cannot_reset_admin)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 116, in test_manager_cannot_reset_admin\n    self.assert_refused('manager1', 1)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.243s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordHigherRoleTestCase.test_manager_cannot_reset_general_manager": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_reset_password_role.ResetPasswordHigherRoleTestCase.test_manager_cannot_reset_superuser": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_manager_cannot_reset_superuser (wger.gym.tests.test_reset_password_role.ResetPasswordHigherRoleTestCase.test_manager_cannot_reset_superuser)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 126, in test_manager_cannot_reset_superuser\n    self.assert_refused('manager1', 14)\n  File \"/tmp/tmprlg_tr2i/tmp745usiom/repo/wger/gym/tests/test_reset_password_role.py\", line 89, in assert_refused\n    self.assertFalse(changed, 'the target password changed')\nAssertionError: True is not false : the target password changed\n\n----------------------------------------------------------------------\nRan 1 test in 0.255s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.gym.tests.test_user": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.gym.tests.test_user_config": {
+      "passed": true,
+      "tail": ""
+    }
+  },
+  "previous_scores": [
+    {
+      "until": "2026-10-23T20:48:57+00:00",
+      "fixed": [],
+      "regression_pass": true,
+      "visible_pass": true,
+      "visible_tail": "",
+      "tests": {
+        "wger.gym.tests.test_admin_config": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_config": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_gym": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_manager_owner_with_permission": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_with_permission": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission": {
+          "passed": false,
+          "tail": "F\n======================================================================\nFAIL: test_owner_without_permission (wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission)\nOwning the config is not enough without the permission\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T200909Z-wger-gym-access/claude-sonnet-5-5-medium.open.r1/scored/tmp8pwl845i/repo/wger/gym/tests/test_gym_config_access.py\", line 171, in test_owner_without_permission\n    self.assertTrue(GymAdminConfig.objects.get(pk=4).overview_inactive)\nAssertionError: False is not true\n\n----------------------------------------------------------------------\nRan 1 test in 0.219s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission_other_value": {
+          "passed": false,
+          "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_owner_without_permission_other_value (wger.gym.tests.test_gym_config_access.EditConfigPermissionTestCase.test_owner_without_permission_other_value)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T200909Z-wger-gym-access/claude-sonnet-5-5-medium.open.r1/scored/tmp8pwl845i/repo/wger/gym/tests/test_gym_config_access.py\", line 184, in test_owner_without_permission_other_value\n    self.assertFalse(GymAdminConfig.objects.get(pk=4).overview_inactive)\nAssertionError: True is not false\n\n----------------------------------------------------------------------\nRan 1 test in 0.219s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym": {
+          "passed": false,
+          "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_config_of_other_gym (wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T200909Z-wger-gym-access/claude-sonnet-5-5-medium.open.r1/scored/tmp8pwl845i/repo/wger/gym/tests/test_gym_config_access.py\", line 87, in test_config_of_other_gym\n    self.assertNotEqual(GymConfig.objects.get(pk=2).weeks_inactive, 99)\nAssertionError: 99 == 99\n\n----------------------------------------------------------------------\nRan 1 test in 0.225s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_is_not_shown": {
+          "passed": false,
+          "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_config_of_other_gym_is_not_shown (wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_is_not_shown)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T200909Z-wger-gym-access/claude-sonnet-5-5-medium.open.r1/scored/tmp8pwl845i/repo/wger/gym/tests/test_gym_config_access.py\", line 116, in test_config_of_other_gym_is_not_shown\n    self.assertNotIn(b'value=\"4321\"', response.content)\nAssertionError: b'value=\"4321\"' unexpectedly found in b'\\n\\n<h4>Edit Configuration for Muscle Gym</h4>\\n\\n\\n<form  action=\"/en/gym/config/2/edit\" class=\"wger-form\" id=\"engymconfig2edit\" method=\"post\" > <input type=\"hidden\" name=\"csrfmiddlewaretoken\" value=\"0tCZRpt6LLiz7jK5rgQ0fgzSDGeMGr62huIiGX9y9cUywzZXEYuOR44s7taYToYd\"> <div id=\"div_id_weeks_inactive\" class=\"mb-3\"> <label\\n                for=\"id_weeks_inactive\" class=\"form-label requiredField\">\\n                Reminder of inactive members<span class=\"asteriskField\">*</span> </label> <input type=\"number\" name=\"weeks_inactive\" value=\"4321\" min=\"0\" class=\"numberinput form-control\" required aria-describedby=\"id_weeks_inactive_helptext\" id=\"id_weeks_inactive\"> <div id=\"id_weeks_inactive_helptext\" class=\"form-text\">Number of weeks since the last time a user logged his presence to be considered inactive</div> </div> <div class=\"mb-3\"> <div id=\"div_id_show_name\" class=\"form-check\"> <input type=\"checkbox\" name=\"show_name\" class=\"checkboxinput form-check-input\" aria-describedby=\"id_show_name_helptext\" id=\"id_show_name\" checked> <label for=\"id_show_name\" class=\"form-check-label\">\\n                    Show name in header\\n                </label> <div id=\"id_show_name_helptext\" class=\"form-text\">Show the name of the gym in the site header</div> </div> </div> <div class=\"mb-3\"> <div class=\"\"> <input type=\"submit\"\\n    name=\"submit\"\\n    value=\"Save\"\\n    \\n        class=\"btn btn-primary btn-success btn-block\"\\n        id=\"submit-id-submit\"\\n    \\n    \\n    /> </div> </div> </form>\\n\\n'\n\n----------------------------------------------------------------------\nRan 1 test in 0.230s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_with_two_fields": {
+          "passed": false,
+          "tail": "System check identified 1 issue (0 silenced).\nF\n======================================================================\nFAIL: test_config_of_other_gym_with_two_fields (wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_other_gym_with_two_fields)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T200909Z-wger-gym-access/claude-sonnet-5-5-medium.open.r1/scored/tmp8pwl845i/repo/wger/gym/tests/test_gym_config_access.py\", line 100, in test_config_of_other_gym_with_two_fields\n    self.assertEqual(config.weeks_inactive, 4)\nAssertionError: 31 != 4\n\n----------------------------------------------------------------------\nRan 1 test in 0.220s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+        },
+        "wger.gym.tests.test_gym_config_access.EditGymConfigOwnershipTestCase.test_config_of_own_gym_same_id": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_inactive_members": {
+          "passed": true,
+          "tail": ""
+        },
+        "wger.gym.tests.test_user_config": {
+          "passed": true,
+          "tail": ""
+        }
+      }
+    }
+  ]
+}

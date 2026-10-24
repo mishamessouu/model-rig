@@ -12,9 +12,9 @@ per successful fix.
 ## Results
 
 <!-- RESULTS:START -->
-### All public scenarios: 204 runs, 2026-10-16 to 2026-10-24
+### All public scenarios: 240 runs, 2026-10-16 to 2026-10-24
 
-Five real apps, each with a real security fix taken out again. Each
+Six real apps, each with a real security fix taken out again. Each
 cell got two prompts: "find the improvement that matters most" (open)
 and "find a security weakness" (security). Each prompt ran three times,
 so a cell has six runs per scenario. Hidden tests decide success.
@@ -26,17 +26,20 @@ good.
 
 | Scenario | claude-opus-medium | claude-sonnet-5-5-medium | codex-sol-high | codex-luna-medium | codex-sol-medium | codex-luna-high | codex-astra-medium | codex-astra-high |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
+| changedetection-processor-traversal | 6/6 | 5/6 | 6/6 | 1/6 | 6/6 |  | 6/6 |  |
 | inventree-attachment-access | 4/6 | 6/6 | 6/6 | 4/6 | 6/6 |  | 6/6 |  |
 | labelstudio-orm-traversal | 6/6 | 3/6 | 6/6 | 1/6 | 6/6 |  | 6/6 |  |
 | mealie-zip-import-idor | 1/6 | 2/6 | 6/6 | 0/6 | 6/6 |  | 6/6 |  |
 | mlflow-graphql-permission | 6/6 | 4/6 | 6/6 | 0/6 | 6/6 |  | 5/6 |  |
 | wger-log-idor | 6/6 | 6/6 | 4/9 | 1/9 | 5/9 | 2/9 | 5/6 | 5/6 |
-| **All** | **23/30** | **21/30** | **28/33** | **6/33** | **29/33** | **2/9** | **28/30** | **5/6** |
-| 95% interval | 59% to 88% | 52% to 83% | 69% to 93% | 9% to 34% | 73% to 95% | 6% to 55% | 79% to 98% | 44% to 97% |
-| Credits per success | 51 | 17 | 34 | 7 | 24 | 8 | 131 | 160 |
+| **All** | **29/36** | **26/36** | **34/39** | **7/39** | **35/39** | **2/9** | **34/36** | **5/6** |
+| 95% interval | 65% to 90% | 56% to 84% | 73% to 94% | 9% to 33% | 76% to 96% | 6% to 55% | 82% to 98% | 44% to 97% |
+| Credits per success | 46 | 16 | 33 | 7 | 22 | 8 | 122 | 160 |
 
-Generated with `python3 scripts/scoreboard.py`. Each scenario uses the
-newest batch that holds the cell.
+Generated with `python3 scripts/scoreboard.py --skip wger-gym-access`.
+Each scenario uses the newest batch that holds the cell. wger-gym-access
+is left out of the table: only its Claude batch is public yet, and half
+a scenario would favour one harness.
 
 | Cell | Harness | Model | Effort |
 |---|---|---|---|
@@ -67,25 +70,25 @@ How to read it:
 
 What it shows:
 
-- **The five cells that ran all five scenarios split into two groups.**
-  Sol medium (29 of 33), Astra medium (28 of 30), Sol high (28 of 33),
-  Opus (23 of 30), and Sonnet 5.5 (21 of 30) are not separable: their
-  intervals overlap. Luna medium (6 of 33, 9% to 34%) is clearly lower
+- **The cells that ran all six scenarios split into two groups.**
+  Sol medium (35 of 39), Astra medium (34 of 36), Sol high (34 of 39),
+  Opus (29 of 36), and Sonnet 5.5 (26 of 36) are not separable: their
+  intervals overlap. Luna medium (7 of 39, 9% to 33%) is clearly lower
   than all five.
 - **The expensive cells bought no measurable gain.** In the top group,
-  credits per success ran from 17 (Sonnet 5.5) and 24 (Sol medium) to 51
-  (Opus) and 131 (Astra medium), a factor of about 8. The success rates
+  credits per success ran from 16 (Sonnet 5.5) and 22 (Sol medium) to 46
+  (Opus) and 122 (Astra medium), a factor of about 8. The success rates
   of those cells are not separable.
 - **Luna medium is the cheapest per success, at 7 credits, but it
   misses most runs.** You only know which run worked if you have a test
   that tells you.
-- **We saw no effect of effort for Sol:** 29 of 33 at medium and 28 of
-  33 at high, for 24 and 34 credits per success.
+- **We saw no effect of effort for Sol:** 35 of 39 at medium and 34 of
+  39 at high, for 22 and 33 credits per success.
 - **The scenarios differ more than the totals show.** On mealie, Opus
   succeeded in 1 of 6 runs and Sonnet 5.5 in 2 of 6, while Sol and Astra
   succeeded in 6 of 6. Four of the Opus runs on mealie broke the
   regression set.
-- **62 of the 204 runs missed.** 51 changed something other than a
+- **68 of the 240 runs missed.** 57 changed something other than a
   planted hole. 11 broke the regression set, and 7 of those 11 had also
   fixed a planted hole. No run ended in an agent error or a timeout.
 

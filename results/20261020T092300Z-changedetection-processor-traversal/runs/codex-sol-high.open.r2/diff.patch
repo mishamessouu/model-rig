@@ -1,0 +1,113 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..eea03db 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,18 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    @staticmethod
++    def _extra_watch_config_path(data_dir, filename):
++        """Resolve a config filename, rejecting paths outside the watch directory."""
++        if not filename or filename in ('.', '..') or os.path.basename(filename) != filename or '\\' in filename:
++            raise ValueError("Processor config must be a filename within the watch directory")
++
++        filepath = os.path.realpath(os.path.join(data_dir, filename))
++        # Resolve symlinks as well, so an existing config cannot redirect file access.
++        if os.path.dirname(filepath) != os.path.realpath(data_dir):
++            raise ValueError("Processor config must remain within the watch directory")
++        return filepath
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,7 +331,7 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = self._extra_watch_config_path(data_dir, filename)
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -350,11 +362,11 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = self._extra_watch_config_path(data_dir, filename)
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_processor_config_paths.py b/changedetectionio/tests/unit/test_processor_config_paths.py
+new file mode 100644
+index 0000000..21caf54
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_paths.py
+@@ -0,0 +1,61 @@
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++from changedetectionio.model import Watch
++from changedetectionio.processors import save_processor_config
++from changedetectionio.processors.base import difference_detection_processor
++
++
++@pytest.fixture
++def processor(tmp_path):
++    data = {'watching': {}, 'settings': {'application': {}}}
++    watch = Watch.model(datastore_path=str(tmp_path), __datastore=data, default={})
++    data['watching'][watch['uuid']] = watch
++    datastore = SimpleNamespace(data=data)
++    return difference_detection_processor(datastore, watch['uuid'])
++
++
++@pytest.mark.parametrize('filename', ['text_json_diff.json', 'restock_diff.json', 'my-plugin.json'])
++def test_processor_config_round_trip(processor, filename):
++    assert processor.get_extra_watch_config(filename) == {}
++    processor.update_extra_watch_config(filename, {'enabled': True})
++    processor.update_extra_watch_config(filename, {'threshold': 5})
++    assert processor.get_extra_watch_config(filename) == {'enabled': True, 'threshold': 5}
++    processor.update_extra_watch_config(filename, {'enabled': False}, merge=False)
++    assert processor.get_extra_watch_config(filename) == {'enabled': False}
++
++
++@pytest.mark.parametrize('path_kind', ['parent', 'absolute', 'nested', 'backslash', 'symlink'])
++def test_processor_config_cannot_escape_watch_directory(processor, tmp_path, path_kind):
++    watch_dir = Path(processor.watch.data_dir)
++    watch_dir.mkdir()
++    outside = tmp_path / 'outside.json'
++    original = {'secret': 'must not be read or overwritten'}
++    outside.write_text(json.dumps(original))
++    if path_kind == 'symlink':
++        (watch_dir / 'linked.json').symlink_to(outside)
++        filename = 'linked.json'
++    else:
++        filename = {
++            'parent': '../outside.json',
++            'absolute': str(outside),
++            'nested': 'subdir/../../outside.json',
++            'backslash': '..\\outside.json',
++        }[path_kind]
++
++    with pytest.raises(ValueError):
++        processor.get_extra_watch_config(filename)
++    with pytest.raises(ValueError):
++        processor.update_extra_watch_config(filename, {'overwritten': True}, merge=False)
++    assert json.loads(outside.read_text()) == original
++
++
++def test_save_processor_config_rejects_traversal(processor, tmp_path):
++    watch = processor.datastore.data['watching'][processor.watch_uuid]
++    watch['processor'] = '../outside'
++
++    assert not save_processor_config(processor.datastore, processor.watch_uuid, {'enabled': True})
++    assert not (tmp_path / 'outside.json').exists()

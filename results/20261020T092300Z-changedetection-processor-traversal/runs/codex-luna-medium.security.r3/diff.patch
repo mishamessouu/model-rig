@@ -1,0 +1,43 @@
+diff --git a/changedetectionio/blueprint/ui/__init__.py b/changedetectionio/blueprint/ui/__init__.py
+index 524418c..34292e0 100644
+--- a/changedetectionio/blueprint/ui/__init__.py
++++ b/changedetectionio/blueprint/ui/__init__.py
+@@ -267,7 +267,7 @@ def construct_blueprint(datastore: ChangeDetectionStore, update_q, worker_pool,
+ 
+         return redirect(url_for('watchlist.index', **wl_filters.filter_query_args(request.args)))
+ 
+-    @ui_blueprint.route("/delete", methods=['GET'])
++    @ui_blueprint.route("/delete", methods=['POST'])
+     @login_optionally_required
+     def form_delete():
+         uuid = request.args.get('uuid')
+@@ -473,4 +473,4 @@ def construct_blueprint(datastore: ChangeDetectionStore, update_q, worker_pool,
+         # Otherwise redirect to watchlist
+         return redirect(url_for('watchlist.index'))
+ 
+-    return ui_blueprint
+\ No newline at end of file
++    return ui_blueprint
+diff --git a/changedetectionio/blueprint/ui/templates/edit.html b/changedetectionio/blueprint/ui/templates/edit.html
+index aead58a..682e35a 100644
+--- a/changedetectionio/blueprint/ui/templates/edit.html
++++ b/changedetectionio/blueprint/ui/templates/edit.html
+@@ -538,13 +538,15 @@ Math: {{ 1 + 1 }}") }}
+             <div id="actions">
+                 <div class="pure-control-group">
+                     {{ render_button(form.save_button) }}
+-                    <a href="{{url_for('ui.form_delete', uuid=uuid)}}"
+-                       class="pure-button button-error"
++                    <form method="post" action="{{url_for('ui.form_delete', uuid=uuid)}}" style="display: inline">
++                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
++                    <button type="submit" class="pure-button button-error"
+                        data-requires-confirm
+                        data-confirm-type="danger"
+                        data-confirm-title="{{ _('Delete Watch?') }}"
+                        data-confirm-message="<p>{{ _('Are you sure you want to delete the watch for:') }}</p><p><strong>{{ watch.get('url', 'this watch') }}</strong></p><p>{{ _('This action cannot be undone.') }}</p>"
+-                       data-confirm-button="{{ _('Delete') }}">{{ _('Delete') }}</a>
++                       data-confirm-button="{{ _('Delete') }}">{{ _('Delete') }}</button>
++                    </form>
+                     {% if watch.history_n %}<a href="{{url_for('ui.clear_watch_history', uuid=uuid)}}"
+                        class="pure-button button-error"
+                        data-requires-confirm

@@ -1,0 +1,22 @@
+diff --git a/changedetectionio/content_fetchers/requests.py b/changedetectionio/content_fetchers/requests.py
+index 08e8b32..dda7a2d 100644
+--- a/changedetectionio/content_fetchers/requests.py
++++ b/changedetectionio/content_fetchers/requests.py
+@@ -101,7 +101,7 @@ class fetcher(Fetcher):
+                                 headers=request_headers,
+                                 timeout=timeout,
+                                 proxies=proxies,
+-                                verify=False,
++                                verify=True,
+                                 allow_redirects=False)
+ 
+             # Manually follow redirects so each hop's resolved IP can be validated,
+@@ -121,7 +121,7 @@ class fetcher(Fetcher):
+                                     headers=request_headers,
+                                     timeout=timeout,
+                                     proxies=proxies,
+-                                    verify=False,
++                                    verify=True,
+                                     allow_redirects=False)
+             else:
+                 raise Exception("Too many redirects")

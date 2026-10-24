@@ -1,0 +1,47 @@
+diff --git a/wger/gym/tests/test_user.py b/wger/gym/tests/test_user.py
+index 4b2b04f..7f5801f 100644
+--- a/wger/gym/tests/test_user.py
++++ b/wger/gym/tests/test_user.py
+@@ -382,6 +382,24 @@ class GymScopeGuardsTestCase(WgerTestCase):
+         self.assertEqual(response.status_code, 200)
+         self.assertNotEqual(User.objects.get(pk=self.VICTIM_USER_PK).password, old_password_hash)
+ 
++    def test_reset_password_blocked_for_more_privileged_user(self):
++        """
++        A gym manager must not reset the password of a same-gym user with
++        more privileges (general manager or admin), as that would allow
++        taking over the account.
++        """
++        self.user_login('manager1')
++
++        for victim_pk in (1, 12):  # admin, general_manager1 (both in gym 1)
++            victim = User.objects.get(pk=victim_pk)
++            old_password_hash = victim.password
++
++            response = self.client.post(
++                reverse('gym:gym:reset-user-password', kwargs={'user_pk': victim_pk})
++            )
++            self.assertEqual(response.status_code, 403)
++            self.assertEqual(User.objects.get(pk=victim_pk).password, old_password_hash)
++
+     def test_permissions_edit_blocked_when_both_gyms_none(self):
+         self._both_gyms_none(attacker_pk=9)
+         self.user_login('manager1')
+diff --git a/wger/gym/views/gym.py b/wger/gym/views/gym.py
+index b8e8f66..448fef8 100644
+--- a/wger/gym/views/gym.py
++++ b/wger/gym/views/gym.py
+@@ -266,6 +266,13 @@ def reset_user_password(request, user_pk):
+     if request.user.has_perm('gym.manage_gym') and not is_same_gym(request.user, user):
+         return HttpResponseForbidden()
+ 
++    # Resetting a password hands over the account, so the target must not be
++    # more privileged than the requesting user
++    if (user.is_superuser and not request.user.is_superuser) or (
++        user.has_perm('gym.manage_gyms') and not request.user.has_perm('gym.manage_gyms')
++    ):
++        return HttpResponseForbidden()
++
+     if request.method != 'POST':
+         form = forms.Form()
+         form.helper = FormHelper()

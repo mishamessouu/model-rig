@@ -1,0 +1,30 @@
+diff --git a/changedetectionio/api/Watch.py b/changedetectionio/api/Watch.py
+index 5acc626..1e74625 100644
+--- a/changedetectionio/api/Watch.py
++++ b/changedetectionio/api/Watch.py
+@@ -154,6 +154,12 @@ class Watch(Resource):
+                 proxy_list_str = ', '.join(plist) if plist else 'none configured'
+                 return f"Invalid proxy choice, currently supported proxies are '{proxy_list_str}'", 400
+ 
++        # Processor name is used to build filenames in the watch data dir, only accept known processors
++        if 'processor' in request.json:
++            from changedetectionio.processors import find_processors
++            if request.json['processor'] not in [name for _, name in find_processors()]:
++                return "Invalid processor", 400
++
+         # Validate time_between_check when not using defaults
+         validation_error = validate_time_between_check_required(request.json)
+         if validation_error:
+@@ -483,6 +489,12 @@ class CreateWatch(Resource):
+                 proxy_list_str = ', '.join(plist) if plist else 'none configured'
+                 return f"Invalid proxy choice, currently supported proxies are '{proxy_list_str}'", 400
+ 
++        # Processor name is used to build filenames in the watch data dir, only accept known processors
++        if 'processor' in json_data:
++            from changedetectionio.processors import find_processors
++            if json_data['processor'] not in [name for _, name in find_processors()]:
++                return "Invalid processor", 400
++
+         # Validate time_between_check when not using defaults
+         validation_error = validate_time_between_check_required(json_data)
+         if validation_error:

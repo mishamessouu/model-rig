@@ -1,0 +1,159 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..03e493a 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,22 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    def _extra_watch_config_path(self, filename):
++        """Keep config filenames, including untrusted processor names, inside the watch directory."""
++        if (not isinstance(filename, str) or not filename or filename in ('.', '..')
++                or any(char in filename for char in ('/', '\\', '\x00'))):
++            raise ValueError("Extra watch config must be a plain filename")
++
++        watch = self.datastore.data['watching'].get(self.watch_uuid)
++        if not watch.data_dir:
++            return None
++
++        data_dir = os.path.realpath(watch.data_dir)
++        filepath = os.path.realpath(os.path.join(data_dir, filename))
++        if os.path.commonpath((data_dir, filepath)) != data_dir:
++            raise ValueError("Extra watch config must remain inside the watch directory")
++        return filepath
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -313,14 +329,10 @@ class difference_detection_processor():
+         import json
+         import os
+ 
+-        watch = self.datastore.data['watching'].get(self.watch_uuid)
+-        data_dir = watch.data_dir
+-
+-        if not data_dir:
++        filepath = self._extra_watch_config_path(filename)
++        if not filepath:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         if not os.path.isfile(filepath):
+             return {}
+ 
+@@ -343,18 +355,15 @@ class difference_detection_processor():
+         import json
+         import os
+ 
+-        watch = self.datastore.data['watching'].get(self.watch_uuid)
+-        data_dir = watch.data_dir
+-
+-        if not data_dir:
++        filepath = self._extra_watch_config_path(filename)
++        if not filepath:
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
+         # Ensure directory exists
++        watch = self.datastore.data['watching'].get(self.watch_uuid)
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_processor_config_security.py b/changedetectionio/tests/unit/test_processor_config_security.py
+new file mode 100644
+index 0000000..70e14e1
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_security.py
+@@ -0,0 +1,87 @@
++import json
++from types import SimpleNamespace
++
++import pytest
++
++from changedetectionio.model.Watch import model as Watch
++from changedetectionio.processors import save_processor_config
++from changedetectionio.processors.base import difference_detection_processor
++
++
++@pytest.fixture
++def processor(tmp_path):
++    data = {'watching': {}, 'settings': {'application': {}}}
++    watch = Watch(datastore_path=str(tmp_path), __datastore=data)
++    watch.ensure_data_dir_exists()
++    data['watching'][watch['uuid']] = watch
++    datastore = SimpleNamespace(data=data)
++    return difference_detection_processor(datastore, watch['uuid'])
++
++
++@pytest.mark.parametrize('filename', [
++    '../outside.json',
++    'nested/../../outside.json',
++    r'..\outside.json',
++    'config.json\x00',
++])
++def test_config_rejects_unsafe_filenames(processor, tmp_path, filename):
++    outside = tmp_path / 'outside.json'
++    original = '{"secret": "keep"}'
++    outside.write_text(original)
++
++    with pytest.raises(ValueError):
++        processor.get_extra_watch_config(filename)
++    for merge in (True, False):
++        with pytest.raises(ValueError):
++            processor.update_extra_watch_config(filename, {'secret': 'changed'}, merge=merge)
++
++    assert outside.read_text() == original
++
++
++def test_config_rejects_absolute_paths(processor, tmp_path):
++    outside = tmp_path / 'outside.json'
++    with pytest.raises(ValueError):
++        processor.get_extra_watch_config(str(outside))
++    with pytest.raises(ValueError):
++        processor.update_extra_watch_config(str(outside), {'injected': True})
++    assert not outside.exists()
++
++
++def test_config_rejects_symlink_escape(processor, tmp_path):
++    outside = tmp_path / 'outside.json'
++    original = '{"secret": "keep"}'
++    outside.write_text(original)
++    watch_dir = tmp_path / processor.watch_uuid
++    (watch_dir / 'plugin.json').symlink_to(outside)
++
++    with pytest.raises(ValueError):
++        processor.get_extra_watch_config('plugin.json')
++    with pytest.raises(ValueError):
++        processor.update_extra_watch_config('plugin.json', {'secret': 'changed'})
++    assert outside.read_text() == original
++
++
++def test_saving_imported_processor_cannot_escape_watch(processor, tmp_path):
++    watch = processor.datastore.data['watching'][processor.watch_uuid]
++    watch['processor'] = '../changedetection'
++    outside = tmp_path / 'changedetection.json'
++    original = '{"settings": {"application": {"password": "keep"}}}'
++    outside.write_text(original)
++
++    assert save_processor_config(
++        processor.datastore, processor.watch_uuid,
++        {'settings': {'application': {'password': False}}},
++    ) is False
++    assert outside.read_text() == original
++
++
++def test_plugin_config_still_supports_read_merge_and_replace(processor, tmp_path):
++    filename = 'custom_plugin.json'
++    assert processor.get_extra_watch_config(filename) == {}
++    processor.update_extra_watch_config(filename, {'keep': True, 'change': 1})
++    processor.update_extra_watch_config(filename, {'change': 2})
++    assert processor.get_extra_watch_config(filename) == {'keep': True, 'change': 2}
++
++    processor.update_extra_watch_config(filename, {'replacement': True}, merge=False)
++    saved = tmp_path / processor.watch_uuid / filename
++    assert json.loads(saved.read_text()) == {'replacement': True}

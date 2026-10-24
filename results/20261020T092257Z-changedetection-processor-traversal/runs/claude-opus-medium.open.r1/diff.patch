@@ -1,0 +1,63 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..9c35361 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,29 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    @staticmethod
++    def _extra_watch_config_path(data_dir, filename):
++        """
++        Resolve a processor config filename inside the watch data directory.
++
++        The filename is usually derived from the watch's 'processor' value, which can come from
++        imported/restored data, so refuse anything that is not a plain file name in data_dir.
++
++        Returns:
++            str: Absolute path to the file, or None if the filename is unsafe
++        """
++        import os
++
++        if not filename or not isinstance(filename, str) or os.path.basename(filename) != filename or filename.startswith('.'):
++            return None
++
++        base = os.path.realpath(data_dir)
++        filepath = os.path.realpath(os.path.join(base, filename))
++        if os.path.dirname(filepath) != base:
++            return None
++
++        return filepath
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,7 +342,10 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = self._extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            logger.warning(f"Refusing to read extra watch config with unsafe filename {filename!r}")
++            return {}
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -350,11 +376,14 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = self._extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            logger.error(f"Refusing to write extra watch config with unsafe filename {filename!r}")
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}

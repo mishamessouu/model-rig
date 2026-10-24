@@ -1,0 +1,47 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..c7b8530 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,14 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    def _extra_watch_config_path(self, data_dir, filename):
++        """Resolve filename inside data_dir, or None if it would escape it (e.g. a processor name containing '../')."""
++        import os
++        if not filename or os.path.basename(filename) != filename or filename in ('.', '..'):
++            logger.warning(f"Refusing extra watch config filename outside the watch data dir: {filename!r}")
++            return None
++        return os.path.join(data_dir, filename)
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,9 +327,9 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = self._extra_watch_config_path(data_dir, filename)
+ 
+-        if not os.path.isfile(filepath):
++        if not filepath or not os.path.isfile(filepath):
+             return {}
+ 
+         try:
+@@ -350,11 +358,13 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = self._extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}

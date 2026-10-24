@@ -1,0 +1,19 @@
+diff --git a/changedetectionio/blueprint/imports/importer.py b/changedetectionio/blueprint/imports/importer.py
+index cbee999..f281fcb 100644
+--- a/changedetectionio/blueprint/imports/importer.py
++++ b/changedetectionio/blueprint/imports/importer.py
+@@ -37,6 +37,14 @@ class import_url_list(Importer):
+             processor=None
+             ):
+ 
++        # Only accept known processor names, the value ends up in filenames (history-{processor}.txt etc)
++        if processor:
++            from changedetectionio.processors import available_processors
++            if processor not in [p[0] for p in available_processors()]:
++                flash(gettext("Invalid processor '{}'").format(processor), 'error')
++                self.remaining_data = data.split("\n")
++                return
++
+         urls = data.split("\n")
+         good = 0
+         now = time.time()
