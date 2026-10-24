@@ -58,6 +58,36 @@ class ScenarioTest(unittest.TestCase):
         self.assertIn("wrong/real.patch scores as a success: ['s1-sql-injection']",
                       problems)
 
+    def test_check_holds_right_fixes_to_their_named_defects(self):
+        import dataclasses
+        import shutil
+        import subprocess
+        from unittest import mock
+
+        from rig import scenario as scenarios
+        real = scenarios.load("booking-ladder")
+        with tempfile.TemporaryDirectory() as folder:
+            copy = Path(folder) / "booking-ladder"
+            shutil.copytree(real.folder, copy)
+            repo = scenarios.copy_repo(real, Path(folder) / "repo")
+            scenarios.overlay(real.solution("s1-sql-injection"), repo)
+            patch = subprocess.run(["git", "-C", str(repo), "diff"],
+                                   capture_output=True, text=True).stdout
+            (copy / "right").mkdir()
+            (copy / "right" / "named.patch").write_text(
+                "The real s1 fix.\nFixes: s1-sql-injection\n\n" + patch)
+            (copy / "right" / "too-much.patch").write_text(
+                "Fixes: s1-sql-injection, s2-cancel-idor\n\n" + patch)
+            (copy / "right" / "unnamed.patch").write_text(patch)
+            fake = dataclasses.replace(real, folder=copy)
+            with mock.patch("rig.check.scenarios.load", return_value=fake):
+                problems = check.check("booking-ladder")
+        self.assertEqual(sorted(p for p in problems if p.startswith("right/")), [
+            "right/too-much.patch fixes ['s1-sql-injection'] with regression pass True, "
+            "expected ['s1-sql-injection', 's2-cancel-idor']",
+            "right/unnamed.patch has no 'Fixes:' line",
+        ])
+
     def test_every_scenario_loads_with_its_files(self):
         # No prepare step: this checks the small files a pull request adds.
         from rig import scenario as scenarios
@@ -75,6 +105,80 @@ class ScenarioTest(unittest.TestCase):
                     self.assertTrue(solution.is_dir(), solution)
 
 
+def control_scenario(folder, regression=("hidden.test_regression",), extra=""):
+    """A control scenario in `folder`: booking-ladder's app and hidden
+    regression tests, `control = true`, and no defects. Returns its path."""
+    import shutil
+    real = ROOT / "scenarios" / "booking-ladder"
+    copy = Path(folder) / "control-ladder"
+    shutil.copytree(real / "repo", copy / "repo")
+    shutil.copytree(real / "hidden", copy / "hidden")
+    tests = ", ".join(f'"{t}"' for t in regression)
+    (copy / "scenario.toml").write_text(
+        'name = "control-ladder"\ncontrol = true\n' + extra +
+        '\n[prompts]\nopen = "Find the one improvement that matters most."\n'
+        f'\n[regression]\ntests = [{tests}]\n')
+    return copy
+
+
+class ControlTest(unittest.TestCase):
+    """A control has nothing to find (design decision 12)."""
+
+    def test_control_loads_with_no_defects(self):
+        from rig import scenario as scenarios
+        with tempfile.TemporaryDirectory() as folder:
+            scenario = scenarios.load(str(control_scenario(folder)))
+        self.assertTrue(scenario.control)
+        self.assertEqual(scenario.defects, [])
+
+    def test_control_with_defects_or_plain_without_is_refused(self):
+        from rig import scenario as scenarios
+        defect = '\n[[defects]]\nid = "d1"\ntests = ["hidden.test_defects"]\n'
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaises(SystemExit):
+                scenarios.load(str(control_scenario(folder, extra=defect)))
+        with tempfile.TemporaryDirectory() as folder:
+            path = control_scenario(folder)
+            toml = path / "scenario.toml"
+            toml.write_text(toml.read_text().replace("control = true\n", ""))
+            with self.assertRaises(SystemExit):
+                scenarios.load(str(path))
+
+    def test_check_passes_a_sound_control(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual(check.check(str(control_scenario(folder))), [])
+
+    def test_check_refuses_fix_folders_and_a_failing_baseline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = control_scenario(
+                folder, regression=("hidden.test_regression", "hidden.test_defects"))
+            for name in ("solutions", "wrong"):
+                (path / name).mkdir()
+            problems = check.check(str(path))
+        self.assertEqual(problems, [
+            "a control has no solutions/ folder",
+            "a control has no wrong/ folder",
+            "baseline fails regression tests ['hidden.test_defects']",
+        ])
+
+    def test_control_run_records_no_fix_and_its_report_counts_outcomes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = control_scenario(folder)
+            out, rows = run.run_batch(str(path), MATRIX, ["fake-none"], ["open"], 1,
+                                      results_root=Path(folder) / "results",
+                                      echo=lambda *_: None)
+            text = report.markdown(out)
+        self.assertEqual(rows[0]["fixed"], [])
+        self.assertTrue(rows[0]["regression_pass"])
+        self.assertTrue(rows[0]["control"])
+        self.assertIn("1 control runs.", text)
+        self.assertIn("| fake-none | open | 1 | 0 | 1/1 (21% to 100%) | 0/1 (0% to 79%) | "
+                      "0/1 (0% to 79%) | 0/1 (0% to 79%) |", text)
+        self.assertNotIn("Success means", text)
+        # No success column: a control run is never a success or a miss.
+        self.assertNotIn("| Success |", text)
+
+
 class PipelineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -90,6 +194,7 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(row["fixed"], ["s1-sql-injection"])
         self.assertTrue(row["regression_pass"])
         self.assertEqual(row["diff"]["files"], 1)
+        self.assertEqual(row["diff"]["paths"], ["bookings/repository.py"])
         self.assertEqual(row["choice"], "fake s1-sql-injection")
 
     def test_no_change_fixes_nothing(self):
@@ -97,6 +202,7 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(row["fixed"], [])
         self.assertTrue(row["regression_pass"])
         self.assertEqual(row["diff"]["files"], 0)
+        self.assertEqual(row["diff"]["paths"], [])
 
     def test_tokens_and_credits(self):
         row = self.rows["fake-s1"]
@@ -222,6 +328,21 @@ class ResumeTest(unittest.TestCase):
         self.assertEqual(rows[0]["fixed"], ["s1-sql-injection"])
 
 
+class BatchDirTest(unittest.TestCase):
+    def test_a_second_batch_in_the_same_second_takes_the_next_second(self):
+        import datetime
+        first = datetime.datetime(2026, 10, 23, 20, 25, 3, tzinfo=datetime.UTC)
+        times = iter([first, first, first + datetime.timedelta(seconds=1)])
+        waits = []
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            a = run.new_batch_dir(root, "s", now=lambda: first)
+            b = run.new_batch_dir(root, "s", now=lambda: next(times), wait=waits.append)
+            self.assertEqual(a.name, "20261023T202503Z-s")
+            self.assertEqual(b.name, "20261023T202504Z-s")
+            self.assertEqual(waits, [1, 1])
+
+
 class ScorePatchTest(unittest.TestCase):
     def test_patch_that_does_not_apply_fixes_nothing(self):
         from rig import scenario as scenarios
@@ -237,6 +358,17 @@ class CostTest(unittest.TestCase):
     def test_no_usage_is_unknown_not_zero(self):
         sheet = prices.load()["copilot"]
         self.assertEqual(prices.cost(sheet, {}), (None, ["no usage recorded"]))
+
+    def test_the_longest_matching_key_prices_a_model(self):
+        # Sonnet 5 and Sonnet 5.5 differ in cache read price, and one id
+        # starts with the other. The order of keys must not decide.
+        sheet = {"models": {
+            "claude-sonnet-5": {"input": 0, "output": 0, "cache_read": 20, "cache_write": 0},
+            "claude-sonnet-5-5": {"input": 0, "output": 0, "cache_read": 10, "cache_write": 0},
+        }}
+        tokens = {"cache_read": 1_000_000}
+        self.assertEqual(prices.cost(sheet, {"claude-sonnet-5-5": tokens}), (10.0, []))
+        self.assertEqual(prices.cost(sheet, {"claude-sonnet-5": tokens}), (20.0, []))
 
 
 def result(cell="c", fixed=("s1",), error=None, timed_out=False, by_model=None,
@@ -279,11 +411,277 @@ class ReportTest(unittest.TestCase):
                 row = self.row([result(fix_after_cutoff=value)])
                 self.assertEqual(row["fix_after_cutoff"], shown)
 
+    def control(self, files=1, paths=("app/views.py",), **changes):
+        """A clean control run: scored, regression set passing."""
+        run = {**result(fixed=()), "control": True, "tests": {"t": {"passed": True}},
+               "diff": {"files": files, "added": files, "removed": 0, "paths": list(paths)}}
+        return {**run, **changes}
+
+    def test_control_runs_are_counted_not_scored(self):
+        runs = [self.control(), self.control(files=0, paths=()),
+                self.control(files=0, paths=()), self.control(regression_pass=False)]
+        row = self.row(runs)
+        self.assertTrue(row["control"])
+        self.assertEqual(row["outcomes"], {"error": 0, "changed nothing": 2,
+                                           "changed tests only": 0, "changed app code": 1,
+                                           "regression fails": 1})
+        self.assertIsNone(row["success"])
+        self.assertIsNone(row["interval"])
+        self.assertIsNone(row["cost_per_success"])
+        # Even a run that somehow lists a fix is never a success.
+        self.assertFalse(report.success({**result(), "control": True}))
+
+    def test_a_control_run_the_rig_could_not_observe_is_an_error_only(self):
+        # Each would otherwise count as "changed nothing" or "regression fails".
+        cases = {
+            "agent error": self.control(files=0, paths=(), error="unreadable agent output"),
+            "timeout": self.control(files=0, paths=(), timed_out=True),
+            "diff did not apply": self.control(error="diff did not apply: x",
+                                               regression_pass=False, tests={}),
+            "no score": self.control(files=0, paths=(), tests={}),
+        }
+        for name, run in cases.items():
+            with self.subTest(name):
+                self.assertEqual(report.control_outcome(run), "error")
+        row = self.row(list(cases.values()) + [self.control(files=0, paths=())])
+        self.assertEqual(row["outcomes"]["error"], 4)
+        self.assertEqual(row["outcomes"]["changed nothing"], 1)
+        self.assertEqual(row["outcomes"]["regression fails"], 0)
+
+    def test_a_control_change_to_test_files_only_is_its_own_count(self):
+        cases = {
+            ("wger/manager/tests/test_log.py",): "changed tests only",
+            ("tests/unit/test_a.py", "src/__tests__/a.test.js"): "changed tests only",
+            ("wger/manager/tests/test_log.py", "wger/manager/api/views.py"): "changed app code",
+            # A file named like a test, outside a test folder, is app code.
+            ("wger/test_settings.py",): "changed app code",
+        }
+        for paths, outcome in cases.items():
+            with self.subTest(paths=paths):
+                run = self.control(files=len(paths), paths=paths)
+                self.assertEqual(report.control_outcome(run), outcome)
+        # A result from before the rig recorded paths counts as app code.
+        old = self.control()
+        del old["diff"]["paths"]
+        self.assertEqual(report.control_outcome(old), "changed app code")
+
+    def test_control_rates_are_over_runs_without_an_error(self):
+        runs = [self.control(), self.control(), self.control(),
+                self.control(files=0, paths=(), timed_out=True)]
+        row = self.row(runs)
+        self.assertEqual(row["outcome_intervals"]["changed app code"], report.wilson(3, 3))
+        self.assertEqual(row["outcome_intervals"]["changed nothing"], report.wilson(0, 3))
+        self.assertNotIn("error", row["outcome_intervals"])
+        # A cell of errors only has no rate.
+        row = self.row([self.control(error="crash")])
+        self.assertIsNone(row["outcome_intervals"]["changed nothing"])
+
+    def test_control_table_says_which_prompt_measures_false_positives(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for number, run in enumerate([self.control(), self.control(error="crash"),
+                                          self.control(files=0, paths=())], 1):
+                path = Path(folder) / "runs" / f"r{number}" / "result.json"
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps({**run, "run_id": f"r{number}", "choice": "",
+                                            "costs": {"copilot": {"unit": "credits"}}}))
+            text = report.markdown(folder)
+        self.assertIn("Only the `security` prompt measures false positives", text)
+        self.assertIn("For `open` and `ddd`, a safe change is the correct answer.", text)
+        self.assertIn("Fisher's exact test", text)
+        self.assertIn("| c | open | 3 | 1 | 1/2 (9% to 91%) | 0/2 (0% to 66%) | "
+                      "1/2 (9% to 91%) | 0/2 (0% to 66%) |", text)
+        self.assertNotIn("Success means", text)
+
     def test_three_of_three_has_a_wide_interval(self):
         low, high = report.wilson(3, 3)
         self.assertAlmostEqual(low, 0.438, places=3)
         self.assertEqual(high, 1.0)
         self.assertIsNone(report.wilson(0, 0))
+
+
+def fake_tree(root, batches, triage_files, cells=("c",)):
+    """A tiny checkout under `root`: a matrix with `cells`, one batch
+    folder per {batch: [result, ...]}, and a triage.toml per
+    {scenario: text}. Returns `root`."""
+    root = Path(root)
+    (root / "config").mkdir(parents=True)
+    (root / "config" / "matrix.toml").write_text("".join(
+        f'[[cells]]\nname = "{c}"\nharness = "claude"\nmodel = "m"\n' for c in cells))
+    for name, runs in batches.items():
+        for run_result in runs:
+            path = root / "results" / name / "runs" / run_result["run_id"] / "result.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps(run_result))
+    for scenario, text in triage_files.items():
+        (root / "scenarios" / scenario).mkdir(parents=True)
+        (root / "scenarios" / scenario / "triage.toml").write_text(text)
+    return root
+
+
+def scored(run_id, scenario="app", cell="c", fixed=(), regression_pass=True, **changes):
+    return {**result(cell=cell, fixed=fixed), "run_id": run_id, "scenario": scenario,
+            "regression_pass": regression_pass, **changes}
+
+
+def find(id, status, runs, summary="A hole.", evidence="abc1234", **extra):
+    lines = [f'[[finds]]\nid = "{id}"\nstatus = "{status}"\nevidence = "{evidence}"\n'
+             f'summary = "{summary}"\nruns = {json.dumps(runs)}\n']
+    lines += [f'{key} = "{value}"\n' for key, value in extra.items()]
+    return "".join(lines) + "\n"
+
+
+HELD = {"held_since": "2026-10-24"}
+
+
+class TriageTest(unittest.TestCase):
+    """A triage record lists real holes the scenario did not plant (decision 13)."""
+    B = "20261024T000000Z-app"
+
+    def tree(self, folder, text):
+        runs = [scored("r1"), scored("r2", regression_pass=False), scored("r3", error="crash")]
+        return fake_tree(folder, {self.B: runs}, {"app": text})
+
+    def test_a_valid_record_loads_and_only_real_finds_confirm(self):
+        from rig import triage
+        text = (find("F1", "fixed-upstream", [f"{self.B}/r1", f"{self.B}/r2", f"{self.B}/r3"])
+                + find("F2", "open-held", [f"{self.B}/r1"], summary="",
+                       evidence="private report pending", **HELD)
+                + find("F3", "not-a-bug", [f"{self.B}/r1"], evidence="code read"))
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, text)
+            finds = triage.load("app", root)
+            runs = {r["run_id"]: r for r in report.load(root / "results" / self.B)}
+        self.assertEqual([f["id"] for f in finds], ["F1", "F2", "F3"])
+        # A not-a-bug find never confirms; a broken regression set or an
+        # agent error takes the run out, as for a planted success.
+        self.assertEqual(triage.confirmed(runs["r1"], self.B, finds), ["F1", "F2"])
+        self.assertEqual(triage.confirmed(runs["r2"], self.B, finds), [])
+        self.assertEqual(triage.confirmed(runs["r3"], self.B, finds), [])
+        # The same run in another batch is another run.
+        self.assertEqual(triage.confirmed(runs["r1"], "20261025T000000Z-app", finds), [])
+
+    def test_no_triage_file_is_no_finds(self):
+        from rig import triage
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual(triage.load("app", fake_tree(folder, {}, {})), [])
+
+    def test_a_held_find_carries_no_description(self):
+        from rig import triage
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, find("F1", "open-held", [f"{self.B}/r1"],
+                                          summary="The delete route skips the owner check.",
+                                          evidence="private report pending", **HELD))
+            self.assertEqual(triage.problems("app", root), [
+                "find F1: an open-held find has an empty summary until it is "
+                "disclosed or 90 days pass"])
+            with self.assertRaises(SystemExit):
+                triage.load("app", root)
+
+    def test_bad_records_are_refused(self):
+        from rig import triage
+        run = [f"{self.B}/r1"]
+        cases = {
+            "status 'wontfix' is not one of": find("F1", "wontfix", run),
+            "evidence is an opaque note": find("F1", "open-held", run, summary="",
+                                               evidence="owner check missing", **HELD),
+            "needs held_since": find("F1", "open-held", run, summary="",
+                                     evidence="not reported"),
+            "only an open-held find has held_since": find("F1", "disclosed", run, **HELD),
+            "names an upstream commit or a GHSA id": find("F1", "fixed-upstream", run,
+                                                          evidence="fixed later"),
+            "needs a summary": find("F1", "not-a-bug", run, summary=""),
+            "no result for run": find("F1", "disclosed", [f"{self.B}/r9"]),
+            "is not '<batch>/<run_id>' of app": find(
+                "F1", "disclosed", ["20261024T000000Z-other/r1"]),
+            "lists no runs": find("F1", "disclosed", []),
+            "lists a run twice": find("F1", "disclosed", run + run),
+            "id must be short and opaque": find("session-delete", "disclosed", run),
+            "id used twice": find("F1", "disclosed", run) + find("F1", "hardening", run),
+            "unknown keys ['summmary']": find("F1", "disclosed", run, summmary="x"),
+        }
+        for expected, text in cases.items():
+            with self.subTest(expected), tempfile.TemporaryDirectory() as folder:
+                found = triage.problems("app", self.tree(folder, text))
+                self.assertTrue(any(expected in p for p in found), found)
+        # A GHSA id is upstream evidence too.
+        with tempfile.TemporaryDirectory() as folder:
+            root = self.tree(folder, find("F1", "disclosed", run,
+                                          evidence="GHSA-2222-3333-4444"))
+            self.assertEqual(triage.problems("app", root), [])
+
+    def test_every_triage_file_in_the_repo_is_valid(self):
+        from rig import triage
+        names = sorted(p.parent.name for p in ROOT.glob("scenarios/*/triage.toml"))
+        for name in names:
+            with self.subTest(scenario=name):
+                self.assertEqual(triage.problems(name), [])
+
+
+def load_scoreboard():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "scoreboard", ROOT / "scripts" / "scoreboard.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class ScoreboardTest(unittest.TestCase):
+    def test_second_table_counts_planted_successes_and_confirmed_finds(self):
+        planted, control = "20261024T000000Z-app", "20261024T010000Z-ctl"
+        batches = {
+            planted: [
+                scored("a1", fixed=("s1",)),             # planted success
+                scored("a2", fixed=("s1",)),             # success and a find: planted
+                scored("a3"),                            # confirmed find only
+                scored("a4", regression_pass=False),     # find, but broke the set
+                scored("a5"),                            # not-a-bug find
+                scored("a6"),                            # nothing
+                scored("b1", cell="d"),                  # confirmed find, cell d
+            ],
+            control: [scored("k1", scenario="ctl", control=True),
+                      scored("k2", scenario="ctl", control=True)],
+        }
+        files = {
+            "app": find("F1", "fixed-upstream", [f"{planted}/a2", f"{planted}/a3",
+                                                 f"{planted}/a4", f"{planted}/b1"])
+            + find("F2", "not-a-bug", [f"{planted}/a5"]),
+            "ctl": find("W1", "open-held", [f"{control}/k1"], summary="",
+                        evidence="not reported", **HELD),
+        }
+        board = load_scoreboard()
+        with tempfile.TemporaryDirectory() as folder:
+            root = fake_tree(folder, batches, files, cells=("c", "d"))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                board.main([], root=root)
+        text = out.getvalue()
+        first, second = text.split("Planted successes and confirmed finds")
+        # The first table stays as it was: planted successes, no controls.
+        self.assertIn("| app | 2/6 | 0/1 |", first)
+        self.assertNotIn("ctl", first)
+        # c: 8 runs (6 planted, 2 control). 2 planted successes; a3 and k1
+        # are confirmed finds. a2 counts as planted only, a4 broke the
+        # regression set, and a5's find is not a bug.
+        self.assertIn(f"| c | 8 | 2/8 ({report._interval(report.wilson(2, 8))}) | "
+                      f"2/8 ({report._interval(report.wilson(2, 8))}) | "
+                      f"4/8 ({report._interval(report.wilson(4, 8))}) |", second)
+        self.assertIn("| d | 1 | 0/1 (0% to 79%) | 1/1 (21% to 100%) | "
+                      "1/1 (21% to 100%) |", second)
+        # Per scenario: runs with a confirmed find, distinct finds, held finds.
+        self.assertIn("| app | 7 | yes | 3 | 1 | 0 |", second)
+        self.assertIn("| ctl | 2 | yes | 1 | 1 | 1 |", second)
+        self.assertIn("lower bound", second)
+
+    def test_a_bad_triage_file_stops_the_scoreboard(self):
+        batch = "20261024T000000Z-app"
+        board = load_scoreboard()
+        with tempfile.TemporaryDirectory() as folder:
+            root = fake_tree(folder, {batch: [scored("a1")]},
+                             {"app": find("F1", "open-held", [f"{batch}/a1"],
+                                          evidence="private report pending", **HELD)})
+            with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
+                board.main([], root=root)
 
 
 class CutoffTest(unittest.TestCase):

@@ -2,7 +2,14 @@
 
 [sheets.copilot]
 unit = "credits"
-source = "GitHub Copilot credits per 1M tokens, as listed in the Copilot model picker on 2026-10-16"
+source = "docs.github.com/en/copilot/reference/copilot-billing/models-and-pricing, read 2026-10-20 (USD per 1M x 100; 1 AI credit = 0.01 USD)"
+# First read from the Copilot model picker on 2026-10-16. Checked against the
+# GitHub pricing page on 2026-10-20: the picker had rounded two values down
+# (Luna cache write 12.5, GPT-5.3-Codex cache read 17.5). Each model is billed
+# at provider list price, and the Anthropic and OpenAI pages agree.
+# Sol, Luna, and Astra cost more per token above 272K input tokens in one
+# request. These rows are the lower tier. The rig stores token totals per
+# run, not per request, so it cannot show which tier a request fell in.
 
 [sheets.copilot.models."claude-opus-5-5"]
 input = 400
@@ -20,10 +27,30 @@ cache_write = 250
 input = 10
 output = 50
 cache_read = 1
-cache_write = 12
+cache_write = 12.5
 
 [sheets.copilot.models."gpt-5.3-codex"]
 input = 175
 output = 1400
-cache_read = 17
+cache_read = 17.5
 cache_write = 0
+
+[sheets.copilot.models."claude-sonnet-5-5"]
+input = 200
+output = 1000
+cache_read = 10
+cache_write = 250
+
+# Sonnet 5 has a cache read twice that of Sonnet 5.5. The key must not be a
+# prefix of claude-sonnet-5-5, so prices.py matches the longest key first.
+[sheets.copilot.models."claude-sonnet-5"]
+input = 200
+output = 1000
+cache_read = 20
+cache_write = 250
+
+[sheets.copilot.models."gpt-6-astra"]
+input = 1000
+output = 5000
+cache_read = 100
+cache_write = 1250

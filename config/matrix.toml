@@ -15,10 +15,13 @@ harness = "claude"
 model = "opus"
 effort = "medium"
 
+# Sonnet 5.5 by full id. The alias "sonnet" meant Sonnet 5 in Claude Code
+# 2.1.302 (batch 20261016T205957Z, cell claude-sonnet-medium). Sonnet 5.5
+# replaced it on 2026-10-20.
 [[cells]]
-name = "claude-sonnet-medium"
+name = "claude-sonnet-5-5-medium"
 harness = "claude"
-model = "sonnet"
+model = "claude-sonnet-5-5"
 effort = "medium"
 
 [[cells]]

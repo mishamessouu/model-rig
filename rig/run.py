@@ -119,9 +119,11 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
                 proxy.serve(invocation.hosts, network_log)).socket
         # The scenario's prepared environment is bound read-only and comes
         # first on PATH, so the agent runs the tests the way the scorer does.
+        # A Node environment's node_modules is bound over the working copy.
         command = sandbox.command(invocation.argv, cwd=repo,
                                   read=[*invocation.read, *scenario.sandbox_read()],
                                   write=[run_dir],
+                                  mounts=scenario.sandbox_mounts(repo),
                                   env={**scenario.sandbox_env(), **invocation.env},
                                   proxy=socket_path)
         started = time.time()
@@ -172,6 +174,10 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         files += 1
         added += int(plus) if plus.isdigit() else 0
         removed += int(minus) if minus.isdigit() else 0
+    # Each changed path, a rename as two, so the report can tell a change
+    # to test files only from a change to app code (decision 12).
+    paths = [p for p in _git(repo, "diff", "--cached", "--name-only", "--no-renames",
+                             "-z", base).split("\0") if p]
 
     scored, apply_error = score.score_patch(scenario, patch, run_dir / "scored")
     if apply_error:
@@ -195,9 +201,11 @@ def run_one(scenario, cell, prompt_name, rep, batch, matrix, out_root, keep=Fals
         "usd_reported": usage.get("usd_reported"), "costs": costs,
         "choice": _choice(usage.get("final", "")),
         "final": usage.get("final", "")[-4000:],
-        "diff": {"files": files, "added": added, "removed": removed},
+        "diff": {"files": files, "added": added, "removed": removed, "paths": paths},
         "network": proxy.summary(network_log),
         "fix_after_cutoff": fix_after_cutoff(scenario.fix_date, cell.get("cutoff")),
+        # A control run is never a success or a miss (decision 12).
+        "control": scenario.control,
         **scored,
     }
     (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -215,6 +223,22 @@ def _versions():
         except (OSError, subprocess.TimeoutExpired):
             found[name] = None
     return found
+
+
+def new_batch_dir(results_root, scenario_name, now=None, wait=time.sleep):
+    """Make and return a new batch folder named by the UTC second.
+
+    Two queues that start in the same second would get the same name.
+    The second one waits a second and takes the next name."""
+    now = now or (lambda: datetime.datetime.now(datetime.UTC))
+    results_root.mkdir(parents=True, exist_ok=True)
+    while True:
+        out_root = results_root / f"{now().strftime('%Y%m%dT%H%M%SZ')}-{scenario_name}"
+        try:
+            out_root.mkdir()
+            return out_root
+        except FileExistsError:
+            wait(1)
 
 
 def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
@@ -246,10 +270,8 @@ def run_batch(scenario_name, matrix, cell_names, prompt_names, repeats,
         })
         (out_root / "batch.json").write_text(json.dumps(info, indent=2) + "\n")
     else:
-        stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
-        batch = f"{stamp}-{scenario.name}"
-        out_root = Path(results_root or ROOT / "results") / batch
-        out_root.mkdir(parents=True)
+        out_root = new_batch_dir(Path(results_root or ROOT / "results"), scenario.name)
+        batch = out_root.name
         (out_root / "batch.json").write_text(json.dumps({
             "batch": batch, "scenario": scenario.name, "cells": cell_names,
             "prompts": prompt_names, "repeats": repeats, "rig_commit": commit or None,

@@ -30,9 +30,44 @@ def wilson(successes, n, z=1.96):
 
 
 def success(result):
-    """A planted defect fixed, no regression, and a run that ended cleanly."""
-    return bool(result["fixed"] and result["regression_pass"]
+    """A planted defect fixed, no regression, and a run that ended cleanly.
+    A control run has no defect, so it is never a success (decision 12)."""
+    return bool(not result.get("control") and result["fixed"] and result["regression_pass"]
                 and not result["error"] and not result.get("timed_out"))
+
+
+# What a control run did, in the order the report shows (decision 12).
+# "error" counts first and holds every run the rig could not observe.
+# The other four are the behaviour of the runs that remain.
+CONTROL_ERROR = "error"
+CONTROL_BEHAVIOUR = ("changed nothing", "changed tests only", "changed app code",
+                     "regression fails")
+CONTROL_OUTCOMES = (CONTROL_ERROR, *CONTROL_BEHAVIOUR)
+# A changed file under a folder of one of these names is a test file.
+TEST_FOLDERS = {"test", "tests", "__tests__"}
+
+
+def _test_path(path):
+    return any(part in TEST_FOLDERS for part in Path(path).parts[:-1])
+
+
+def control_outcome(result):
+    """One of CONTROL_OUTCOMES. An agent error, a timeout, a diff that did
+    not apply (run.py records it as the run's error), or a score with no
+    test results is an "error" and nothing else. Then a failed regression
+    set, whatever the diff. Then the diff: nothing, test files only, or
+    app code. A result from before the rig recorded changed paths counts
+    any change as app code."""
+    if result["error"] or result.get("timed_out") or not result.get("tests"):
+        return CONTROL_ERROR
+    if not result["regression_pass"]:
+        return "regression fails"
+    if not result["diff"]["files"]:
+        return "changed nothing"
+    paths = result["diff"].get("paths")
+    if paths and all(_test_path(path) for path in paths):
+        return "changed tests only"
+    return "changed app code"
 
 
 def run_cost(result, sheet):
@@ -75,6 +110,8 @@ def summarise(results, sheet="copilot", sheets=None):
     for (cell, prompt), runs in sorted(groups.items()):
         picks = Counter(_pick(r) for r in runs)
         good = [r for r in runs if success(r)]
+        control = any(r.get("control") for r in runs)
+        outcomes = Counter(control_outcome(r) for r in runs) if control else Counter()
         cost = [run_cost(r, sheet_data) if sheet_data else None for r in runs]
         # One unpriced run makes the cell's cost unknown, not a partial mean.
         total_cost = sum(cost) if None not in cost else None
@@ -82,9 +119,17 @@ def summarise(results, sheet="copilot", sheets=None):
         rows.append({
             "cell": cell, "prompt": prompt, "n": len(runs),
             "picks": ", ".join(f"{k} x{v}" for k, v in picks.most_common()),
-            "success": len(good),
-            "interval": low_high,
-            "all_succeeded": len(good) == len(runs),
+            # A control cell has no success rate, only outcome counts.
+            "control": control,
+            "outcomes": {name: outcomes[name] for name in CONTROL_OUTCOMES} if control else None,
+            # Errors are not observations of behaviour, so each rate is
+            # over the runs that remain.
+            "outcome_intervals": {
+                name: wilson(outcomes[name], len(runs) - outcomes[CONTROL_ERROR])
+                for name in CONTROL_BEHAVIOUR} if control else None,
+            "success": None if control else len(good),
+            "interval": None if control else low_high,
+            "all_succeeded": None if control else len(good) == len(runs),
             "regressions": sum(1 for r in runs if not r["regression_pass"]),
             "errors": sum(1 for r in runs if r["error"] or r["timed_out"]),
             **{f"mean_{k}": _mean([r["tokens"][k] for r in runs])
@@ -103,20 +148,24 @@ def markdown(batch_dir, sheet="copilot"):
     results = load(batch_dir)
     rows = summarise(results, sheet)
     unit = next((r["costs"][sheet]["unit"] for r in results if sheet in r["costs"]), sheet)
-    lines = [
-        f"# Batch {Path(batch_dir).name}", "",
-        f"{len(results)} runs. Success means at least one planted defect fixed, "
-        "no regression, and no agent error or timeout. Cost prices the stored "
-        f"tokens with today's `{sheet}` price sheet, in {unit}; a cell with an "
-        "unpriced run shows n/a. The interval is a 95% Wilson interval for the "
-        "success rate. With three runs it is wide, so rank two cells only "
-        "with a test on the runs, such as Fisher's exact test.", "",
-        "| Cell | Prompt | n | Picks | Success | 95% interval | Regressions | Errors | "
-        f"Mean {unit} | {unit} per success | Mean reported USD | Mean s | Mean lines changed | "
-        "Fix after cutoff |",
-        "|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
-    ]
-    for r in rows:
+    planted = [r for r in rows if not r["control"]]
+    controls = [r for r in rows if r["control"]]
+    lines = [f"# Batch {Path(batch_dir).name}"]
+    if planted:
+        lines += [
+            "", f"{sum(r['n'] for r in planted)} runs. Success means at least one "
+            "planted defect fixed, no regression, and no agent error or timeout. "
+            "Cost prices the stored "
+            f"tokens with today's `{sheet}` price sheet, in {unit}; a cell with an "
+            "unpriced run shows n/a. The interval is a 95% Wilson interval for the "
+            "success rate. With three runs it is wide, so rank two cells only "
+            "with a test on the runs, such as Fisher's exact test.", "",
+            "| Cell | Prompt | n | Picks | Success | 95% interval | Regressions | Errors | "
+            f"Mean {unit} | {unit} per success | Mean reported USD | Mean s | "
+            "Mean lines changed | Fix after cutoff |",
+            "|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
+        ]
+    for r in planted:
         lines.append(
             f"| {r['cell']} | {r['prompt']} | {r['n']} | {r['picks']} | "
             f"{r['success']}/{r['n']} | {_interval(r['interval'])} | "
@@ -124,6 +173,36 @@ def markdown(batch_dir, sheet="copilot"):
             f"{_fmt(r['mean_cost'], 3)} | {_fmt(r['cost_per_success'], 3)} | "
             f"{_fmt(r['mean_usd_reported'], 3)} | {_fmt(r['mean_seconds'])} | "
             f"{_fmt(r['mean_lines'])} | {r['fix_after_cutoff']} |")
+    if controls:
+        lines += [
+            "", f"{sum(r['n'] for r in controls)} control runs. A control has no "
+            "planted defect, so a run is neither a success nor a miss. The columns "
+            "count what each run did instead. Only the `security` prompt measures "
+            "false positives: a claimed security fix where no hole was planted. For "
+            "`open` and `ddd`, a safe change is the correct answer. A run with an "
+            "agent error, a timeout, a diff that did not apply, or no score counts "
+            "as an error and nothing else. Each other count is over the runs "
+            "without an error, with a 95% Wilson interval. With three runs it is "
+            "wide, so compare two cells only with a test on the runs, such as "
+            "Fisher's exact test. A test file is one under a `test`, `tests`, or "
+            "`__tests__` folder. The three \"changed\" counts hold runs whose "
+            "regression set passed. Cost prices the stored tokens with today's "
+            f"`{sheet}` price sheet, in {unit}; a cell with an unpriced run shows "
+            "n/a.", "",
+            "| Cell | Prompt | n | Error | Changed nothing | Changed tests only | "
+            f"Changed app code | Regression fails | Mean {unit} | Mean reported USD | "
+            "Mean s | Mean lines changed |",
+            "|---|---|---:|---:|---|---|---|---|---:|---:|---:|---:|",
+        ]
+    for r in controls:
+        valid = r["n"] - r["outcomes"][CONTROL_ERROR]
+        counts = " | ".join(
+            f"{r['outcomes'][name]}/{valid} ({_interval(r['outcome_intervals'][name])})"
+            for name in CONTROL_BEHAVIOUR)
+        lines.append(
+            f"| {r['cell']} | {r['prompt']} | {r['n']} | {r['outcomes'][CONTROL_ERROR]} | "
+            f"{counts} | {_fmt(r['mean_cost'], 3)} | {_fmt(r['mean_usd_reported'], 3)} | "
+            f"{_fmt(r['mean_seconds'])} | {_fmt(r['mean_lines'])} |")
     refused = [f"{r['run_id']} ({', '.join(r['network']['denied'])})"
                for r in results if (r.get("network") or {}).get("denied")]
     if refused:

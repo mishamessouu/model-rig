@@ -188,12 +188,15 @@ def fake(cell, prompt, run_dir, budget_usd, scenario=None):
         # Paths the sandbox must hide: the rig repo with its hidden tests,
         # the sign-in folders, the fixture cache, and the sockets under /run
         # and /var. The rig folder itself shows, because this file is bound
-        # inside it. A prepared environment must show, so it comes last.
+        # inside it. A prepared environment must show, so it comes last,
+        # and a Node environment's node_modules must show in the copy.
         argv += [ROOT / ".git", ROOT / "scenarios", scenario.hidden,
                  scenario.solution("probe").parent,
                  CLAUDE_FOLDER, CODEX_FOLDER, STATE / "fixtures",
                  "/run/docker.sock", "/var/snap",
-                 *([scenario.env] if scenario.env else [])]
+                 *([scenario.env] if scenario.env else []),
+                 *(target / ".package-lock.json"
+                   for _, target in scenario.sandbox_mounts(run_dir / "repo"))]
     if cell["model"] == "netprobe":
         # The hosts it should reach; it also tries a direct connect and a
         # host that is not on the list.

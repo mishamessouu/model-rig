@@ -2,9 +2,11 @@
 
 A fixture is either a folder in the scenario (`repo/`) or an upstream git
 commit, prepared once into a cache under the rig state folder by
-`python3 -m rig prepare`. A scenario may also name a Python environment,
-prepared into the same state folder, that the agent and the scorer use.
+`python3 -m rig prepare`. A scenario may also name an environment,
+prepared into the same state folder, that the agent and the scorer use:
+a Python venv, or a Node `node_modules` (design decision 11).
 """
+import os
 import shutil
 import subprocess
 import tomllib
@@ -17,6 +19,13 @@ IGNORED = shutil.ignore_patterns("__pycache__", "*.pyc", ".git")
 # `{tests}` in a command becomes zero or more test ids.
 TESTS = "{tests}"
 DEFAULT_COMMAND = ["python3", "-m", "unittest", "-q", TESTS]
+# Files a Node environment copies from the fixture root before its setup
+# commands run, so `npm ci` installs what the project's lock file names.
+NODE_MANIFESTS = ("package.json", "package-lock.json", "npm-shrinkwrap.json", ".npmrc")
+# npm in a sandbox: no registry, so fail at once instead of retrying, and
+# no update check, audit, or funding call.
+NODE_ENV = {"npm_config_offline": "true", "npm_config_update_notifier": "false",
+            "npm_config_audit": "false", "npm_config_fund": "false"}
 
 
 @dataclass
@@ -30,6 +39,8 @@ class Scenario:
     source: dict | None = None
     # Commands that fill the environment, or None for no environment.
     setup: list | None = None
+    # "python" (a venv) or "node" (a node_modules folder, decision 11).
+    kind: str = "python"
     command: list = field(default_factory=lambda: list(DEFAULT_COMMAND))
     # Where hidden test files land in the scoring copy.
     hidden_into: str = "hidden"
@@ -43,6 +54,10 @@ class Scenario:
     # "YYYY-MM-DD" of the upstream fix, for a reinjected real fix. A model
     # whose training cutoff is on or after it may know the fix.
     fix_date: str | None = None
+    # A control has no defect: the app holds a known fix, and a run shows
+    # whether the agent changes nothing, changes code safely, or breaks
+    # something (design decision 12).
+    control: bool = False
 
     @property
     def fixture(self):
@@ -69,16 +84,30 @@ class Scenario:
 
     def sandbox_read(self):
         """Paths both sandboxes bind read-only for this scenario: the
-        prepared venv, and its base interpreter when the sandbox would
-        otherwise hide it."""
+        prepared environment, and its base interpreter or Node install
+        when the sandbox would otherwise hide it."""
         if not self.env:
             return []
+        if self.kind == "node":
+            return [self.env, *node_install(self.env)]
         return [self.env, *base_interpreter(self.env)]
 
+    def sandbox_mounts(self, copy):
+        """(source, target) pairs both sandboxes bind read-only over the
+        working copy `copy`: a Node environment's node_modules, so the
+        project resolves its packages the way it does on a developer's
+        machine, and nothing in it enters the copy or its diff."""
+        if self.kind != "node" or not self.env:
+            return []
+        return [(self.env / "node_modules", Path(copy) / "node_modules")]
+
     def sandbox_env(self):
-        """Variables both sandboxes set, so `python3` is the prepared one."""
+        """Variables both sandboxes set, so `python3`, or `node` and
+        `npm`, are the prepared ones."""
         if not self.env:
             return {}
+        if self.kind == "node":
+            return {"PATH": f"{self.env}/bin:{sandbox.PATH}", **NODE_ENV}
         return {"PATH": f"{self.env}/bin:{sandbox.PATH}", "VIRTUAL_ENV": self.env}
 
     def missing(self):
@@ -120,6 +149,23 @@ def base_interpreter(env):
     return []
 
 
+def node_install(env):
+    """The Node install that a Node environment's `bin/node` links to, if
+    it sits under a folder the sandbox empties (nvm or fnm under home).
+    Without it, `node` is a broken link in the sandbox. Both the install
+    folder and its resolved target are listed."""
+    node = Path(env) / "bin" / "node"
+    if not node.is_symlink():
+        return []
+    named = Path(os.readlink(node)).parent.parent
+    out = []
+    for prefix in (named, named.resolve()):
+        if prefix not in out and any(
+                prefix.is_relative_to(folder) for folder in sandbox.EMPTIED):
+            out.append(prefix)
+    return out
+
+
 def load(name):
     """Load a scenario by name, or from a folder path (the rig's tests)."""
     folder = Path(name) if Path(name).is_absolute() else ROOT / "scenarios" / name
@@ -129,28 +175,49 @@ def load(name):
     data = tomllib.loads((folder / "scenario.toml").read_text())
     prompts = {key: " ".join(text.split()) for key, text in data["prompts"].items()}
     tests = data.get("tests", {})
+    control = data.get("control", False)
+    defects = data.get("defects", [])
+    if control and defects:
+        raise SystemExit(f"{data['name']}: a control scenario has no [[defects]]")
+    if not control and not defects:
+        raise SystemExit(f"{data['name']}: no [[defects]]. A scenario with nothing "
+                         "to find sets `control = true`.")
     return Scenario(
-        data["name"], folder, prompts, data["defects"], data["regression"]["tests"],
+        data["name"], folder, prompts, defects, data["regression"]["tests"],
         source=data.get("fixture"),
         setup=data["environment"].get("setup", []) if "environment" in data else None,
+        kind=data.get("environment", {}).get("kind", "python"),
         command=tests.get("command", list(DEFAULT_COMMAND)),
         hidden_into=tests.get("hidden_into", "hidden"),
         visible=tests.get("visible", []),
         pristine=tests.get("pristine", []),
         timeout=tests.get("timeout_seconds", 120),
         fix_date=str(data["fix_date"]) if data.get("fix_date") else None,
+        control=control,
     )
 
 
 def copy_repo(scenario, target):
-    """Copy the fixture to `target` and commit it, so the diff is exact."""
+    """Copy the fixture to `target` and commit it, so the diff is exact.
+
+    A Node scenario's copy gets an empty `node_modules` folder, the mount
+    point for the prepared one, and git ignores that name, so a project
+    that does not ignore it itself still gets a clean diff."""
     if scenario.unprepared():
         raise SystemExit(scenario.unprepared())
+    node = scenario.kind == "node"
     shutil.copytree(scenario.fixture, target, ignore=shutil.ignore_patterns(
-        "__pycache__", "*.pyc", ".git", ".rig-prepared"))
+        "__pycache__", "*.pyc", ".git", ".rig-prepared",
+        *(["node_modules"] if node else [])))
     git = ["git", "-C", str(target), "-c", "user.name=rig",
            "-c", "user.email=rig@localhost"]
     subprocess.run([*git, "init", "-q", "-b", "main"], check=True)
+    if node:
+        (Path(target) / "node_modules").mkdir()
+        exclude = Path(target) / ".git" / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a") as out:
+            out.write("/node_modules\n")
     subprocess.run([*git, "add", "-A"], check=True)
     subprocess.run([*git, "commit", "-q", "-m", "baseline"], check=True)
     return target

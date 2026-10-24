@@ -29,10 +29,12 @@ PROXY_ENV = {
 }
 
 
-def command(argv, *, cwd, read=(), write=(), env=None, proxy=None):
+def command(argv, *, cwd, read=(), write=(), mounts=(), env=None, proxy=None):
     """Return the bwrap argv. `write` binds in order, so a later bind may
-    sit inside an earlier one. `proxy` is the host path of a running
-    proxy's socket, or None for no network."""
+    sit inside an earlier one. `mounts` are (source, target) pairs bound
+    read-only after the write binds, so a target may sit inside a write
+    bind, such as a prepared node_modules in the working copy. `proxy` is
+    the host path of a running proxy's socket, or None for no network."""
     bwrap = shutil.which("bwrap")
     if bwrap is None:
         raise RuntimeError("bubblewrap (bwrap) is not installed")
@@ -45,6 +47,8 @@ def command(argv, *, cwd, read=(), write=(), env=None, proxy=None):
         out += ["--ro-bind", str(path), str(path)]
     for path in write:
         out += ["--bind", str(path), str(path)]
+    for source, target in mounts:
+        out += ["--ro-bind", str(source), str(target)]
     environment = {"PATH": PATH, "LANG": "C.UTF-8"}
     environment.update(env or {})
     if proxy:

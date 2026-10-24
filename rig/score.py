@@ -14,6 +14,7 @@ from .scenario import IGNORED, copy_repo
 def _run(scenario, tests, cwd):
     command = sandbox.command(
         scenario.argv(tests), cwd=cwd, read=scenario.sandbox_read(), write=[cwd],
+        mounts=scenario.sandbox_mounts(cwd),
         env={"HOME": str(cwd), "PYTHONDONTWRITEBYTECODE": "1",
              **scenario.sandbox_env()},
     )

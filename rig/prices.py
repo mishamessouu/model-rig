@@ -22,8 +22,10 @@ def cost(sheet, by_model):
         return None, ["no usage recorded"]
     total, missing = 0.0, []
     for model, tokens in by_model.items():
-        price = next((p for key, p in sheet["models"].items()
-                      if model.startswith(key)), None)
+        # The longest matching key wins, so "claude-sonnet-5" does not
+        # price "claude-sonnet-5-5".
+        keys = [key for key in sheet["models"] if model.startswith(key)]
+        price = sheet["models"][max(keys, key=len)] if keys else None
         if price is None:
             missing.append(model)
             continue
