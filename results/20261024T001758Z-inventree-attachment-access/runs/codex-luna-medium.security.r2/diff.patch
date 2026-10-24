@@ -1,0 +1,38 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..7c23637 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,7 +796,6 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
+-
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+ 
+@@ -806,6 +805,25 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Restrict attachment listings to models the user may view."""
++        return super().get_queryset().filter(
++            model_type__in=self.viewable_model_types()
++        )
++
++    def viewable_model_types(self):
++        """Return attachment model types the current user may view."""
++        from common.validators import attachment_model_class_from_label
++
++        user = self.request.user
++        return [
++            model_type
++            for model_type, _ in common.validators.attachment_model_options()
++            if attachment_model_class_from_label(model_type).check_related_permission(
++                'view', user
++            )
++        ]
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)

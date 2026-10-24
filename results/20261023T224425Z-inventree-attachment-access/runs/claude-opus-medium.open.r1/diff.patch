@@ -1,0 +1,51 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..11176cd 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,23 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Limit attachments to those linked to models the user can view."""
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        queryset = super().get_queryset()
++
++        user = self.request.user
++
++        allowed_types = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'view')
++        ]
++
++        return queryset.filter(model_type__in=allowed_types)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/tests.py b/src/backend/InvenTree/common/tests.py
+index 49463df..3a26a20 100644
+--- a/src/backend/InvenTree/common/tests.py
++++ b/src/backend/InvenTree/common/tests.py
+@@ -187,9 +187,17 @@ class AttachmentTest(InvenTreeAPITestCase):
+         attachment = Attachment.objects.get(pk=pk)
+         self.assertEqual(attachment.comment, 'New comment')
+ 
+-        # And check that we cannot edit the attachment without the correct permissions
++        # Without 'view' permission, the attachment is not visible at all
+         self.clearRoles()
+ 
++        self.get(reverse('api-attachment-detail', kwargs={'pk': pk}), expected_code=404)
++
++        response = self.get(url, {'model_type': 'part'}, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++
++        # And check that we cannot edit the attachment without the correct permissions
++        self.assignRole('part.view')
++
+         self.patch(
+             reverse('api-attachment-detail', kwargs={'pk': pk}),
+             {'comment': 'New comment 2'},

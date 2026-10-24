@@ -1,0 +1,139 @@
+{
+  "run_id": "codex-luna-medium.open.r1",
+  "batch": "20261020T174438Z-mlflow-graphql-permission",
+  "scenario": "mlflow-graphql-permission",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 137.2,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 32417,
+    "output": 1421,
+    "cache_read": 381312,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 32417,
+      "output": 1421,
+      "cache_read": 381312,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 413729,
+    "cached_input_tokens": 381312,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1421,
+    "reasoning_output_tokens": 222
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 0.7765,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Standardized unknown permission errors because callers should receive a clear MLflow validation error, not a raw `KeyError`.",
+  "final": "Updated [permissions.py](~/.model-rig/work/20261020T174438Z-mlflow-graphql-permission/codex-luna-medium.open.r1/repo/mlflow/server/auth/permissions.py) so `get_permission()` raises MLflow\u2019s standard invalid-parameter exception for unknown names instead of leaking a `KeyError`. Added a regression test in [test_permissions.py](~/.model-rig/work/20261020T174438Z-mlflow-graphql-permission/codex-luna-medium.open.r1/repo/tests/server/auth/test_permissions.py).\n\nRequested test command passed: **454 passed**.\n\nCHOICE: Standardized unknown permission errors because callers should receive a clear MLflow validation error, not a raw `KeyError`.",
+  "diff": {
+    "files": 2,
+    "added": 6,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/server/auth/test_auth.py::test_graphql_get_experiment_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_get_run_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_list_artifacts_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_nonexistent_run": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_requires_authentication": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_search_model_versions": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_search_runs_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_search_model_versions": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_search_registered_models": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_client_workspace.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_nested_run_model_versions_filtered_by_model_permission": {
+      "passed": false,
+      "tail": "========================= per-file durations (sorted) ==========================\n::group::per-file durations (sorted)\n\n| Rank | File                                                          | Duration | Tests | Min    | Max    | Avg    |\n| ---- | ------------------------------------------------------------- | -------- | ----- | ------ | ------ | ------ |\n| 1    | `tests/server/auth/test_graphql_model_version_permissions.py` | 8.97s    | 1     | 8.965s | 8.965s | 8.965s |\n\n::endgroup::\n\n========================= command to run failed tests ==========================\npytest 'tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_nested_run_model_versions_filtered_by_model_permission[client0]'\n\n\u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\n\u001b[31mFAILED | MEM 0.0/0.0 GB | DISK 0.0/0.0 GB\u001b[0m tests/server/auth/test_graphql_model_version_permissions.py::\u001b[1mtest_graphql_nested_run_model_versions_filtered_by_model_permission[client0]\u001b[0m - AssertionError: assert ['gql_nested_...ed_mv_model4'] == ['gql_nested_...ed...\n\u001b[31m======================== \u001b[31m\u001b[1m1 failed\u001b[0m, \u001b[33m3 warnings\u001b[0m\u001b[31m in 9.48s\u001b[0m\u001b[31m =========================\u001b[0m"
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_model_grant_does_not_reveal_prompt": {
+      "passed": false,
+      "tail": "========================= per-file durations (sorted) ==========================\n::group::per-file durations (sorted)\n\n| Rank | File                                                          | Duration | Tests | Min    | Max    | Avg    |\n| ---- | ------------------------------------------------------------- | -------- | ----- | ------ | ------ | ------ |\n| 1    | `tests/server/auth/test_graphql_model_version_permissions.py` | 5.17s    | 1     | 5.168s | 5.168s | 5.168s |\n\n::endgroup::\n\n========================= command to run failed tests ==========================\npytest 'tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_model_grant_does_not_reveal_prompt[client0]'\n\n\u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\n\u001b[31mFAILED | MEM 0.0/0.0 GB | DISK 0.0/0.0 GB\u001b[0m tests/server/auth/test_graphql_model_version_permissions.py::\u001b[1mtest_graphql_search_model_versions_model_grant_does_not_reveal_prompt[client0]\u001b[0m - AssertionError: assert ['gql_prompt_e629daa4f83f'] == []\n\u001b[31m======================== \u001b[31m\u001b[1m1 failed\u001b[0m, \u001b[33m3 warnings\u001b[0m\u001b[31m in 5.67s\u001b[0m\u001b[31m =========================\u001b[0m"
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_prompt_grant_reveals_prompt": {
+      "passed": false,
+      "tail": "========================= per-file durations (sorted) ==========================\n::group::per-file durations (sorted)\n\n| Rank | File                                                          | Duration | Tests | Min    | Max    | Avg    |\n| ---- | ------------------------------------------------------------- | -------- | ----- | ------ | ------ | ------ |\n| 1    | `tests/server/auth/test_graphql_model_version_permissions.py` | 4.96s    | 1     | 4.961s | 4.961s | 4.961s |\n\n::endgroup::\n\n========================= command to run failed tests ==========================\npytest 'tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_prompt_grant_reveals_prompt[client0]'\n\n\u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\n\u001b[31mFAILED | MEM 0.0/0.0 GB | DISK 0.0/0.0 GB\u001b[0m tests/server/auth/test_graphql_model_version_permissions.py::\u001b[1mtest_graphql_search_model_versions_prompt_grant_reveals_prompt[client0]\u001b[0m - AssertionError: assert [] == ['gql_prompt_ca021f72a5f7']\n\u001b[31m======================== \u001b[31m\u001b[1m1 failed\u001b[0m, \u001b[33m3 warnings\u001b[0m\u001b[31m in 5.45s\u001b[0m\u001b[31m =========================\u001b[0m"
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_follow_a_new_grant": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_permitted_reader_sees_all": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_use_requested_workspace_grants": {
+      "passed": false,
+      "tail": "========================= per-file durations (sorted) ==========================\n::group::per-file durations (sorted)\n\n| Rank | File                                                          | Duration | Tests | Min    | Max    | Avg    |\n| ---- | ------------------------------------------------------------- | -------- | ----- | ------ | ------ | ------ |\n| 1    | `tests/server/auth/test_graphql_model_version_permissions.py` | 6.15s    | 1     | 6.149s | 6.149s | 6.149s |\n\n::endgroup::\n\n========================= command to run failed tests ==========================\npytest 'tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_use_requested_workspace_grants'\n\n\u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\n\u001b[31mFAILED | MEM 0.0/0.0 GB | DISK 0.0/0.0 GB\u001b[0m tests/server/auth/test_graphql_model_version_permissions.py::\u001b[1mtest_nested_run_model_versions_use_requested_workspace_grants\u001b[0m - AssertionError: assert {'granted-1ac...b218598f9929'} == {'granted-1ac60cd2...\n\u001b[31m======================== \u001b[31m\u001b[1m1 failed\u001b[0m, \u001b[33m3 warnings\u001b[0m\u001b[31m in 6.66s\u001b[0m\u001b[31m =========================\u001b[0m"
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_wildcard_reader_and_admin_see_all": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

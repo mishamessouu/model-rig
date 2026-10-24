@@ -1,0 +1,99 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.security.r3",
+  "batch": "20261023T224425Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 161.4,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 8,
+  "tokens": {
+    "input": 16,
+    "output": 3152,
+    "cache_read": 114342,
+    "cache_write": 15305
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 16,
+      "output": 3152,
+      "cache_read": 114342,
+      "cache_write": 15305
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 15305,
+    "cache_read_input_tokens": 114342,
+    "output_tokens": 3152,
+    "output_tokens_details": {
+      "thinking_tokens": 271
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15305,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.10420620000000001,
+  "costs": {
+    "copilot": {
+      "value": 8.1249,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Restricted attachment list and detail reads to model types the user has view permission on, because any logged-in user could previously read all attachments regardless of their roles.",
+  "final": "I fixed a read-access gap in the attachment API. Any authenticated user could list or fetch every attachment, whatever their permissions on the model it belonged to. The 52 tests in the command you gave pass.\n\nWrites were already checked against the related model. Reads had no such check. A user with no part role, for example, could read part attachments, including files and links.\n\nThe fix is a `get_queryset` override on `AttachmentMixin` in `common/api.py`. For GET, HEAD and OPTIONS it limits results to model types the user has `view` permission on. Superusers see everything.\n\nThe filter does not apply to writes. My first version filtered everything, and that turned the 403 on an unauthorized PATCH into a 404. `test_upload_via_api` caught it. Writes now go through the existing permission check and still return 403.\n\nI did not add a new test for the read restriction. The existing tests pass, but none exercises it directly.\n\nCHOICE: Restricted attachment list and detail reads to model types the user has view permission on, because any logged-in user could previously read all attachments regardless of their roles.",
+  "diff": {
+    "files": 1,
+    "added": 24,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

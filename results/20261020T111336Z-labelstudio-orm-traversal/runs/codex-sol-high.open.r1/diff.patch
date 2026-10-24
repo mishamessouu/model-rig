@@ -1,0 +1,110 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..b1facd8 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,18 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Ad hoc filters and ordering bypass FilterSerializer.validate_column.
++    # Enforce its traversal restriction before translating JSON data accesses.
++    if (
++        not field_name.startswith('data.')
++        and '__' in field_name
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError(
++            f'"__" is not generally allowed in filters or ordering. Consider asking your administrator to add '
++            f'"{field_name}" to DATA_MANAGER_FILTER_ALLOWLIST, but note that some filter expressions may pose a security risk'
++        )
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_functions.py b/label_studio/data_manager/tests/test_functions.py
+new file mode 100644
+index 0000000..f23ed5e
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_functions.py
+@@ -0,0 +1,73 @@
++import json
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from data_manager.models import View
++from projects.tests.factories import ProjectFactory
++from rest_framework.exceptions import ValidationError
++from rest_framework.test import APIClient
++from tasks.tests.factories import TaskFactory
++
++
++@pytest.mark.parametrize('prefix', ['', 'tasks:', '-tasks:', 'tasks:-', 'filter:tasks:', 'filter:tasks:-'])
++@pytest.mark.parametrize('field', ['updated_by__password', 'project__created_by__password', 'data__text'])
++def test_preprocess_field_name_rejects_unapproved_orm_lookups(prefix, field, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = []
++
++    with pytest.raises(ValidationError, match='DATA_MANAGER_FILTER_ALLOWLIST'):
++        preprocess_field_name(prefix + field, project=None)
++
++
++@pytest.mark.parametrize(
++    'raw_field, expected',
++    [
++        ('filter:tasks:id', ('id', True)),
++        ('-tasks:created_at', ('created_at', False)),
++        ('tasks:-updated_by__active_organization', ('updated_by__active_organization', False)),
++        ('filter:tasks:data.images__0', ('data__images__0', True)),
++        ('tasks:data.text', ('data__text', True)),
++    ],
++)
++def test_preprocess_field_name_preserves_supported_fields(raw_field, expected, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['updated_by__active_organization']
++    project = SimpleNamespace(summary=SimpleNamespace(common_data_columns={}), data_types={})
++
++    assert preprocess_field_name(raw_field, project) == expected
++
++
++@pytest.mark.django_db
++@pytest.mark.parametrize('mode', ['filter', 'child_filter', 'ordering', 'saved_ordering'])
++def test_task_list_rejects_unapproved_orm_lookups(mode):
++    project = ProjectFactory()
++    TaskFactory(project=project)
++    client = APIClient()
++    client.force_authenticate(project.created_by)
++    restricted_filter = {
++        'filter': 'filter:tasks:project__created_by__password',
++        'operator': 'contains',
++        'type': 'String',
++        'value': 'secret',
++    }
++    if mode in ('ordering', 'saved_ordering'):
++        query = {'ordering': ['-tasks:project__created_by__password']}
++    else:
++        item = restricted_filter
++        if mode == 'child_filter':
++            item = {
++                'filter': 'filter:tasks:id',
++                'operator': 'equal',
++                'type': 'Number',
++                'value': 1,
++                'child_filters': [restricted_filter],
++            }
++        query = {'filters': {'conjunction': 'and', 'items': [item]}}
++
++    if mode == 'saved_ordering':
++        view = View.objects.create(project=project, ordering=query['ordering'])
++        response = client.get('/api/tasks/', {'view': view.id})
++    else:
++        response = client.get('/api/tasks/', {'project': project.id, 'query': json.dumps(query)})
++
++    assert response.status_code == 400
++    assert 'DATA_MANAGER_FILTER_ALLOWLIST' in str(response.json())

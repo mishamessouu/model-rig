@@ -1,0 +1,56 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..63df6f0 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -392,6 +392,10 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            # Exported IDs must never reach the ORM's unscoped relationship lookup.
++            data.pop("id", None)
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..947a7b7 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -622,6 +622,36 @@ def test_create_recipe_from_zip_id_taken_in_another_group(
+     assert still_there.json()["id"] == other_recipe["id"]
+ 
+ 
++@pytest.mark.parametrize("existing_local_tool", [False, True])
++def test_create_recipe_from_zip_tool_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str, existing_local_tool: bool
++) -> None:
++    name = random_string()
++    foreign_tool = api_client.post(api_routes.organizers_tools, json={"name": name}, headers=g2_user.token).json()
++    local_tool = None
++    if existing_local_tool:
++        local_tool = api_client.post(api_routes.organizers_tools, json={"name": name}, headers=unique_user.token).json()
++
++    recipe_name = random_string()
++    recipe = Recipe(
++        name=recipe_name,
++        tools=[{**foreign_tool, "name": "Tampered tool name"}],
++    )
++    response = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token
++    )
++    assert response.status_code == 201
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    unchanged = g2_user.repos.tools.get_one(foreign_tool["id"])
++    assert unchanged is not None
++    assert unchanged.name == name
++    assert str(unchanged.group_id) == str(g2_user.group_id)
++    assert imported["tools"][0]["id"] != foreign_tool["id"]
++    assert imported["tools"][0]["groupId"] == str(unique_user.group_id)
++    if local_tool:
++        assert imported["tools"][0]["id"] == local_tool["id"]
++
++
+ def test_create_recipe_from_zip_preserves_extras(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     """Importing must not write its own keys into the recipe's free-form extras."""
+     recipe_name = random_string()

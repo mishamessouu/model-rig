@@ -1,0 +1,136 @@
+{
+  "run_id": "codex-luna-medium.security.r3",
+  "batch": "20261020T111336Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 110.6,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 44362,
+    "output": 3149,
+    "cache_read": 930432,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 44362,
+      "output": 3149,
+      "cache_read": 930432,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 974794,
+    "cached_input_tokens": 930432,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 3149,
+    "reasoning_output_tokens": 912
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 1.5315,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Rejected direct ORM traversal in Data Manager field names because it could expose hidden related data.",
+  "final": "Blocked direct Django ORM traversal through Data Manager field names with a validation error, while preserving `data.<key>` filters and ordering. This prevents clients from querying hidden related fields.\n\nThe requested test suite passed: **340 passed, 2 skipped, 151 subtests passed**.\n\nCHOICE: Rejected direct ORM traversal in Data Manager field names because it could expose hidden related data.",
+  "diff": {
+    "files": 1,
+    "added": 6,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "pypi.org",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprdenmarkeast.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-inline-filter-traversal",
+    "s2-ordering-traversal"
+  ],
+  "regression_pass": false,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": false,
+      "tail": "    return queryset.prepared(prepare_params=prepare_params)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r3/scored/tmpjonfgdt8/repo/label_studio/data_manager/managers.py\", line 1068, in prepared\n    queryset = apply_filters(queryset, prepare_params.filters, project, request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r3/scored/tmpjonfgdt8/repo/label_studio/data_manager/managers.py\", line 799, in apply_filters\n    field_name, _ = preprocess_field_name(_filter.filter, project)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r3/scored/tmpjonfgdt8/repo/label_studio/data_manager/functions.py\", line 423, in preprocess_field_name\n    raise ValidationError('Invalid Data Manager field name')\nrest_framework.exceptions.ValidationError: [ErrorDetail(string='Invalid Data Manager field name', code='invalid')]\nWARNING  django.request:log.py:253 Bad Request: /api/tasks/\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work\n1 failed in 13.82s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,52 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..ed59b85 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,19 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_readable_queryset(self):
++        """Return attachments linked to models the requesting user can view."""
++        from common.validators import attachment_model_class_from_label
++
++        user = self.request.user
++        allowed_types = []
++        for model_type, _ in common.validators.attachment_model_options():
++            model_class = attachment_model_class_from_label(model_type)
++            if model_class.check_related_permission('view', user):
++                allowed_types.append(model_type)
++
++        return self.queryset.filter(model_type__in=allowed_types)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+@@ -806,6 +819,10 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Limit attachment listings to models the user can view."""
++        return self.get_readable_queryset()
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +849,16 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Require view permission before returning attachment details."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('view', request.user):
++            raise PermissionDenied(_('User does not have permission to view this attachment'))
++
++        serializer = self.get_serializer(attachment)
++        return Response(serializer.data)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()

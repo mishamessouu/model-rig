@@ -1,0 +1,24 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..dd83d06 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -270,8 +270,8 @@ class RecipeService(RecipeServiceBase):
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
+-        new_item = repo.create(data)
++        # otherwise, create the item; the incoming id belongs to the source instance and must not be reused
++        new_item = repo.create({k: v for k, v in data.items() if k != "id"})
+         return new_item.model_dump()
+ 
+     def _get_data_matcher(self) -> DataMatcher:
+@@ -392,6 +392,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":

@@ -1,0 +1,99 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..3445800 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -32,6 +33,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+ from mealie.services._base_service import BaseService
+@@ -285,6 +287,20 @@ class RecipeService(RecipeServiceBase):
+             )
+         return self._data_matcher
+ 
++    def _transform_tool(self, data: dict[str, Any]) -> dict[str, Any]:
++        # Resolve tools within this group before the ORM sees them: exported ids may
++        # belong to another group, and the ORM's relationship lookup is unscoped.
++        tool = self.repos.tools.get_one(data.get("slug") or slugify(data["name"]), "slug")
++        if tool is None:
++            tool = self.repos.tools.create(
++                RecipeToolSave(
++                    name=data["name"],
++                    group_id=self.user.group_id,
++                    households_with_tool=data.get("households_with_tool") or [],
++                )
++            )
++        return tool.model_dump()
++
+     def _reset_data_matcher(self) -> None:
+         self._data_matcher = None
+ 
+@@ -392,6 +408,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..c6e777a 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -795,6 +795,44 @@ def test_create_recipe_from_zip_existing_tag_wrong_ids(api_client: TestClient, u
+     assert str(fetched_recipe.tags[0].id) == str(tag.id)
+ 
+ 
++@pytest.mark.parametrize("existing_local_tool", [False, True])
++def test_create_recipe_from_zip_tool_id_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str, existing_local_tool: bool
++) -> None:
++    foreign_tool = api_client.post(
++        api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token
++    ).json()
++    tool_name = random_string()
++    local_tool = None
++    if existing_local_tool:
++        local_tool = api_client.post(
++            api_routes.organizers_tools, json={"name": tool_name}, headers=unique_user.token
++        ).json()
++
++    recipe = Recipe(
++        name=random_string(),
++        tools=[{**foreign_tool, "name": tool_name, "slug": slugify(tool_name)}],
++    )
++    response = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token
++    )
++    assert response.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    assert len(imported["tools"]) == 1
++    imported_tool = imported["tools"][0]
++    assert imported_tool["id"] != foreign_tool["id"]
++    assert imported_tool["groupId"] == str(unique_user.group_id)
++    assert imported_tool["name"] == tool_name
++    if local_tool:
++        assert imported_tool["id"] == local_tool["id"]
++
++    # An untrusted archive must neither mutate nor move the other group's tool.
++    unchanged = api_client.get(api_routes.organizers_tools_item_id(foreign_tool["id"]), headers=g2_user.token)
++    assert unchanged.status_code == 200
++    assert unchanged.json() == foreign_tool
++
++
+ def test_create_recipe_from_zip_invalid_category(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     database = unique_user.repos
+     invalid_name = random_string()

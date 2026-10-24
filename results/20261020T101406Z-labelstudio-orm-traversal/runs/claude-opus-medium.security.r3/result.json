@@ -1,0 +1,145 @@
+{
+  "run_id": "claude-opus-medium.security.r3",
+  "batch": "20261020T101406Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "claude-opus-medium",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 140.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 16,
+  "tokens": {
+    "input": 32,
+    "output": 6146,
+    "cache_read": 367002,
+    "cache_write": 28294
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 32,
+      "output": 6146,
+      "cache_read": 367002,
+      "cache_write": 28294
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 28294,
+    "cache_read_input_tokens": 367002,
+    "output_tokens": 6146,
+    "output_tokens_details": {
+      "thinking_tokens": 3617
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 28294,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.4228004000000001,
+  "costs": {
+    "copilot": {
+      "value": 33.7918,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added the `__` (linked-field) check to `preprocess_field_name` so filters and sorting sent directly to `/api/tasks`, and sorting saved in views, can no longer reach linked fields such as `updated_by__password` and leak password hashes.",
+  "final": "I found and fixed an \"ORM leak\": a project member could use Data Manager filters or sorting to read other users' password hashes. All tests pass: 340 passed, 2 skipped, 151 subtests passed. I didn't add a test that tries the attack itself.\n\n**The problem.** The rule that blocks `__` in field names (which would let a field follow a link to the users table) lived only in `FilterSerializer.validate_column`. That only runs when a saved view is created or updated. Three other routes skipped it:\n- **Ad-hoc filters** sent to `/api/tasks`, in the request body or `?query=`. These go through `get_prepare_params` \u2192 `apply_filters` and become `Q(**{field_name...})` with no check. For example, `{\"filter\": \"filter:tasks:updated_by__password\", \"operator\": \"regex\", ...}` lets someone guess a password hash one character at a time.\n- **Ad-hoc ordering** on the same endpoint.\n- **Ordering saved in views.** Ordering is never checked against the allowlist, and it ends up as `F(field_name)`. Sorting by `tasks:updated_by__password` works as a guessing tool too.\n\n**The fix.** I put the same check in `preprocess_field_name` (`label_studio/data_manager/functions.py`), which every filter and sort path calls before building a query. Field names that contain `__` are now rejected with a 400 error (a DRF `ValidationError`), with two exceptions:\n- `data.*` fields, which are lookups inside the task's own JSON and don't follow links.\n- Fields listed in `DATA_MANAGER_FILTER_ALLOWLIST`.\n\nSo the rule now applies everywhere the view serializer's rule already applied, plus the paths that skipped it.\n\nCHOICE: Added the `__` (linked-field) check to `preprocess_field_name` so filters and sorting sent directly to `/api/tasks`, and sorting saved in views, can no longer reach linked fields such as `updated_by__password` and leak password hashes.",
+  "diff": {
+    "files": 1,
+    "added": 10,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "pypi.org"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-inline-filter-traversal",
+    "s2-ordering-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,71 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..54552d3 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -4804,8 +4804,16 @@ def list_users():
+         if requester_user.is_admin
+         else store.list_workspace_admin_workspaces(requester_user.id)
+     )
++    active_workspace = workspace_context.get_request_workspace()
+     response_users = []
+     for u, roles in users_with_roles:
++        if (
++            MLFLOW_ENABLE_WORKSPACES.get()
++            and active_workspace is not None
++            and admin_workspaces is not None
++            and not any(r.workspace == active_workspace for r in roles)
++        ):
++            continue
+         if admin_workspaces is None or u.username == requester:
+             visible_roles = roles
+         else:
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..fa6a3e2 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -58,6 +58,45 @@ def test_cleanup_workspace_permissions_handler(monkeypatch):
+     mock_delete_roles.assert_called_once_with(workspace_name)
+ 
+ 
++def test_list_users_is_scoped_to_active_workspace(monkeypatch):
++    monkeypatch.setenv(MLFLOW_ENABLE_WORKSPACES.name, "true")
++    requester = SimpleNamespace(
++        id=1,
++        username="requester",
++        is_admin=False,
++        to_json=lambda: {"username": "requester", "is_admin": False},
++    )
++    other_workspace_user = SimpleNamespace(
++        username="other",
++        is_admin=False,
++        to_json=lambda: {"username": "other", "is_admin": False},
++    )
++    requester_role = SimpleNamespace(workspace="team-a", to_json=lambda: {})
++    other_role = SimpleNamespace(workspace="team-b", to_json=lambda: {})
++    monkeypatch.setattr(
++        auth_module.store,
++        "list_users_with_roles",
++        lambda: [
++            (requester, [requester_role]),
++            (other_workspace_user, [other_role]),
++        ],
++    )
++    monkeypatch.setattr(auth_module.store, "get_user", lambda _: requester)
++    monkeypatch.setattr(auth_module.store, "list_workspace_admin_workspaces", lambda _: set())
++    monkeypatch.setattr(
++        auth_module, "authenticate_request", lambda: SimpleNamespace(username="requester")
++    )
++
++    token = workspace_context.set_server_request_workspace("team-a")
++    try:
++        with auth_module.app.test_request_context("/api/3.0/mlflow/users/list", method="GET"):
++            response = auth_module.list_users()
++    finally:
++        workspace_context._WORKSPACE.reset(token)
++
++    assert [user["username"] for user in response.json["users"]] == ["requester"]
++
++
+ def _create_workspace_response(workspace_name: str) -> Response:
+     payload = {"workspace": {"name": workspace_name}}
+     return Response(json.dumps(payload), status=201, content_type="application/json")

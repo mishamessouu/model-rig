@@ -1,0 +1,153 @@
+{
+  "run_id": "claude-opus-medium.open.r2",
+  "batch": "20261020T153617Z-mlflow-graphql-permission",
+  "scenario": "mlflow-graphql-permission",
+  "cell": "claude-opus-medium",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 318.2,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 17,
+  "tokens": {
+    "input": 32,
+    "output": 6728,
+    "cache_read": 404893,
+    "cache_write": 30421
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 32,
+      "output": 6728,
+      "cache_read": 404893,
+      "cache_write": 30421
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 30421,
+    "cache_read_input_tokens": 404893,
+    "output_tokens": 6728,
+    "output_tokens_details": {
+      "thinking_tokens": 1607
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30421,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.45903459999999996,
+  "costs": {
+    "copilot": {
+      "value": 36.7772,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I made the GraphQL auth middleware filter the nested `run.modelVersions` field by registered-model read permission, because it showed users model versions of registered models they couldn't read.",
+  "final": "I fixed a permission leak in GraphQL: it could show a user model versions of registered models they don't have permission to read.\n\n**The problem:** In GraphQL, each run has a nested `modelVersions` field (defined in `mlflow/server/graphql/graphql_schema_extensions.py`). It gets its data straight from the model registry. The authorization middleware only checks a fixed list of top-level fields, so this nested field was never filtered. Anyone who could read an experiment could send `mlflowGetRun { run { modelVersions { ... } } }` or the same through `mlflowSearchRuns`, and get back the names of model versions for every registered model linked to that run, including ones they can't read. The top-level `mlflowSearchModelVersions` query already filters these out, so the two paths disagreed.\n\n**The fix** (`mlflow/server/auth/__init__.py`, in `GraphQLAuthorizationMiddleware`):\n- I added `modelVersions` to `PROTECTED_FIELDS`.\n- After the field is resolved, results are filtered with the same registered-model read check that `mlflowSearchModelVersions` already uses.\n- On `mlflowSearchModelVersions` the filter now runs a second time, because its response also has a `modelVersions` field. That's redundant but harmless.\n\n**Tests:**\n- I added `test_graphql_run_model_versions_filtered_by_registered_model_permission` to `tests/server/auth/test_auth.py`. Without the fix it fails: the user sees `gql_run_mv_model1` even though they have no read permission on it. With the fix it passes, along with the other 9 GraphQL tests in that file.\n- The test command you gave (the five files under `tests/server/auth/`): **453 passed**.\n\nNothing is committed. A Bash hook that validates PR bodies kept failing because it couldn't download Python. It didn't affect the change.\n\nCHOICE: I made the GraphQL auth middleware filter the nested `run.modelVersions` field by registered-model read permission, because it showed users model versions of registered models they couldn't read.",
+  "diff": {
+    "files": 2,
+    "added": 56,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "github.com",
+      "releases.astral.sh"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-nested-run-model-versions"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/server/auth/test_auth.py::test_graphql_get_experiment_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_get_run_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_list_artifacts_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_nonexistent_run": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_requires_authentication": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_search_model_versions": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_search_runs_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_search_model_versions": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_search_registered_models": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_client_workspace.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_nested_run_model_versions_filtered_by_model_permission": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_model_grant_does_not_reveal_prompt": {
+      "passed": false,
+      "tail": "========================= per-file durations (sorted) ==========================\n::group::per-file durations (sorted)\n\n| Rank | File                                                          | Duration | Tests | Min    | Max    | Avg    |\n| ---- | ------------------------------------------------------------- | -------- | ----- | ------ | ------ | ------ |\n| 1    | `tests/server/auth/test_graphql_model_version_permissions.py` | 6.04s    | 1     | 6.037s | 6.037s | 6.037s |\n\n::endgroup::\n\n========================= command to run failed tests ==========================\npytest 'tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_model_grant_does_not_reveal_prompt[client0]'\n\n\u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\n\u001b[31mFAILED | MEM 0.0/0.0 GB | DISK 0.0/0.0 GB\u001b[0m tests/server/auth/test_graphql_model_version_permissions.py::\u001b[1mtest_graphql_search_model_versions_model_grant_does_not_reveal_prompt[client0]\u001b[0m - AssertionError: assert ['gql_prompt_e573959d9c0f'] == []\n\u001b[31m======================== \u001b[31m\u001b[1m1 failed\u001b[0m, \u001b[33m3 warnings\u001b[0m\u001b[31m in 6.61s\u001b[0m\u001b[31m =========================\u001b[0m"
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_prompt_grant_reveals_prompt": {
+      "passed": false,
+      "tail": "========================= per-file durations (sorted) ==========================\n::group::per-file durations (sorted)\n\n| Rank | File                                                          | Duration | Tests | Min    | Max    | Avg    |\n| ---- | ------------------------------------------------------------- | -------- | ----- | ------ | ------ | ------ |\n| 1    | `tests/server/auth/test_graphql_model_version_permissions.py` | 5.15s    | 1     | 5.151s | 5.151s | 5.151s |\n\n::endgroup::\n\n========================= command to run failed tests ==========================\npytest 'tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_prompt_grant_reveals_prompt[client0]'\n\n\u001b[36m\u001b[1m=========================== short test summary info ============================\u001b[0m\n\u001b[31mFAILED | MEM 0.0/0.0 GB | DISK 0.0/0.0 GB\u001b[0m tests/server/auth/test_graphql_model_version_permissions.py::\u001b[1mtest_graphql_search_model_versions_prompt_grant_reveals_prompt[client0]\u001b[0m - AssertionError: assert [] == ['gql_prompt_19ec60ade753']\n\u001b[31m======================== \u001b[31m\u001b[1m1 failed\u001b[0m, \u001b[33m3 warnings\u001b[0m\u001b[31m in 5.71s\u001b[0m\u001b[31m =========================\u001b[0m"
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_follow_a_new_grant": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_permitted_reader_sees_all": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_use_requested_workspace_grants": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_wildcard_reader_and_admin_see_all": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

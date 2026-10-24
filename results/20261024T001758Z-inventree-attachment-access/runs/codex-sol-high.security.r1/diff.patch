@@ -1,0 +1,91 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..cb9459d 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,20 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Limit read access to attachments for models the user can view."""
++        queryset = super().get_queryset()
++
++        if self.request.method in ['GET', 'HEAD']:
++            model_types = [
++                model.__name__.lower()
++                for model in common.validators.attachment_model_types()
++                if model.check_related_permission('view', self.request.user)
++            ]
++            queryset = queryset.filter(model_type__in=model_types)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..32a68fd 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -956,6 +956,61 @@ class ParameterAPITests(InvenTreeAPITestCase):
+ class AttachmentAPITests(InvenTreeAPITestCase):
+     """Tests for the Attachment API."""
+ 
++    def test_read_permissions(self):
++        """Attachments must only be visible with permission to view their model."""
++        from part.models import Part
++        from stock.models import StockItem
++
++        self.user.is_staff = False
++        self.user.save()
++
++        part = Part.objects.create(name='Test Part')
++        stock = StockItem.objects.create(part=part, quantity=1)
++        part.create_attachment(link='https://example.com/part')
++        stock.create_attachment(link='https://example.com/stock')
++        part_attachment = part.attachments.get()
++        stock_attachment = stock.attachments.get()
++
++        url = reverse('api-attachment-list')
++        part_url = reverse('api-attachment-detail', kwargs={'pk': part_attachment.pk})
++        stock_url = reverse('api-attachment-detail', kwargs={'pk': stock_attachment.pk})
++
++        self.assertEqual(self.get(url).data, [])
++        self.get(part_url, expected_code=404)
++        self.get(stock_url, expected_code=404)
++
++        self.assignRole('part.view')
++        self.assertEqual(
++            [item['pk'] for item in self.get(url).data], [part_attachment.pk]
++        )
++        self.get(part_url)
++        self.get(stock_url, expected_code=404)
++        self.assertEqual(self.client.head(stock_url).status_code, 404)
++
++        # Neither explicit filters nor pagination may expose restricted attachments.
++        self.assertEqual(self.get(url, {'model_type': 'stockitem'}).data, [])
++        response = self.get(url, {'limit': 10})
++        self.assertEqual(response.data['count'], 1)
++        self.assertEqual(response.data['results'][0]['pk'], part_attachment.pk)
++
++        self.assignRole('stock.view')
++        self.assertEqual(
++            {item['pk'] for item in self.get(url).data},
++            {part_attachment.pk, stock_attachment.pk},
++        )
++        self.get(stock_url)
++
++        self.clearRoles()
++        self.user.is_superuser = True
++        self.user.save()
++        self.assertEqual(len(self.get(url).data), 2)
++        self.get(part_url)
++        self.get(stock_url)
++
++        self.logout()
++        self.get(url, expected_code=401)
++        self.get(part_url, expected_code=401)
++
+     def test_attachments(self):
+         """Test API functionality for attachments."""
+         from common.models import Attachment

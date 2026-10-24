@@ -1,0 +1,87 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..4c314aa 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,6 +5195,10 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        if field_name == "modelVersions":
++            # Linked models have independent permissions from their source run.
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..30857e0 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -24,6 +24,7 @@ from mlflow.server.auth.routes import (
+     UPLOAD_ARTIFACT,
+ )
+ from mlflow.server.auth.sqlalchemy_store import SqlAlchemyStore
++from mlflow.server.graphql.graphql_schema_extensions import schema
+ from mlflow.utils import workspace_context
+ 
+ from tests.helper_functions import random_str
+@@ -2246,6 +2247,51 @@ def test_prompt_optimization_job_validators_denied_without_workspace_permission(
+         assert not auth_module.validate_can_delete_prompt_optimization_job()
+ 
+ 
++@pytest.mark.parametrize("is_admin", [False, True])
++@pytest.mark.parametrize("workspaces_enabled", [False, True])
++def test_graphql_nested_model_versions_authorization(
++    workspace_permission_setup, monkeypatch, is_admin, workspaces_enabled
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    monkeypatch.setenv(MLFLOW_ENABLE_WORKSPACES.name, str(workspaces_enabled).lower())
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    workspace = "team-a" if workspaces_enabled else "default"
++    user = store.get_user(username)
++    role = store.create_role(name="reader", workspace=workspace)
++    store.add_role_permission(role.id, "experiment", "exp-1", READ.name)
++    store.add_role_permission(role.id, "registered_model", "visible-model", READ.name)
++    store.assign_role_to_user(user.id, role.id)
++    store.update_user(username, is_admin=is_admin)
++
++    monkeypatch.setattr(
++        "mlflow.server.handlers.get_run_impl",
++        lambda _: SimpleNamespace(run=SimpleNamespace(info=SimpleNamespace(run_id="run-1"))),
++    )
++    monkeypatch.setattr(
++        "mlflow.server.handlers.search_model_versions_impl",
++        lambda _: SimpleNamespace(
++            model_versions=[
++                SimpleNamespace(name="visible-model"),
++                SimpleNamespace(name="private-model"),
++            ]
++        ),
++    )
++    result = schema.execute(
++        '''{
++            mlflowGetRun(input: {runId: "run-1"}) {
++                run { linkedModels: modelVersions { name } }
++            }
++        }''',
++        middleware=[auth_module.GraphQLAuthorizationMiddleware()],
++    )
++    assert result.errors is None
++    expected = [{"name": "visible-model"}]
++    if is_admin:
++        expected.append({"name": "private-model"})
++    assert result.data["mlflowGetRun"]["run"]["linkedModels"] == expected
++
++
+ def test_graphql_permission_functions_use_workspace_permissions(workspace_permission_setup):
+     store = workspace_permission_setup["store"]
+     username = workspace_permission_setup["username"]

@@ -1,0 +1,15 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..4e5b4a9 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -479,6 +479,10 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+             )
+             f = F('state_order').asc(nulls_last=True) if ascending else F('state_order').desc(nulls_last=True)
+         else:
++            # Relation traversals (`annotations__completed_by__password`) would let a client sort by, and so
++            # leak, fields of related models; only explicitly allowlisted paths may contain `__`.
++            if '__' in field_name and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++                raise ValidationError(f'Ordering by "{field_name}" is not allowed.')
+             f = F(field_name).asc(nulls_last=True) if ascending else F(field_name).desc(nulls_last=True)
+ 
+         try:

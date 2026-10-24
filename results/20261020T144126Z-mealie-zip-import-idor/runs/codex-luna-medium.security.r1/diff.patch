@@ -1,0 +1,29 @@
+diff --git a/mealie/services/backups_v2/backup_file.py b/mealie/services/backups_v2/backup_file.py
+index aa8f043..8ea54f8 100644
+--- a/mealie/services/backups_v2/backup_file.py
++++ b/mealie/services/backups_v2/backup_file.py
+@@ -1,6 +1,7 @@
+ import json
+ import shutil
+ import tempfile
++from zipfile import ZipFile
+ from pathlib import Path
+ 
+ 
+@@ -80,6 +81,16 @@ class BackupFile:
+ 
+     def __enter__(self) -> BackupContents:
+         self.temp_dir = Path(tempfile.mkdtemp())
++        # Validate all member names before extraction. Zip archives may contain
++        # absolute paths or parent traversal components that escape temp_dir.
++        with ZipFile(self.zip) as archive:
++            root = self.temp_dir.resolve()
++            for member in archive.infolist():
++                target = (root / member.filename).resolve()
++                if not target.is_relative_to(root):
++                    shutil.rmtree(self.temp_dir)
++                    self.temp_dir = None
++                    raise ValueError("Invalid backup archive path")
+         shutil.unpack_archive(str(self.zip), str(self.temp_dir))
+         return BackupContents(self.temp_dir)
+ 

@@ -1,0 +1,142 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.open.r3",
+  "batch": "20261020T101406Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 3,
+  "seconds": 240.0,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 8,
+  "tokens": {
+    "input": 16,
+    "output": 2200,
+    "cache_read": 105801,
+    "cache_write": 12539
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 16,
+      "output": 2200,
+      "cache_read": 105801,
+      "cache_write": 12539
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 16,
+    "cache_creation_input_tokens": 12539,
+    "cache_read_input_tokens": 105801,
+    "output_tokens": 2200,
+    "output_tokens_details": {
+      "thinking_tokens": 473
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12539,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.0827681,
+  "costs": {
+    "copilot": {
+      "value": 6.396,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Replaced the `exists()` plus `[0]` query pair in `apply_filters` value-type detection with a single `[:1]` fetch, so each filter on a non-built-in column costs one fewer database query on the filtered queryset.",
+  "final": "I changed how `apply_filters` in `label_studio/data_manager/managers.py` works out a filter column's value type. It now runs one query instead of two. The data manager tests pass: 340 passed, 2 skipped.\n\nFor columns not in `KNOWN_FILTER_VALUE_TYPES`, the code used to run `queryset.exists()` and then fetch the first row with `values_list(...)[0]`. It now fetches `values_list(...)[:1]` once. An empty result still falls back to the `'str'` default, as before.\n\nThe tests for `apply_filters` in `label_studio/data_manager/tests/test_managers.py` mocked `exists()`. I changed that mock so `values_list(...)[:1]` returns an empty list, which also needed a `MagicMock` import. Nothing else in the tests changed.\n\nCHOICE: Replaced the `exists()` plus `[0]` query pair in `apply_filters` value-type detection with a single `[:1]` fetch, so each filter on a non-built-in column costs one fewer database query on the filtered queryset.",
+  "diff": {
+    "files": 2,
+    "added": 7,
+    "removed": 4
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "pypi.org"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [],
+  "regression_pass": false,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": false,
+      "tail": "                    _filter.value = 0\n    \n                # get type of annotated field\n                value_type = KNOWN_FILTER_VALUE_TYPES.get(field_name, 'str')\n                if field_name not in KNOWN_FILTER_VALUE_TYPES:\n                    # single query (instead of exists() + [0]); empty queryset keeps the 'str' default\n>                   sample = list(queryset.values_list(field_name, flat=True)[:1])\n                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE                   TypeError: 'Mock' object is not subscriptable\n\nlabel_studio/data_manager/managers.py:932: TypeError\n=========================== short test summary info ============================\nFAILED label_studio/data_manager/tests/test_managers.py::TestApplyFiltersInList::test_id_in_list_builds_q_filter\nFAILED label_studio/data_manager/tests/test_managers.py::TestApplyFiltersInList::test_id_not_in_list_builds_q_filter\n2 failed, 192 passed, 151 subtests passed in 23.06s"
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:305: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:44:47,629 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:44:47,629] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:44:47,629 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:44:47,629] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked\n1 failed in 13.12s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:84: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:45:18,426 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:45:18,426] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:45:18,426 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:45:18,426] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked\n1 failed in 12.88s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:54: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:45:33,924 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:45:33,924] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:45:33,924 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:45:33,924] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked\n1 failed in 12.85s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:268: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:45:49,267 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:45:49,267] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:45:49,267 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:45:49,267] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked\n1 failed in 12.92s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:94: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:46:36,134 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:46:36,134] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:46:36,134 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:46:36,134] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked\n1 failed in 13.12s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:334: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:46:51,881 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:46:51,881] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:46:51,881 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:46:51,881] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked\n1 failed in 13.08s"
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

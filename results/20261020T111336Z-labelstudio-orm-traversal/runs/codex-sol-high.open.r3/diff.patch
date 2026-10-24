@@ -1,0 +1,131 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..1dafc0d 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,18 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Ad hoc queries and ordering bypass FilterSerializer.validate_column(). Apply
++    # the same traversal restriction here before converting public JSON field names.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError(
++            f'Field "{field_name}" is not allowed: relationship lookups must be explicitly added to '
++            'DATA_MANAGER_FILTER_ALLOWLIST.'
++        )
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/tests/data_manager/test_api_tasks.py b/label_studio/tests/data_manager/test_api_tasks.py
+index e6be555..b543cae 100644
+--- a/label_studio/tests/data_manager/test_api_tasks.py
++++ b/label_studio/tests/data_manager/test_api_tasks.py
+@@ -13,6 +13,95 @@ from projects.models import Project
+ from ..utils import make_annotation, make_prediction, make_task, project_id  # noqa
+ 
+ 
++@pytest.mark.django_db
++@pytest.mark.parametrize(
++    'query',
++    [
++        {
++            'filters': {
++                'conjunction': 'and',
++                'items': [
++                    {
++                        'filter': 'filter:tasks:project__created_by__password',
++                        'operator': 'contains',
++                        'type': 'String',
++                        'value': 'secret',
++                    }
++                ],
++            }
++        },
++        {'ordering': ['tasks:project__created_by__password']},
++        {'ordering': ['-tasks:project__created_by__password']},
++        {'ordering': ['tasks:-project__created_by__password']},
++        {'ordering': ['project__created_by__password']},
++        {'ordering': ['tasks:data__text']},
++        {
++            'filters': {
++                'conjunction': 'and',
++                'items': [
++                    {
++                        'filter': 'filter:tasks:id',
++                        'operator': 'greater',
++                        'type': 'Number',
++                        'value': 0,
++                        'child_filters': [
++                            {
++                                'filter': 'filter:tasks:project__created_by__password',
++                                'operator': 'contains',
++                                'type': 'String',
++                                'value': 'secret',
++                            }
++                        ],
++                    }
++                ],
++            }
++        },
++    ],
++)
++def test_tasks_api_rejects_unallowlisted_orm_traversal(query, business_client, project_id):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'example'}}, project)
++
++    response = business_client.get('/api/tasks/', {'project': project_id, 'query': json.dumps(query)})
++
++    assert response.status_code == 400, response.content
++
++
++@pytest.mark.django_db
++def test_tasks_api_rejects_saved_orm_traversal_ordering(business_client, project_id):
++    response = business_client.post(
++        '/api/dm/views/',
++        data=json.dumps({'project': project_id, 'data': {'ordering': ['tasks:project__created_by__password']}}),
++        content_type='application/json',
++    )
++    assert response.status_code == 201, response.content
++
++    response = business_client.get('/api/tasks/', {'view': response.json()['id']})
++
++    assert response.status_code == 400, response.content
++
++
++@pytest.mark.django_db
++@pytest.mark.parametrize('field', ['data.images__0', 'project__created_by__email'])
++def test_tasks_api_preserves_json_and_allowlisted_filters(field, business_client, project_id, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['project__created_by__email']
++    project = Project.objects.get(pk=project_id)
++    task = make_task({'data': {'images': ['example']}}, project)
++    value = 'example' if field.startswith('data.') else project.created_by.email
++    query = {
++        'filters': {
++            'conjunction': 'and',
++            'items': [{'filter': f'filter:tasks:{field}', 'operator': 'equal', 'type': 'String', 'value': value}],
++        },
++        'ordering': [f'tasks:{field}'],
++    }
++
++    response = business_client.get('/api/tasks/', {'project': project_id, 'query': json.dumps(query)})
++
++    assert response.status_code == 200, response.content
++    assert [row['id'] for row in response.json()['tasks']] == [task.id]
++
++
+ def _task_state_point_lookup_queries(captured_queries):
+     return [
+         query['sql']

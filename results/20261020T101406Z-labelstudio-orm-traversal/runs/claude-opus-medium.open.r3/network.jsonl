@@ -1,0 +1,7 @@
+{"time": "2026-10-20T11:20:49.948+00:00", "host": "api.anthropic.com", "port": 443, "allowed": true}
+{"time": "2026-10-20T11:20:50.047+00:00", "host": "api.anthropic.com", "port": 443, "allowed": true}
+{"time": "2026-10-20T11:21:48.311+00:00", "host": "pypi.org", "port": 443, "allowed": false}
+{"time": "2026-10-20T11:21:53.782+00:00", "host": "pypi.org", "port": 443, "allowed": false}
+{"time": "2026-10-20T11:22:09.833+00:00", "host": "pypi.org", "port": 443, "allowed": false}
+{"time": "2026-10-20T11:22:28.064+00:00", "host": "pypi.org", "port": 443, "allowed": false}
+{"time": "2026-10-20T11:22:50.282+00:00", "host": "pypi.org", "port": 443, "allowed": false}

@@ -1,0 +1,67 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..9c32bf1 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -392,6 +392,11 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            # Resolve tools in this group before the ORM performs an unscoped lookup by id.
++            data.pop("id", None)
++            data["slug"] = create_recipe_slug(data["name"])
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..ae62753 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -683,6 +683,46 @@ def test_create_recipe_from_zip_invalid_user(api_client: TestClient, unique_user
+     assert str(fetched_recipe.user_id) == str(unique_user.user_id)
+ 
+ 
++@pytest.mark.parametrize("slug", ["forged", ""])
++@pytest.mark.parametrize("existing_local_tool", [False, True])
++def test_create_recipe_from_zip_foreign_tool(
++    api_client: TestClient,
++    unique_user: TestUser,
++    g2_user: TestUser,
++    tempdir: str,
++    slug: str,
++    existing_local_tool: bool,
++) -> None:
++    foreign_tool = g2_user.repos.tools.create(RecipeToolSave(name=random_string(), group_id=g2_user.group_id))
++    tool_name = random_string()
++    local_tool = (
++        unique_user.repos.tools.create(RecipeToolSave(name=tool_name, group_id=unique_user.group_id))
++        if existing_local_tool
++        else None
++    )
++    recipe = RecipeSummary(
++        name=random_string(),
++        tools=[{"id": foreign_tool.id, "name": tool_name, "slug": slug}],
++    )
++
++    response = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token
++    )
++    assert response.status_code == 201
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    assert len(imported["tools"]) == 1
++    imported_tool = imported["tools"][0]
++    assert imported_tool["id"] != str(foreign_tool.id)
++    assert imported_tool["name"] == tool_name
++    assert imported_tool["groupId"] == unique_user.group_id
++    if local_tool is not None:
++        assert imported_tool["id"] == str(local_tool.id)
++
++    unchanged = g2_user.repos.tools.get_one(foreign_tool.id)
++    assert unchanged is not None
++    assert unchanged.model_dump() == foreign_tool.model_dump()
++
++
+ def test_create_recipe_from_zip_existing_category(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     database = unique_user.repos
+     categories = database.categories.create_many(

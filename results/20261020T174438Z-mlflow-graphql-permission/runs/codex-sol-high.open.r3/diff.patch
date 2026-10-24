@@ -1,0 +1,101 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..576611f 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,17 +5195,10 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
+-        if field_name == "mlflowSearchModelVersions":
+-            return self._filter_model_versions_result(result, username)
+-        return result
+-
+-    def _filter_model_versions_result(self, result, username: str):
+-        """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
+-        if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
+-            del result.model_versions[:]
+-            result.model_versions.extend(filtered)
++        # Filter the list field itself so nested run queries are covered too.
++        if field_name == "modelVersions":
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         return result
+ 
+ 
+diff --git a/tests/server/auth/test_client_workspace.py b/tests/server/auth/test_client_workspace.py
+index f35fb1a..240e8a5 100644
+--- a/tests/server/auth/test_client_workspace.py
++++ b/tests/server/auth/test_client_workspace.py
+@@ -292,6 +292,62 @@ def test_run_access_controls_across_workspaces(workspace_setup, monkeypatch):
+     assert runs_in_b == []
+ 
+ 
++@pytest.mark.parametrize("search_runs", [False, True])
++def test_graphql_run_model_versions_require_model_read_permission(workspace_setup, search_runs):
++    _, tracking_uri, workspace, username, password = workspace_setup
++    experiment_id = _create_experiment(tracking_uri, workspace)
++    run_id = _create_run(tracking_uri, workspace, experiment_id)
++    readable_model = f"readable-{random_str()}"
++    hidden_model = f"hidden-{random_str()}"
++    for name in (readable_model, hidden_model):
++        _create_registered_model(tracking_uri, workspace, name)
++        _create_model_version(tracking_uri, workspace, name, run_id)
++
++    grant_role_permission(
++        tracking_uri, username, "experiment", experiment_id, "READ", workspace=workspace
++    )
++    if search_runs:
++        query = """
++        query($input: MlflowSearchRunsInput) {
++          result: mlflowSearchRuns(input: $input) {
++            runs { versions: modelVersions { name version source } }
++          }
++        }
++        """
++        input_data = {"experimentIds": [experiment_id]}
++    else:
++        query = """
++        query($input: MlflowGetRunInput) {
++          result: mlflowGetRun(input: $input) {
++            run { versions: modelVersions { name version source } }
++          }
++        }
++        """
++        input_data = {"runId": run_id}
++
++    def get_model_names(credentials):
++        response = requests.post(
++            f"{tracking_uri}/graphql",
++            json={"query": query, "variables": {"input": input_data}},
++            auth=credentials,
++            headers={WORKSPACE_HEADER_NAME: workspace},
++        )
++        response.raise_for_status()
++        payload = response.json()
++        assert not payload.get("errors")
++        result = payload["data"]["result"]
++        run = result["runs"][0] if search_runs else result["run"]
++        return {version["name"] for version in run["versions"]}
++
++    assert get_model_names((username, password)) == set()
++
++    grant_role_permission(
++        tracking_uri, username, "registered_model", readable_model, "READ", workspace=workspace
++    )
++    assert get_model_names((username, password)) == {readable_model}
++    assert get_model_names((ADMIN_USERNAME, ADMIN_PASSWORD)) == {readable_model, hidden_model}
++
++
+ def test_registered_model_access_controls_across_workspaces(workspace_setup, monkeypatch):
+     client, tracking_uri, workspace_a, username, password = workspace_setup
+     workspace_b = f"team-{random_str()}"

@@ -1,0 +1,90 @@
+{
+  "run_id": "codex-sol-high.open.r1",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-sol-high",
+  "harness": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 211.3,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 63106,
+    "output": 6958,
+    "cache_read": 1172480,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6.1-sol": {
+      "input": 63106,
+      "output": 6958,
+      "cache_read": 1172480,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 1235586,
+    "cached_input_tokens": 1172480,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 6958,
+    "reasoning_output_tokens": 2352
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 31.304,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Enforced parent-model view permissions for attachment API reads to prevent unauthorized disclosure.",
+  "final": "Added regression coverage for attachment access, filtering, pagination, HEAD requests, and superusers. All 53 tests passed using your exact command.\n\nCHOICE: Enforced parent-model view permissions for attachment API reads to prevent unauthorized disclosure.",
+  "diff": {
+    "files": 2,
+    "added": 90,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "pypi.org",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

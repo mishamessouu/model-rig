@@ -1,0 +1,74 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..831120e 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Validate at execution time as well: ordering and direct task queries do not
++    # necessarily pass through the saved-view filter serializer.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError('Relationship lookups are not allowed unless listed in DATA_MANAGER_FILTER_ALLOWLIST.')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_field_name_security.py b/label_studio/data_manager/tests/test_field_name_security.py
+new file mode 100644
+index 0000000..aac5202
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_field_name_security.py
+@@ -0,0 +1,40 @@
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from django.test import override_settings
++from rest_framework.exceptions import ValidationError
++
++
++@pytest.mark.parametrize(
++    'prefix',
++    ['', '-', 'tasks:', '-tasks:', 'tasks:-', 'filter:tasks:', 'filter:tasks:-', '-filter:tasks:'],
++)
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=[])
++def test_runtime_field_names_reject_relationship_traversal(prefix):
++    with pytest.raises(ValidationError):
++        preprocess_field_name(prefix + 'project__created_by__password', project=None)
++
++
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=['updated_by__active_organization'])
++def test_runtime_field_names_allow_only_exact_allowlist_matches():
++    assert preprocess_field_name('tasks:-updated_by__active_organization', None) == (
++        'updated_by__active_organization',
++        False,
++    )
++    with pytest.raises(ValidationError):
++        preprocess_field_name('tasks:updated_by__active_organization__created_by', None)
++
++
++@pytest.mark.parametrize(
++    'raw, expected',
++    [
++        ('tasks:id', ('id', True)),
++        ('tasks:-id', ('id', False)),
++        ('filter:tasks:data.nested__key', ('data__nested__key', True)),
++    ],
++)
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=[])
++def test_runtime_field_names_preserve_task_and_json_fields(raw, expected):
++    project = SimpleNamespace(data_types={}, summary=SimpleNamespace(common_data_columns=[]))
++    assert preprocess_field_name(raw, project) == expected

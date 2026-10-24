@@ -1,0 +1,106 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..b63767b 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -32,6 +33,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+ from mealie.services._base_service import BaseService
+@@ -288,6 +290,21 @@ class RecipeService(RecipeServiceBase):
+     def _reset_data_matcher(self) -> None:
+         self._data_matcher = None
+ 
++    def _transform_tool(self, data: dict[str, Any]) -> dict[str, Any]:
++        # Only pass canonical, group-scoped tools to the ORM, whose relationship lookup is unscoped.
++        tool = self.repos.tools.get_one(data["id"]) if data.get("id") else None
++        if tool is None:
++            tool = self.repos.tools.get_one(data.get("slug") or slugify(data["name"]), key="slug")
++        if tool is None:
++            tool = self.repos.tools.create(
++                RecipeToolSave(
++                    name=data["name"],
++                    group_id=self.user.group_id,
++                    households_with_tool=data.get("households_with_tool") or [],
++                )
++            )
++        return tool.model_dump()
++
+     @staticmethod
+     def _non_empty_str(value: Any) -> str | None:
+         if isinstance(value, str) and value:
+@@ -392,6 +409,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..21be724 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -737,6 +737,50 @@ def test_create_recipe_from_zip_existing_tag(api_client: TestClient, unique_user
+     assert str(fetched_recipe.tags[0].id) == str(tag.id)
+ 
+ 
++@pytest.mark.parametrize("existing_local_tool", [False, True])
++@pytest.mark.parametrize("with_slug", [False, True])
++def test_create_recipe_from_zip_cannot_modify_another_groups_tool(
++    api_client: TestClient,
++    unique_user: TestUser,
++    g2_user: TestUser,
++    tempdir: str,
++    existing_local_tool: bool,
++    with_slug: bool,
++) -> None:
++    foreign_tool = g2_user.repos.tools.create(RecipeToolSave(name=random_string(), group_id=g2_user.group_id))
++    imported_name = random_string()
++    local_tool = (
++        unique_user.repos.tools.create(RecipeToolSave(name=imported_name, group_id=unique_user.group_id))
++        if existing_local_tool
++        else None
++    )
++    recipe = Recipe(
++        name=random_string(),
++        tools=[foreign_tool.model_copy(update={"name": imported_name, "slug": imported_name if with_slug else ""})],
++    )
++
++    response = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token
++    )
++    assert response.status_code == 201
++
++    # Check through the owning group's API, so a reassigned group_id cannot hide the mutation.
++    response = api_client.get(api_routes.organizers_tools_item_id(foreign_tool.id), headers=g2_user.token)
++    assert response.status_code == 200
++    assert response.json()["name"] == foreign_tool.name
++    assert response.json()["slug"] == foreign_tool.slug
++    assert response.json()["groupId"] == str(g2_user.group_id)
++
++    imported = unique_user.repos.recipes.get_one(recipe.slug)
++    assert imported and imported.tools and len(imported.tools) == 1
++    tool = imported.tools[0]
++    assert tool.id != foreign_tool.id
++    assert str(tool.group_id) == unique_user.group_id
++    assert tool.name == imported_name
++    if local_tool:
++        assert tool.id == local_tool.id
++
++
+ def test_create_recipe_from_zip_existing_category_wrong_ids(
+     api_client: TestClient, unique_user: TestUser, tempdir: str
+ ):

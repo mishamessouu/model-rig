@@ -1,0 +1,8 @@
+Reading additional input from stdin...
+2026-10-20T19:47:58.334452Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261020T174438Z-mlflow-graphql-permission/codex-luna-medium.open.r2/repo/mlflow/server/auth/sqlalchemy_store.py:
+        A user is a workspace admin in ``workspace`` if they have any role in
+        ``workspace`` carrying a
+        ``(resource_type='workspace', resource_pattern='*', permission=MANAGE)``
+        grant — the simplified model's single admin shape, used by both the
+        grant — the simplified model's single admin shape, used by both the
+        seeded ``admin`` role and migrated legacy ``workspace_permissions(MANAGE)``

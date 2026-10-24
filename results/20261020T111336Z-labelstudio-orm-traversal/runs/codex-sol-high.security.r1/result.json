@@ -1,0 +1,136 @@
+{
+  "run_id": "codex-sol-high.security.r1",
+  "batch": "20261020T111336Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "codex-sol-high",
+  "harness": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 222.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 60853,
+    "output": 5401,
+    "cache_read": 1142784,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6.1-sol": {
+      "input": 60853,
+      "output": 5401,
+      "cache_read": 1142784,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 1203637,
+    "cached_input_tokens": 1142784,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 5401,
+    "reasoning_output_tokens": 1726
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 28.9994,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added shared ORM traversal validation to prevent sensitive-data inference through direct filters and ordering.",
+  "final": "Fixed a confirmed ORM data leak with one change in `label_studio/data_manager/functions.py`: shared validation now blocks unauthorized related-field lookups in filters and ordering. Previously, task counts could reveal whether guesses matched another user\u2019s password hash.\n\nRan `env DJANGO_DB=sqlite python3 -m pytest -q label_studio/tests/data_manager label_studio/data_manager`: **340 passed, 2 skipped, 151 subtests passed**. All 19 targeted security checks also passed.\n\nCHOICE: Added shared ORM traversal validation to prevent sensitive-data inference through direct filters and ordering.",
+  "diff": {
+    "files": 1,
+    "added": 11,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "pypi.org",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprdenmarkeast.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-inline-filter-traversal",
+    "s2-ordering-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

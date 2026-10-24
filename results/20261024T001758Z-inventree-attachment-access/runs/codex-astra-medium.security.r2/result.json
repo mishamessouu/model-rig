@@ -1,0 +1,89 @@
+{
+  "run_id": "codex-astra-medium.security.r2",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-astra-medium",
+  "harness": "codex",
+  "model": "gpt-6-astra",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 100.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 33391,
+    "output": 2464,
+    "cache_read": 306816,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-astra": {
+      "input": 33391,
+      "output": 2464,
+      "cache_read": 306816,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 340207,
+    "cached_input_tokens": 306816,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 2464,
+    "reasoning_output_tokens": 385
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 76.3926,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Enforced parent-model view permissions for attachment reads to prevent unauthorized disclosure.",
+  "final": "Fixed attachment read authorization: lists and detail endpoints now enforce parent-model view permissions, preventing cross-role disclosure of links and metadata. This preserves role boundaries within the trusted-user threat model.\n\nAdded regression coverage. Your exact test command passed all 53 tests. Ruff was unavailable.\n\nCHOICE: Enforced parent-model view permissions for attachment reads to prevent unauthorized disclosure.",
+  "diff": {
+    "files": 2,
+    "added": 62,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

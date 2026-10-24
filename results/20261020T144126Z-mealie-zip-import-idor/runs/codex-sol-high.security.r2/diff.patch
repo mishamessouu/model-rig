@@ -1,0 +1,134 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..b32bf2b 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -260,17 +261,17 @@ class RecipeService(RecipeServiceBase):
+             # default to the current user
+             return str(self.user.id)
+ 
+-    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
+-        slug = data.get("slug")
+-        if not slug:
+-            return data
++    def _transform_organizer(self, data: dict, repo: RepositoryGeneric) -> dict:
++        slug = data.get("slug") or slugify(data["name"])
+ 
+         # if the item exists, return the actual data
+         query = repo.get_one(slug, "slug")
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
++        # Never pass an exported id to the ORM's global relationship lookup.
++        # Only ids resolved through this group's repository are safe to reuse.
++        data.pop("id", None)
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
+@@ -387,11 +388,13 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
+-        # make sure categories and tags and food/unit are valid
+-        if key == "recipe_category":
+-            return self._transform_category_or_tag(data, self.repos.categories)
++        # Resolve organizers and food/unit within this group.
++        if key in ("recipe_category", "recipeCategory"):
++            return self._transform_organizer(data, self.repos.categories)
+         elif key == "tags":
+-            return self._transform_category_or_tag(data, self.repos.tags)
++            return self._transform_organizer(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_organizer(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..b8025cb 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -737,6 +737,76 @@ def test_create_recipe_from_zip_existing_tag(api_client: TestClient, unique_user
+     assert str(fetched_recipe.tags[0].id) == str(tag.id)
+ 
+ 
++@pytest.mark.parametrize("reuse_local", [False, True])
++@pytest.mark.parametrize(
++    ("field", "route", "empty_slug"),
++    [
++        ("recipe_category", api_routes.organizers_categories, False),
++        ("recipeCategory", api_routes.organizers_categories, False),
++        ("recipe_category", api_routes.organizers_categories, True),
++        ("recipeCategory", api_routes.organizers_categories, True),
++        ("tags", api_routes.organizers_tags, False),
++        ("tags", api_routes.organizers_tags, True),
++        ("tools", api_routes.organizers_tools, False),
++        ("tools", api_routes.organizers_tools, True),
++    ],
++)
++def test_create_recipe_from_zip_scopes_organizers(
++    api_client: TestClient,
++    unique_user: TestUser,
++    g2_user: TestUser,
++    tempdir: str,
++    field: str,
++    route: str,
++    empty_slug: bool,
++    reuse_local: bool,
++):
++    repo_name = route.rsplit("/", 1)[1]
++    victim_repo = getattr(g2_user.repos, repo_name)
++    victim = victim_repo.create({"name": random_string(), "group_id": g2_user.group_id}).model_dump(
++        mode="json", by_alias=True
++    )
++
++    imported_name = random_string()
++    local = None
++    if reuse_local:
++        local = (
++            getattr(unique_user.repos, repo_name)
++            .create({"name": imported_name, "group_id": unique_user.group_id})
++            .model_dump(mode="json", by_alias=True)
++        )
++
++    # A foreign id must never reach the ORM's global relationship lookup, even when
++    # the archive uses API aliases or omits a usable slug.
++    organizer = {
++        **victim,
++        "name": imported_name,
++        "slug": "" if empty_slug else slugify(imported_name),
++    }
++    zip_file = Path(tempdir) / "organizer.zip"
++    with ZipFile(zip_file, "w") as archive:
++        archive.writestr("recipe.json", json.dumps({"name": random_string(), field: [organizer]}))
++
++    response = api_client.post(
++        api_routes.recipes_create_zip, files={"archive": zip_file.read_bytes()}, headers=unique_user.token
++    )
++    assert response.status_code == 201
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    imported_field = "recipeCategory" if field == "recipe_category" else field
++    saved_organizer = imported[imported_field][0]
++    assert saved_organizer["id"] != victim["id"]
++    assert saved_organizer["groupId"] == str(unique_user.group_id)
++    assert saved_organizer["name"] == imported_name
++    if local:
++        assert saved_organizer["id"] == local["id"]
++
++    victim_repo.session.expire_all()
++    untouched = victim_repo.get_one(victim["id"])
++    assert untouched is not None
++    for key in ("id", "groupId", "name", "slug"):
++        assert untouched.model_dump(mode="json", by_alias=True)[key] == victim[key]
++
++
+ def test_create_recipe_from_zip_existing_category_wrong_ids(
+     api_client: TestClient, unique_user: TestUser, tempdir: str
+ ):

@@ -1,0 +1,88 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..d4cc05e 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,6 +5195,9 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        if field_name == "modelVersions":
++            can_read = _rm_or_prompt_read_predicate(username)
++            return [mv for mv in result if can_read(mv)]
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
+         return result
+diff --git a/tests/server/auth/test_client_workspace.py b/tests/server/auth/test_client_workspace.py
+index f35fb1a..aa8baec 100644
+--- a/tests/server/auth/test_client_workspace.py
++++ b/tests/server/auth/test_client_workspace.py
+@@ -343,3 +343,61 @@ def test_registered_model_access_controls_across_workspaces(workspace_setup, mon
+     )
+     assert resp.status_code == 403
+     assert "Permission denied" in resp.text
++
++
++@pytest.mark.parametrize("search_runs", [False, True])
++def test_graphql_nested_model_versions_require_model_permission(workspace_setup, search_runs):
++    _, tracking_uri, workspace, username, password = workspace_setup
++    experiment_id = _create_experiment(tracking_uri, workspace)
++    run_id = _create_run(tracking_uri, workspace, experiment_id)
++    readable_model = f"readable-{random_str()}"
++    private_model = f"private-{random_str()}"
++    for name in (readable_model, private_model):
++        _create_registered_model(tracking_uri, workspace, name)
++        _create_model_version(tracking_uri, workspace, name, run_id)
++
++    grant_role_permission(
++        tracking_uri, username, "experiment", experiment_id, "READ", workspace=workspace
++    )
++    grant_role_permission(
++        tracking_uri, username, "registered_model", readable_model, "READ", workspace=workspace
++    )
++
++    if search_runs:
++        query = """
++        query($input: MlflowSearchRunsInput) {
++          result: mlflowSearchRuns(input: $input) { runs { ...Versions } }
++        }
++        """
++        input_obj = {"experimentIds": [experiment_id], "maxResults": 50}
++    else:
++        query = """
++        query($input: MlflowGetRunInput) {
++          result: mlflowGetRun(input: $input) { run { ...Versions } }
++        }
++        """
++        input_obj = {"runId": run_id}
++    query += """
++    fragment Versions on MlflowRunExtension {
++      info { runId }
++      versions: modelVersions { name version source runId }
++    }
++    """
++
++    for credentials, expected_names in (
++        ((ADMIN_USERNAME, ADMIN_PASSWORD), {readable_model, private_model}),
++        ((username, password), {readable_model}),
++    ):
++        response = requests.post(
++            f"{tracking_uri}/graphql",
++            json={"query": query, "variables": {"input": input_obj}},
++            auth=credentials,
++            headers={WORKSPACE_HEADER_NAME: workspace},
++        )
++        response.raise_for_status()
++        payload = response.json()
++        assert payload.get("errors") in (None, [])
++        result = payload["data"]["result"]
++        run = result["runs"][0] if search_runs else result["run"]
++        assert run["info"]["runId"] == run_id
++        assert {version["name"] for version in run["versions"]} == expected_names

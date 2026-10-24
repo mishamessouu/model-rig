@@ -1,0 +1,16 @@
+diff --git a/mlflow/server/auth/sqlalchemy_store.py b/mlflow/server/auth/sqlalchemy_store.py
+index d41c5d3..25fdf46 100644
+--- a/mlflow/server/auth/sqlalchemy_store.py
++++ b/mlflow/server/auth/sqlalchemy_store.py
+@@ -2167,9 +2167,8 @@ class SqlAlchemyStore:
+         """
+         True if the user is a workspace admin in ``workspace`` — i.e. they hold a role
+         in that workspace with ``resource_pattern='*'``, ``permission=MANAGE``, and
+-        ``resource_type`` either ``'workspace'`` (explicit admin grant) or ``'*'`` (the
+-        workspace-wide MANAGE form the migration produces from legacy
+-        ``workspace_permissions`` rows).
++        ``resource_type='workspace'``. The permissions migration rewrites legacy
++        ``workspace_permissions(MANAGE)`` rows into this canonical grant shape.
+         """
+         with self.ManagedSessionMaker() as session:
+             return workspace in self._workspace_admin_workspaces(session, user_id)

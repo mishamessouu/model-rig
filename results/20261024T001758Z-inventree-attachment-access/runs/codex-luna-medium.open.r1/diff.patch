@@ -1,0 +1,16 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..cc713d3 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -847,6 +847,11 @@ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+         # Extract filename first
+         filename = data.pop('filename', None)
+ 
++        # Validate the rename before applying any other updates. Otherwise an
++        # invalid filename can return an error after saving the other fields.
++        if filename and attachment.basename and filename != attachment.basename:
++            attachment.validate_rename(filename)
++
+         # Run other validation / updates first, before attempting to rename the file
+         serializer = self.get_serializer(attachment, data=data, partial=partial)
+         serializer.is_valid(raise_exception=True)

@@ -1,0 +1,85 @@
+{
+  "run_id": "codex-luna-medium.open.r2",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 50.7,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 38178,
+    "output": 1316,
+    "cache_read": 295168,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 38178,
+      "output": 1316,
+      "cache_read": 295168,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 333346,
+    "cached_input_tokens": 295168,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1316,
+    "reasoning_output_tokens": 120
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 0.7427,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Handle attachment read errors in `check_is_image()` so storage failures don\u2019t interrupt background processing.",
+  "final": "`check_is_image()` now returns `False` if reading an attachment fails, so a storage error won\u2019t interrupt attachment rebuild processing.\n\nThe requested test command passed: **52 tests, OK**.\n\nCHOICE: Handle attachment read errors in `check_is_image()` so storage failures don\u2019t interrupt background processing.",
+  "diff": {
+    "files": 1,
+    "added": 4,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/models.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": false,
+      "tail": "----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r2/scored/tmpr1ttk4rj/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 154, in test_part_role_reads_no_stock_attachment\n    self.assertDetailHides(self.stock_attachment)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r2/scored/tmpr1ttk4rj/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 112, in assertDetailHides\n    self.assertNoLeak(self.fetch(url), attachment, f'detail {attachment.pk}')\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r2/scored/tmpr1ttk4rj/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 93, in assertNoLeak\n    self.assertNotIn(secret, body, f'{what}: {secret} leaked')\nAssertionError: 'rig-stockitem-comment-040cf8e88e7d4a19bf8deb1dbf1416e3' unexpectedly found in '{\"pk\":2,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-stockitem-link-040cf8e88e7d4a19bf8deb1dbf1416e3\",\"comment\":\"rig-stockitem-comment-040cf8e88e7d4a19bf8deb1dbf1416e3\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"stockitem\",\"model_id\":1}' : detail 2: rig-stockitem-comment-040cf8e88e7d4a19bf8deb1dbf1416e3 leaked\n\n----------------------------------------------------------------------\nRan 2 tests in 0.137s\n\nFAILED (failures=2)\nDestroying test database for alias 'default'..."
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": false,
+      "tail": "----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r2/scored/tmpr1ttk4rj/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 139, in test_part_role_lists_no_stock_attachment\n    self.assertListHides(self.stock_attachment, data)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r2/scored/tmpr1ttk4rj/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 105, in assertListHides\n    self.assertNoLeak(response, attachment, what)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r2/scored/tmpr1ttk4rj/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 93, in assertNoLeak\n    self.assertNotIn(secret, body, f'{what}: {secret} leaked')\nAssertionError: 'rig-stockitem-comment-759588c3dba944b0b71b9e6fe60a512c' unexpectedly found in '[{\"pk\":1,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-part-link-759588c3dba944b0b71b9e6fe60a512c\",\"comment\":\"rig-part-comment-759588c3dba944b0b71b9e6fe60a512c\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"part\",\"model_id\":1},{\"pk\":2,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-stockitem-link-759588c3dba944b0b71b9e6fe60a512c\",\"comment\":\"rig-stockitem-comment-759588c3dba944b0b71b9e6fe60a512c\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"stockitem\",\"model_id\":1}]' : list {}: rig-stockitem-comment-759588c3dba944b0b71b9e6fe60a512c leaked\n\n----------------------------------------------------------------------\nRan 2 tests in 0.139s\n\nFAILED (failures=2)\nDestroying test database for alias 'default'..."
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

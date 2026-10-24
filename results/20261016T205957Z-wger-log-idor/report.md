@@ -2,28 +2,28 @@
 
 56 runs. Success means at least one planted defect fixed, no regression, and no agent error or timeout. Cost prices the stored tokens with today's `copilot` price sheet, in credits; a cell with an unpriced run shows n/a. The interval is a 95% Wilson interval for the success rate. With three runs it is wide, so rank two cells only with a test on the runs, such as Fisher's exact test.
 
-| Cell | Prompt | n | Picks | Success | 95% interval | Regressions | Errors | Mean credits | credits per success | Mean reported USD | Mean s | Mean lines changed |
-|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| claude-opus-medium | open | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 37.888 | 37.888 | 0.473 | 228 | 23 |
-| claude-opus-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 63.935 | 63.935 | 0.775 | 223 | 2 |
-| claude-sonnet-medium | open | 1 | other change x1 | 0/1 | 0% to 79% | 0 | 0 | n/a | n/a | 1.037 | 342 | 16 |
-| claude-sonnet-medium | security | 1 | s2-session-day-idor x1 | 1/1 | 21% to 100% | 0 | 0 | n/a | n/a | 1.805 | 563 | 2 |
-| codex-astra-high | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | n/a | n/a | n/a | 165 | 60 |
-| codex-astra-high | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | n/a | n/a | n/a | 189 | 15 |
-| codex-astra-medium | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | n/a | n/a | n/a | 152 | 33 |
-| codex-astra-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | n/a | n/a | n/a | 158 | 2 |
-| codex-luna-high | ddd | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 1.129 | n/a | n/a | 114 | 36 |
-| codex-luna-high | open | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 1.374 | 4.123 | n/a | 119 | 8 |
-| codex-luna-high | security | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 2.816 | 8.447 | n/a | 175 | 40 |
-| codex-luna-medium | ddd | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 0.953 | n/a | n/a | 115 | 18 |
-| codex-luna-medium | open | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 1.104 | n/a | n/a | 113 | 7 |
-| codex-luna-medium | security | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 1.078 | 3.233 | n/a | 105 | 6 |
-| codex-sol-high | ddd | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 28.701 | n/a | n/a | 213 | 106 |
-| codex-sol-high | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | 20.205 | 30.308 | n/a | 147 | 54 |
-| codex-sol-high | security | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | 29.469 | 44.204 | n/a | 188 | 18 |
-| codex-sol-medium | ddd | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 18.932 | 56.796 | n/a | 165 | 84 |
-| codex-sol-medium | open | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 18.540 | 55.619 | n/a | 142 | 38 |
-| codex-sol-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 22.253 | 22.253 | n/a | 173 | 48 |
+| Cell | Prompt | n | Picks | Success | 95% interval | Regressions | Errors | Mean credits | credits per success | Mean reported USD | Mean s | Mean lines changed | Fix after cutoff |
+|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
+| claude-opus-medium | open | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 37.888 | 37.888 | 0.473 | 228 | 23 | unknown |
+| claude-opus-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 63.935 | 63.935 | 0.775 | 223 | 2 | unknown |
+| claude-sonnet-medium | open | 1 | other change x1 | 0/1 | 0% to 79% | 0 | 0 | 92.048 | n/a | 1.037 | 342 | 16 | unknown |
+| claude-sonnet-medium | security | 1 | s2-session-day-idor x1 | 1/1 | 21% to 100% | 0 | 0 | 163.426 | 163.426 | 1.805 | 563 | 2 | unknown |
+| codex-astra-high | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | 121.731 | 182.596 | n/a | 165 | 60 | unknown |
+| codex-astra-high | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 144.262 | 144.262 | n/a | 189 | 15 | unknown |
+| codex-astra-medium | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | 94.735 | 142.102 | n/a | 152 | 33 | unknown |
+| codex-astra-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 121.551 | 121.551 | n/a | 158 | 2 | unknown |
+| codex-luna-high | ddd | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 1.129 | n/a | n/a | 114 | 36 | unknown |
+| codex-luna-high | open | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 1.374 | 4.123 | n/a | 119 | 8 | unknown |
+| codex-luna-high | security | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 2.816 | 8.447 | n/a | 175 | 40 | unknown |
+| codex-luna-medium | ddd | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 0.953 | n/a | n/a | 115 | 18 | unknown |
+| codex-luna-medium | open | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 1.104 | n/a | n/a | 113 | 7 | unknown |
+| codex-luna-medium | security | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 1.078 | 3.233 | n/a | 105 | 6 | unknown |
+| codex-sol-high | ddd | 3 | other change x3 | 0/3 | 0% to 56% | 0 | 0 | 28.701 | n/a | n/a | 213 | 106 | unknown |
+| codex-sol-high | open | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | 20.205 | 30.308 | n/a | 147 | 54 | unknown |
+| codex-sol-high | security | 3 | s1-log-slot-entry-idor x2, other change x1 | 2/3 | 21% to 94% | 0 | 0 | 29.469 | 44.204 | n/a | 188 | 18 | unknown |
+| codex-sol-medium | ddd | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 18.932 | 56.796 | n/a | 165 | 84 | unknown |
+| codex-sol-medium | open | 3 | other change x2, s1-log-slot-entry-idor x1 | 1/3 | 6% to 79% | 0 | 0 | 18.540 | 55.619 | n/a | 142 | 38 | unknown |
+| codex-sol-medium | security | 3 | s1-log-slot-entry-idor x3 | 3/3 | 44% to 100% | 0 | 0 | 22.253 | 22.253 | n/a | 173 | 48 | unknown |
 
 ## Mean tokens per run
 

@@ -1,0 +1,58 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..9db0a10 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -806,6 +806,35 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def get_queryset(self):
++        """Restrict attachments to model types the user is permitted to view."""
++        from common.validators import attachment_model_class_from_label
++        from InvenTree.models import InvenTreeAttachmentMixin
++        from users.permissions import check_user_permission
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        if user.is_superuser:
++            return queryset
++
++        denied = []
++
++        model_types = queryset.order_by().values_list('model_type', flat=True)
++
++        for model_type in model_types.distinct():
++            model_class = attachment_model_class_from_label(model_type)
++
++            if (
++                model_class is None
++                or not issubclass(model_class, InvenTreeAttachmentMixin)
++                or not check_user_permission(user, model_class, 'view')
++                or not model_class.check_related_permission('view', user)
++            ):
++                denied.append(model_type)
++
++        return queryset.exclude(model_type__in=denied) if denied else queryset
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +861,17 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an attachment, if the user can view the linked model."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('view', request.user):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()

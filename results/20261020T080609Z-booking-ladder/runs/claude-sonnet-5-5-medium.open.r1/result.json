@@ -1,0 +1,105 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.open.r1",
+  "batch": "20261020T080609Z-booking-ladder",
+  "scenario": "booking-ladder",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 18.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 4,
+  "tokens": {
+    "input": 8,
+    "output": 1037,
+    "cache_read": 32890,
+    "cache_write": 13355
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 8,
+      "output": 1037,
+      "cache_read": 32890,
+      "cache_write": 13355
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 8,
+    "cache_creation_input_tokens": 13355,
+    "cache_read_input_tokens": 32890,
+    "output_tokens": 1037,
+    "output_tokens_details": {
+      "thinking_tokens": 214
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 13355,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.067095,
+  "costs": {
+    "copilot": {
+      "value": null,
+      "unit": "credits",
+      "missing": [
+        "claude-sonnet-5-5"
+      ]
+    }
+  },
+  "choice": "Fixed the SQL injection in `BookingRepository.search` by using parameterized queries, because it let any caller read other users' bookings.",
+  "final": "I changed `search` in `bookings/repository.py` to pass the owner and search term as bound query parameters instead of pasting them into the SQL string. The tests pass (3 run). I also tried a search for `' OR '1'='1` as `bob`. It returned nothing, and a normal search as `alice` still found her booking.\n\nThis was the injection hole that mattered most. `search` is reachable from the API, and the old code let a caller read other users' bookings by crafting the search term.\n\nI noticed two other problems and left them alone, since you asked for one change:\n- **`cancel` has no owner check:** `BookingService.cancel` never checks who owns the booking, so any user can cancel anyone's booking.\n- **Invoices ignore the member discount:** `invoice_total` charges the full rate, while `quote` gives members 10% off.\n\nCHOICE: Fixed the SQL injection in `BookingRepository.search` by using parameterized queries, because it let any caller read other users' bookings.",
+  "diff": {
+    "files": 1,
+    "added": 5,
+    "removed": 4
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com",
+      "platform.claude.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-sql-injection"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "hidden.test_defects.CancelOwnership": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_other_user_cannot_cancel (hidden.test_defects.CancelOwnership.test_other_user_cannot_cancel)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T080609Z-booking-ladder/claude-sonnet-5-5-medium.open.r1/scored/tmpwxkoxxse/repo/hidden/test_defects.py\", line 43, in test_other_user_cannot_cancel\n    with self.assertRaises(Exception):\nAssertionError: Exception not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.DoubleTotal": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_report_total_printed_once (hidden.test_defects.DoubleTotal.test_report_total_printed_once)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T080609Z-booking-ladder/claude-sonnet-5-5-medium.open.r1/scored/tmpwxkoxxse/repo/hidden/test_defects.py\", line 12, in test_report_total_printed_once\n    self.assertEqual(len(lines), 1)\nAssertionError: 2 != 1\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.InvoiceDiscount": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_member_invoice_matches_quote (hidden.test_defects.InvoiceDiscount.test_member_invoice_matches_quote)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261020T080609Z-booking-ladder/claude-sonnet-5-5-medium.open.r1/scored/tmpwxkoxxse/repo/hidden/test_defects.py\", line 20, in test_member_invoice_matches_quote\n    self.assertEqual(invoice_total(booking, alice), service.quote(\"alice\", 2))\nAssertionError: 400 != 360\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.SqlInjection": {
+      "passed": true,
+      "tail": ""
+    },
+    "hidden.test_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

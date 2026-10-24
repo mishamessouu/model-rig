@@ -1,0 +1,52 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..13438b8 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -30,6 +30,7 @@ from error_report.models import Error
+ from opentelemetry import trace
+ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
++from rest_framework import permissions
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+ from rest_framework.permissions import IsAdminUser, IsAuthenticated
+@@ -796,6 +797,39 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Limit read access to attachments the user has 'view' permission for."""
++        from common.validators import attachment_model_class_from_label
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        if (
++            getattr(self, 'swagger_fake_view', False)
++            or not user
++            or self.request.method not in permissions.SAFE_METHODS
++        ):
++            return queryset
++
++        hidden = []
++
++        for model_type in queryset.model.objects.values_list(
++            'model_type', flat=True
++        ).distinct():
++            try:
++                model_class = attachment_model_class_from_label(model_type)
++                allowed = model_class.check_related_permission('view', user)
++            except Exception:
++                allowed = False
++
++            if not allowed:
++                hidden.append(model_type)
++
++        if hidden:
++            queryset = queryset.exclude(model_type__in=hidden)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

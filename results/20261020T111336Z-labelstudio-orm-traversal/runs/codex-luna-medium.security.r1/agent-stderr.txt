@@ -1,0 +1,9 @@
+Reading additional input from stdin...
+2026-10-20T12:15:28.790038Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/repo/label_studio/data_manager/managers.py:
+        field_name, ascending = preprocess_field_name(raw_field_name, project=project)
+2026-10-20T12:15:33.257930Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/repo/label_studio/data_manager/managers.py:
+def _is_supported_in_list_field(field_name: str) -> bool:
+    """Return True if `field_name` (post-preprocess) is in the MVP allowlist for `in_list` / `not_in_list`."""
+    return field_name in SUPPORTED_IN_LIST_FIELDS or field_name.startswith('data__')
+2026-10-20T12:15:36.130492Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in ~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/repo/label_studio/data_manager/managers.py:
+        field_name, ascending = preprocess_field_name(raw_field_name, project=project)

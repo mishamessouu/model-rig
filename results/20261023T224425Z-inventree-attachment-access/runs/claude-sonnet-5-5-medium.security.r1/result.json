@@ -1,0 +1,99 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.security.r1",
+  "batch": "20261023T224425Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 163.4,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 10,
+  "tokens": {
+    "input": 20,
+    "output": 3460,
+    "cache_read": 149726,
+    "cache_write": 17806
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 20,
+      "output": 3460,
+      "cache_read": 149726,
+      "cache_write": 17806
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 20,
+    "cache_creation_input_tokens": 17806,
+    "cache_read_input_tokens": 149726,
+    "output_tokens": 3460,
+    "output_tokens_details": {
+      "thinking_tokens": 460
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 17806,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.12083659999999999,
+  "costs": {
+    "copilot": {
+      "value": 9.4128,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Made attachment list and detail reads in `common/api.py` filter out attachments for models the user lacks `view` permission on, because any logged-in user could previously read every attachment.",
+  "final": "I fixed a missing read-permission check on the attachment API. All 52 tests in the requested modules pass. I didn't add a new test for the fix, so the filtering itself isn't covered by a test.\n\n**The weakness:** `/api/attachment/` (list and detail) only required a logged-in user. It never checked whether that user could view the model an attachment belongs to. Any authenticated user could list or download the files, links and comments attached to parts, orders, companies and so on, even with no role for them. Only writes were checked.\n\n**The fix:** In `common/api.py`, `AttachmentMixin.get_queryset` now drops attachments whose model type the user lacks `view` permission for. It uses each model's `check_related_permission('view', user)`, so models with custom permission logic are respected. A model type that can't be resolved is hidden too.\n\nI limited the filter to read requests (GET, HEAD, OPTIONS). When I first applied it to all methods, `test_upload_via_api` failed. It expects a 403 on a PATCH by a user with `part.change` but no view role, and my filter turned that into a 404. Write requests still go through the existing permission checks.\n\nThe change touches one file, `src/backend/InvenTree/common/api.py`, and I haven't committed it.\n\nCHOICE: Made attachment list and detail reads in `common/api.py` filter out attachments for models the user lacks `view` permission on, because any logged-in user could previously read every attachment.",
+  "diff": {
+    "files": 1,
+    "added": 34,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

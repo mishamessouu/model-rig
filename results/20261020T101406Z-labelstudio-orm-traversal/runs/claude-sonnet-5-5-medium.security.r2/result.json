@@ -1,0 +1,144 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.security.r2",
+  "batch": "20261020T101406Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 120.3,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 14,
+  "tokens": {
+    "input": 26,
+    "output": 3917,
+    "cache_read": 249867,
+    "cache_write": 23657
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 26,
+      "output": 3917,
+      "cache_read": 249867,
+      "cache_write": 23657
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 26,
+    "cache_creation_input_tokens": 23657,
+    "cache_read_input_tokens": 249867,
+    "output_tokens": 3917,
+    "output_tokens_details": {
+      "thinking_tokens": 1613
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 23657,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.15883670000000005,
+  "costs": {
+    "copilot": {
+      "value": 12.3351,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added a `__` relation-path check to `apply_ordering` in `managers.py`, because ordering by fields like `annotations__completed_by__password` was unvalidated and could leak related-model data through row order.",
+  "final": "I closed an ORM relation-traversal hole in the Data Manager's ordering. The requested test run passes: 340 passed, 2 skipped. I didn't add a test for the new check.\n\n**The weakness:** filter columns saved in views are checked by `FilterSerializer.validate_column`, which rejects `__` relation paths unless they're allowlisted. Ordering had no such check. `apply_ordering` in `label_studio/data_manager/managers.py` passed the user-supplied field name straight into `F(field_name)`. A user who could set ordering could sort tasks by a related model's field, such as `annotations__completed_by__password`. The row order then reveals that field's contents one comparison at a time.\n\n**The fix:** `apply_ordering` now raises a `ValidationError` when the field name contains `__`. The exceptions are `task.data` keys (`data__*`) and paths in `DATA_MANAGER_FILTER_ALLOWLIST`, the same rule the filter validator uses.\n\n**Not changed:** the filter path in `apply_filters` and the `data.` replacement in `preprocess_field_name`. I read the filter side as covered for saved views, but I didn't check whether filters sent directly in request params get the same validation.\n\nCHOICE: Added a `__` relation-path check to `apply_ordering` in `managers.py`, because ordering by fields like `annotations__completed_by__password` was unvalidated and could leak related-model data through row order.",
+  "diff": {
+    "files": 1,
+    "added": 9,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "pypi.org"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s2-ordering-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:305: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:17:41,010 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:17:41,010] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:17:41,010 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:17:41,010] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked\n1 failed in 13.72s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:84: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:18:13,939 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:18:13,939] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:18:13,940 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:18:13,940] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked\n1 failed in 13.74s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:54: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:18:30,646 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:18:30,646] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:18:30,646 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:18:30,646] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked\n1 failed in 14.10s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:268: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-20 11:18:47,103 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-20 11:18:47,103] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-20 11:18:47,219 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-20 11:18:47,219] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked\n1 failed in 13.64s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,90 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..672a535 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5200,9 +5200,9 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _filter_model_versions_result(self, result, username: str):
+         """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
++        can_read = _rm_or_prompt_read_predicate(username)
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            filtered = [mv for mv in result.model_versions if can_read(mv)]
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..a86ed55 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -8,8 +8,9 @@ from flask import Response, request
+ 
+ from mlflow.environment_variables import MLFLOW_ENABLE_WORKSPACES
+ from mlflow.exceptions import MlflowException
+-from mlflow.prompt.constants import IS_PROMPT_TAG_KEY
++from mlflow.prompt.constants import IS_PROMPT_TAG_KEY, PROMPT_TEXT_TAG_KEY
+ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
++from mlflow.protos.model_registry_pb2 import SearchModelVersions
+ from mlflow.server import auth as auth_module
+ from mlflow.server.auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE
+ from mlflow.server.auth.routes import (
+@@ -24,7 +25,9 @@ from mlflow.server.auth.routes import (
+     UPLOAD_ARTIFACT,
+ )
+ from mlflow.server.auth.sqlalchemy_store import SqlAlchemyStore
++from mlflow.server.graphql.graphql_schema_extensions import schema
+ from mlflow.utils import workspace_context
++from mlflow.utils.workspace_utils import DEFAULT_WORKSPACE_NAME
+ 
+ from tests.helper_functions import random_str
+ 
+@@ -2262,6 +2265,48 @@ def test_graphql_permission_functions_use_workspace_permissions(workspace_permis
+     assert auth_module._graphql_can_read_model("model-xyz", username)
+ 
+ 
++@pytest.mark.parametrize("workspaces_enabled", [True, False])
++@pytest.mark.parametrize("resource_type", ["registered_model", "prompt"])
++@pytest.mark.parametrize("resource_pattern", ["shared-name", "*"])
++def test_graphql_model_versions_respect_prompt_permissions(
++    workspace_permission_setup, monkeypatch, workspaces_enabled, resource_type, resource_pattern
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    monkeypatch.setenv(MLFLOW_ENABLE_WORKSPACES.name, str(workspaces_enabled).lower())
++    workspace = "team-a" if workspaces_enabled else DEFAULT_WORKSPACE_NAME
++    role = store.create_role(name="reader", workspace=workspace)
++    store.add_role_permission(role.id, resource_type, resource_pattern, READ.name)
++    store.assign_role_to_user(store.get_user(username).id, role.id)
++
++    # The shared search API returns both namespaces, including full prompt text.
++    response = SearchModelVersions.Response()
++    response.model_versions.add(name="shared-name", version="1")
++    prompt = response.model_versions.add(name="shared-name", version="2")
++    prompt.tags.add(key=IS_PROMPT_TAG_KEY, value="true")
++    prompt.tags.add(key=PROMPT_TEXT_TAG_KEY, value="private prompt text")
++    monkeypatch.setattr("mlflow.server.handlers.search_model_versions_impl", lambda _: response)
++
++    with auth_module.app.test_request_context("/graphql", method="POST"):
++        result = schema.execute(
++            """
++            query {
++                versions: mlflowSearchModelVersions(input: {}) {
++                    modelVersions { name version tags { key value } }
++                }
++            }
++            """,
++            middleware=[auth_module.GraphQLAuthorizationMiddleware()],
++        )
++
++    assert result.errors is None
++    versions = result.data["versions"]["modelVersions"]
++    assert [v["version"] for v in versions] == ["2" if resource_type == "prompt" else "1"]
++    if resource_type == "registered_model":
++        assert "private prompt text" not in json.dumps(result.data)
++
++
+ def test_graphql_permission_functions_denied_without_workspace_permission(
+     workspace_permission_setup,
+ ):

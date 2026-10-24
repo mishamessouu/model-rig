@@ -1,0 +1,36 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..7744089 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,31 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Restrict attachments to model types the user is permitted to view."""
++        from common.validators import attachment_model_types
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        if getattr(self, 'swagger_fake_view', False) or user.is_superuser:
++            return queryset
++
++        # Write operations are checked explicitly against the 'change' / 'delete' permissions
++        if self.request.method not in ('GET', 'HEAD', 'OPTIONS'):
++            return queryset
++
++        allowed = []
++
++        for model in attachment_model_types():
++            try:
++                if model.check_related_permission('view', user):
++                    allowed.append(model.__name__.lower())
++            except Exception:
++                continue
++
++        return queryset.filter(model_type__in=allowed)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

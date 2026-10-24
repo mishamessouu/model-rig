@@ -1,0 +1,54 @@
+diff --git a/label_studio/data_manager/column_names.py b/label_studio/data_manager/column_names.py
+index 71f657d..96b303c 100644
+--- a/label_studio/data_manager/column_names.py
++++ b/label_studio/data_manager/column_names.py
+@@ -19,3 +19,13 @@ UNQUERYABLE_COLUMN_NAME_CHARACTERS = (
+ def is_queryable_column_name(name: str) -> bool:
+     """Whether `name` can be used as a Data Manager filter, ordering or column selector target."""
+     return not UNQUERYABLE_COLUMN_NAME_PATTERN.search(name)
++
++
++def is_relation_traversal(field_name: str) -> bool:
++    """Whether `field_name` would walk an ORM relation (`a__b`) instead of naming a task column.
++
++    Only `data__<key>` paths are legitimately nested: they address keys inside the `task.data` JSON field.
++    Anything else with `__` lets a client read through relations (e.g. `annotations__completed_by__password`)
++    and probe values it should never see via filter results or ordering.
++    """
++    return '__' in field_name and not field_name.startswith('data__')
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..dad78ec 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -11,7 +11,11 @@ from typing import ClassVar
+ import ujson as json
+ from core.feature_flags import flag_set
+ from core.utils.db import fast_first
+-from data_manager.column_names import UNQUERYABLE_COLUMN_NAME_CHARACTERS, is_queryable_column_name
++from data_manager.column_names import (
++    UNQUERYABLE_COLUMN_NAME_CHARACTERS,
++    is_queryable_column_name,
++    is_relation_traversal,
++)
+ from data_manager.prepare_params import ConjunctionEnum
+ from django.conf import settings
+ from django.contrib.postgres.aggregates import ArrayAgg
+@@ -452,6 +456,8 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+         ):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
++        if is_relation_traversal(field_name):
++            raise ValidationError(f'Cannot order by "{unsigned_field_name}": unknown column.')
+ 
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+@@ -903,6 +909,9 @@ def apply_filters(queryset, filters, project, request):
+                     f'column names cannot contain {UNQUERYABLE_COLUMN_NAME_CHARACTERS}.'
+                 )
+ 
++            if is_relation_traversal(field_name):
++                raise ValidationError(f'Cannot filter on "{_filter.filter.removeprefix("filter:tasks:")}": unknown column.')
++
+             # annotate with cast to number if need
+             if _filter.type == 'Number' and field_name.startswith('data__'):
+                 json_field = field_name.replace('data__', '')

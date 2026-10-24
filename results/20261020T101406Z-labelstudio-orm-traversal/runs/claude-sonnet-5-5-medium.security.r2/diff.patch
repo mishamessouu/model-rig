@@ -1,0 +1,20 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..cb97289 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -453,6 +453,15 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
+ 
++        # Ordering by a relation path (e.g. `annotations__completed_by__password`) would leak data of
++        # related models through the row order, so only `task.data` keys and allowlisted paths may use `__`.
++        if (
++            '__' in field_name
++            and not field_name.startswith('data__')
++            and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++        ):
++            raise ValidationError(f'Ordering by "{field_name}" is not allowed.')
++
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+             json_field = field_name.replace('data__', '')

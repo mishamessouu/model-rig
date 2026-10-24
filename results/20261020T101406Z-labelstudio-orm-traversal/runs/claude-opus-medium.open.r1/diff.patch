@@ -1,0 +1,55 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..bb27f82 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -453,6 +453,16 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
+ 
++        # Ordering is never validated by FilterSerializer.validate_column, so apply the same rule here:
++        # no foreign key traversals unless allowlisted, otherwise sorting by e.g.
++        # `annotations__completed_by__password` leaks related fields one comparison at a time (ORM Leak).
++        if (
++            '__' in field_name
++            and not field_name.startswith('data__')
++            and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++        ):
++            raise ValidationError(f'"__" is not allowed in ordering field "{raw_field_name}"')
++
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+             json_field = field_name.replace('data__', '')
+diff --git a/label_studio/tests/data_manager/test_ordering_filters.py b/label_studio/tests/data_manager/test_ordering_filters.py
+index 44d99dd..8ebc429 100644
+--- a/label_studio/tests/data_manager/test_ordering_filters.py
++++ b/label_studio/tests/data_manager/test_ordering_filters.py
+@@ -104,6 +104,29 @@ def test_views_ordering(ordering, element_index, undefined, business_client, pro
+     assert response_data['tasks'][0]['id'] == task_ids[element_index]
+ 
+ 
++@pytest.mark.parametrize(
++    'ordering',
++    [
++        ['tasks:annotations__completed_by__password'],
++        ['-tasks:updated_by__password'],
++        ['tasks:-project__created_by__email'],
++    ],
++)
++@pytest.mark.django_db
++def test_views_ordering_rejects_foreign_key_traversal(ordering, business_client, project_id):
++    """Ordering must not allow ORM traversal into related models (ORM Leak sort oracle)."""
++    response = business_client.post(
++        '/api/dm/views/',
++        data=json.dumps({'project': project_id, 'data': {'ordering': ordering}}),
++        content_type='application/json',
++    )
++    assert response.status_code == 201, response.content
++    view_id = response.json()['id']
++
++    response = business_client.get(f'/api/tasks?view={view_id}')
++    assert response.status_code == 400, response.content
++
++
+ @pytest.mark.django_db
+ def test_views_ordering_task_state():
+     """

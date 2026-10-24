@@ -1,0 +1,89 @@
+{
+  "run_id": "codex-sol-medium.open.r1",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-sol-medium",
+  "harness": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 128.3,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 57066,
+    "output": 3639,
+    "cache_read": 631808,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6.1-sol": {
+      "input": 57066,
+      "output": 3639,
+      "cache_read": 631808,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 688874,
+    "cached_input_tokens": 631808,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 3639,
+    "reasoning_output_tokens": 562
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 21.3703,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Enforced parent-model view permissions for attachment reads to prevent exposing attachment data across role boundaries.",
+  "final": "Attachment API lists and detail lookups now require permission to view the parent model. Added regression coverage for denied access and mixed lists.\n\nThe requested test command passed all 53 tests. `git diff --check` passed.\n\nCHOICE: Enforced parent-model view permissions for attachment reads to prevent exposing attachment data across role boundaries.",
+  "diff": {
+    "files": 2,
+    "added": 58,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

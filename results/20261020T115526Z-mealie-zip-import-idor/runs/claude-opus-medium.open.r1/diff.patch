@@ -1,0 +1,25 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..acb7465 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -387,11 +387,20 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
++        # child rows are resolved by id without any group filter, so an exported id could attach
++        # (and overwrite) a row owned by another group; the root recipe id, foods and units are validated separately
++        if key == "user":
++            data["id"] = self._transform_user_id(str(data.get("id")))
++        elif key not in {"recipe", "food", "unit"} and "id" in data:
++            data["id"] = str(uuid4())
++
+         # make sure categories and tags and food/unit are valid
+         if key == "recipe_category":
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":

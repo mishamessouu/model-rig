@@ -1,0 +1,21 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..80e9668 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5744,8 +5744,14 @@ def _extract_experiment_id_from_artifact_proxy_path(
+         if m := _EXPERIMENT_ID_PATTERN.match(f"{artifact_path}/"):
+             return m.group(1)
+ 
+-    # List-artifacts uses GET .../artifacts?path=<experiment_id>/... (Flask parity).
+-    if query_path and (m := _EXPERIMENT_ID_PATTERN.match(query_path)):
++    # Only list-artifacts carries its artifact path in the query string. Do not
++    # let a caller authorize an MPU control route using an unrelated `path` query
++    # parameter when its URL does not identify an experiment.
++    artifact_list_paths = (
++        f"{_REST_API_PATH_PREFIX}/mlflow-artifacts/artifacts",
++        f"{_AJAX_API_PATH_PREFIX}/mlflow-artifacts/artifacts",
++    )
++    if path in artifact_list_paths and query_path and (m := _EXPERIMENT_ID_PATTERN.match(query_path)):
+         return m.group(1)
+     return None
+ 

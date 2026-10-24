@@ -1,0 +1,99 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..6b92acc 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,6 +5195,10 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        if field_name == "modelVersions":
++            # Run access does not imply access to models registered from that run.
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..a371136 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -11,6 +11,7 @@ from mlflow.exceptions import MlflowException
+ from mlflow.prompt.constants import IS_PROMPT_TAG_KEY
+ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
+ from mlflow.server import auth as auth_module
++from mlflow.server import handlers
+ from mlflow.server.auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE
+ from mlflow.server.auth.routes import (
+     CREATE_PROMPTLAB_RUN,
+@@ -24,6 +25,7 @@ from mlflow.server.auth.routes import (
+     UPLOAD_ARTIFACT,
+ )
+ from mlflow.server.auth.sqlalchemy_store import SqlAlchemyStore
++from mlflow.server.graphql.graphql_schema_extensions import schema
+ from mlflow.utils import workspace_context
+ 
+ from tests.helper_functions import random_str
+@@ -2262,6 +2264,55 @@ def test_graphql_permission_functions_use_workspace_permissions(workspace_permis
+     assert auth_module._graphql_can_read_model("model-xyz", username)
+ 
+ 
++@pytest.mark.parametrize("is_admin", [False, True])
++@pytest.mark.parametrize("alias", ["modelVersions", "linkedModels: modelVersions"])
++def test_graphql_nested_model_versions_respect_permissions(
++    workspace_permission_setup, monkeypatch, is_admin, alias
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    store.grant_user_permission(username, "experiment", "exp-1", READ.name)
++    store.grant_user_permission(username, "registered_model", "visible-model", READ.name)
++    store.update_user(username, is_admin=is_admin)
++    monkeypatch.setattr(
++        handlers,
++        "get_run_impl",
++        lambda _: SimpleNamespace(run=SimpleNamespace(info=SimpleNamespace(run_id="run-1"))),
++    )
++    monkeypatch.setattr(
++        handlers,
++        "search_model_versions_impl",
++        lambda _: SimpleNamespace(
++            model_versions=[
++                SimpleNamespace(name="visible-model", version="1"),
++                SimpleNamespace(name="private-model", version="1"),
++            ]
++        ),
++    )
++
++    with auth_module.app.test_request_context("/graphql"):
++        result = schema.execute(
++            """
++            query {
++                mlflowGetRun(input: {runId: "run-1"}) {
++                    run { %s { name version } }
++                }
++            }
++            """
++            % alias,
++            middleware=[auth_module.GraphQLAuthorizationMiddleware()],
++        )
++
++    assert not result.errors
++    field = "linkedModels" if ":" in alias else "modelVersions"
++    versions = result.data["mlflowGetRun"]["run"][field]
++    expected = [{"name": "visible-model", "version": "1"}]
++    if is_admin:
++        expected.append({"name": "private-model", "version": "1"})
++    assert versions == expected
++
++
+ def test_graphql_permission_functions_denied_without_workspace_permission(
+     workspace_permission_setup,
+ ):

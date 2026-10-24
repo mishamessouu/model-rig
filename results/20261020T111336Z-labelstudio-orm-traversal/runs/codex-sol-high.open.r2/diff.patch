@@ -1,0 +1,120 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..817ebbe 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,18 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Enforce traversal restrictions at query construction too: direct task queries
++    # and ordering do not pass through FilterSerializer.validate_column.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError(
++            f'"__" is not generally allowed in filters. Consider asking your administrator to add "{field_name}" '
++            'to DATA_MANAGER_FILTER_ALLOWLIST, but note that some filter expressions may pose a security risk'
++        )
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_orm_traversal.py b/label_studio/data_manager/tests/test_orm_traversal.py
+new file mode 100644
+index 0000000..dfe41f7
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_orm_traversal.py
+@@ -0,0 +1,83 @@
++import json
++
++import pytest
++from data_manager.models import View
++from projects.tests.factories import ProjectFactory
++from rest_framework.test import APIClient
++from tasks.tests.factories import TaskFactory
++
++
++@pytest.fixture
++def task_query(db):
++    project = ProjectFactory()
++    task = TaskFactory(
++        project=project, updated_by=project.created_by, data={'batch__name': 'keep', 'batch': {'name': 'keep'}}
++    )
++    client = APIClient()
++    client.force_authenticate(user=project.created_by)
++
++    def query(field, ordering=False, saved=False):
++        if ordering:
++            payload = {'ordering': [field]}
++        else:
++            payload = {
++                'filters': {
++                    'conjunction': 'and',
++                    'items': [{'filter': field, 'operator': 'contains', 'type': 'String', 'value': 'keep'}],
++                }
++            }
++        if saved:
++            view = View.objects.create(project=project, ordering=payload['ordering'])
++            params = {'view': view.id}
++        else:
++            params = {'project': project.id, 'query': json.dumps(payload)}
++        return client.get('/api/tasks', params)
++
++    return query, task
++
++
++@pytest.mark.parametrize(
++    'field', ['updated_by__password', 'project__created_by__password', 'annotations__completed_by__password']
++)
++def test_direct_filters_reject_relationship_traversal(task_query, field):
++    query, _ = task_query
++
++    response = query(f'filter:tasks:{field}')
++
++    assert response.status_code == 400, response.content
++    assert 'DATA_MANAGER_FILTER_ALLOWLIST' in response.content.decode()
++
++
++@pytest.mark.parametrize('saved', [False, True])
++@pytest.mark.parametrize('prefix', ['tasks:', '-tasks:', 'tasks:-'])
++def test_ordering_rejects_relationship_traversal(task_query, saved, prefix):
++    query, _ = task_query
++
++    response = query(f'{prefix}project__created_by__password', ordering=True, saved=saved)
++
++    assert response.status_code == 400, response.content
++
++
++@pytest.mark.parametrize('ordering', [False, True])
++def test_json_keys_with_double_underscores_remain_queryable(task_query, ordering):
++    query, task = task_query
++    prefix = 'tasks:' if ordering else 'filter:tasks:'
++
++    response = query(f'{prefix}data.batch__name', ordering=ordering)
++
++    assert response.status_code == 200, response.content
++    assert [row['id'] for row in response.json()['tasks']] == [task.id]
++
++
++@pytest.mark.parametrize('ordering', [False, True])
++def test_explicitly_allowlisted_relationships_remain_queryable(task_query, settings, ordering):
++    query, task = task_query
++    task.updated_by.email = 'keep@example.com'
++    task.updated_by.save(update_fields=['email'])
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['updated_by__email']
++    prefix = 'tasks:' if ordering else 'filter:tasks:'
++
++    response = query(f'{prefix}updated_by__email', ordering=ordering)
++
++    assert response.status_code == 200, response.content
++    assert [row['id'] for row in response.json()['tasks']] == [task.id]

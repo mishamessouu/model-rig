@@ -1,0 +1,43 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..bd99487 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5160,6 +5160,11 @@ class GraphQLAuthorizationMiddleware:
+         """
+         input_obj = args.get("input")
+         if input_obj is None:
++            # Search fields can return resources across the entire store when their
++            # input (and therefore experiment_ids) is omitted. Fail closed rather
++            # than allowing an unscoped search to bypass per-experiment checks.
++            if field_name in ("mlflowSearchRuns", "mlflowSearchDatasets"):
++                return False
+             # No input means no specific resource to check
+             return True
+ 
+@@ -5180,15 +5185,17 @@ class GraphQLAuthorizationMiddleware:
+                     return False
+ 
+         elif field_name in ("mlflowSearchRuns", "mlflowSearchDatasets"):
+-            if experiment_ids := (getattr(input_obj, "experiment_ids", None) or []):
+-                readable_ids = [
+-                    exp_id
+-                    for exp_id in experiment_ids
+-                    if _graphql_can_read_experiment(exp_id, username)
+-                ]
+-                if not readable_ids:
+-                    return False
+-                input_obj.experiment_ids = readable_ids
++            experiment_ids = getattr(input_obj, "experiment_ids", None) or []
++            if not experiment_ids:
++                return False
++            readable_ids = [
++                exp_id
++                for exp_id in experiment_ids
++                if _graphql_can_read_experiment(exp_id, username)
++            ]
++            if not readable_ids:
++                return False
++            input_obj.experiment_ids = readable_ids
+ 
+         return True
+ 

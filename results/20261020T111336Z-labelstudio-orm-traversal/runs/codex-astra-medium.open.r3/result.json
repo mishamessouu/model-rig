@@ -1,0 +1,136 @@
+{
+  "run_id": "codex-astra-medium.open.r3",
+  "batch": "20261020T111336Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "codex-astra-medium",
+  "harness": "codex",
+  "model": "gpt-6-astra",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 3,
+  "seconds": 150.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 25644,
+    "output": 1991,
+    "cache_read": 518400,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-astra": {
+      "input": 25644,
+      "output": 1991,
+      "cache_read": 518400,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 544044,
+    "cached_input_tokens": 518400,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1991,
+    "reasoning_output_tokens": 161
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 87.439,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Block unapproved ORM traversal in runtime filters and ordering to prevent sensitive related-data exposure.",
+  "final": "Added runtime validation for data-manager fields to block unapproved ORM relationship traversal, while preserving JSON access and allowlisted lookups. Included regression tests.\n\nRequested test suite: **352 passed, 2 skipped, 151 subtests passed**.\n\nCHOICE: Block unapproved ORM traversal in runtime filters and ordering to prevent sensitive related-data exposure.",
+  "diff": {
+    "files": 2,
+    "added": 50,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "pypi.org",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprdenmarkeast.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-inline-filter-traversal",
+    "s2-ordering-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

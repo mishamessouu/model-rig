@@ -1,0 +1,84 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..e073007 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Enforce traversal restrictions for ordering and ad-hoc filters too, which
++    # can reach the ORM without passing through FilterSerializer.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError('Related model lookups are not allowed in data manager fields.')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_field_traversal.py b/label_studio/data_manager/tests/test_field_traversal.py
+new file mode 100644
+index 0000000..31c1a2d
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_field_traversal.py
+@@ -0,0 +1,50 @@
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from data_manager.managers import apply_filters, apply_ordering
++from data_manager.prepare_params import Filters
++from django.test import override_settings
++from rest_framework.exceptions import ValidationError
++from tasks.models import Task
++
++
++@pytest.mark.parametrize('prefix', ['', '-', 'tasks:', '-tasks:', 'tasks:-', 'filter:tasks:', 'filter:tasks:-'])
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=[])
++def test_field_preprocessing_rejects_related_model_traversal(prefix):
++    with pytest.raises(ValidationError):
++        preprocess_field_name(f'{prefix}project__created_by__email', project=None)
++
++
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=[])
++def test_ordering_rejects_related_model_traversal():
++    with pytest.raises(ValidationError):
++        apply_ordering(Task.objects.all(), ['tasks:project__created_by__email'], project=None, request=None)
++
++
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=[])
++def test_ad_hoc_filter_rejects_related_model_traversal():
++    filters = Filters(
++        conjunction='and',
++        items=[
++            {
++                'filter': 'filter:tasks:project__created_by__email',
++                'operator': 'contains',
++                'type': 'String',
++                'value': 'secret',
++            }
++        ],
++    )
++    with pytest.raises(ValidationError):
++        apply_filters(Task.objects.all(), filters, project=None, request=None)
++
++
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=['project__title'])
++def test_explicitly_allowlisted_traversal_remains_supported():
++    assert preprocess_field_name('-tasks:project__title', project=None) == ('project__title', False)
++
++
++@override_settings(DATA_MANAGER_FILTER_ALLOWLIST=[])
++def test_json_key_traversal_remains_supported():
++    project = SimpleNamespace(summary=SimpleNamespace(common_data_columns=[]), data_types={})
++    assert preprocess_field_name('tasks:data.images__0', project) == ('data__images__0', True)

@@ -1,0 +1,22 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..60e7bb3 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -394,7 +394,7 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+ 
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+-        real_name = field_name.replace('data.', '')
++        real_name = field_name.removeprefix('data.')
+         common_data_columns = project.summary.common_data_columns
+         real_name_suitable = (
+             # there is only one object tag in labeling config
+@@ -414,7 +414,7 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ):
+             field_name = f'data__{settings.DATA_UNDEFINED_NAME}'
+         else:
+-            field_name = field_name.replace('data.', 'data__')
++            field_name = 'data__' + field_name.removeprefix('data.')
+     return field_name, ascending
+ 
+ 

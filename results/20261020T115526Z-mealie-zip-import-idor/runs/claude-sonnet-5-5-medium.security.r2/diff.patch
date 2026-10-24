@@ -1,0 +1,79 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..6ed49eb 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
+ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
++from slugify import slugify
+ from fastapi import UploadFile
+ 
+ from mealie.core import exceptions
+@@ -274,6 +275,23 @@ class RecipeService(RecipeServiceBase):
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
++    def _transform_tool(self, data: dict) -> dict:
++        # Tools are matched by slug within this group only. The id from the archive is never trusted,
++        # otherwise it could point at (and rewrite) a tool that belongs to another group.
++        name = self._non_empty_str(data.get("name"))
++        slug = self._non_empty_str(data.get("slug")) or (slugify(name) if name else None)
++        if not slug:
++            return data
++
++        existing = self.repos.tools.get_one(slug, "slug")
++        if existing:
++            return existing.model_dump()
++
++        new_tool = self.repos.tools.create(
++            {"name": name or slug, "slug": slug, "group_id": self.user.group_id}
++        )
++        return new_tool.model_dump()
++
+     def _get_data_matcher(self) -> DataMatcher:
+         if self._data_matcher is None:
+             # Exact matches only: zip imports should rematch name/plural/alias/abbreviation,
+@@ -392,6 +410,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..bcceab3 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -2219,3 +2219,29 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_does_not_touch_other_groups_tools(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A zip referencing another group's tool id must not move or rename that tool."""
++    tool = api_client.post(api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token).json()
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(user_id=unique_user.user_id, group_id=unique_user.group_id, name=recipe_name, slug=recipe_name)
++    data = json.loads(recipe.model_dump_json())
++    data["tools"] = [{"id": tool["id"], "name": "hijacked", "slug": "hijacked"}]
++
++    zip_file = os.path.join(tempdir, "tool_zipfile.zip")
++    with ZipFile(zip_file, "w") as zf:
++        zf.writestr("recipe.json", json.dumps(data))
++
++    r = api_client.post(
++        api_routes.recipes_create_zip, files={"archive": Path(zip_file).read_bytes()}, headers=unique_user.token
++    )
++    assert r.status_code == 201
++
++    after = api_client.get(api_routes.organizers_tools_item_id(tool["id"]), headers=g2_user.token)
++    assert after.status_code == 200
++    assert after.json()["name"] == tool["name"]
++    assert after.json()["groupId"] == str(g2_user.group_id)

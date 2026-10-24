@@ -1,0 +1,66 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..4e82c2b 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -270,7 +270,8 @@ class RecipeService(RecipeServiceBase):
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
++        # otherwise, create the item; never reuse an id from the archive, it may belong to another group
++        data.pop("id", None)
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
+@@ -392,6 +393,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..b1d12a7 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -2219,3 +2219,38 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_ignores_tool_of_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A tool id from another group in the archive must not be linked or modified."""
++    r = api_client.post(api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token)
++    assert r.status_code == 201
++    foreign = r.json()
++
++    recipe_name = random_string()
++    with tempfile.NamedTemporaryFile(mode="w+", dir=tempdir, suffix=".json", delete=False) as data_file:
++        json.dump(
++            {
++                "name": recipe_name,
++                "slug": recipe_name,
++                "tools": [{"id": foreign["id"], "name": "hijacked", "slug": foreign["slug"], "groupId": g2_user.group_id}],
++            },
++            data_file,
++        )
++        data_file.flush()
++        zip_file = os.path.join(tempdir, "tool_zipfile.zip")
++        with ZipFile(zip_file, "w") as zf:
++            zf.write(data_file.name)
++
++    r = api_client.post(
++        api_routes.recipes_create_zip, files={"archive": Path(zip_file).read_bytes()}, headers=unique_user.token
++    )
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert all(t["id"] != foreign["id"] for t in imported["tools"])
++
++    still = api_client.get(api_routes.organizers_tools_item_id(foreign["id"]), headers=g2_user.token).json()
++    assert still["name"] == foreign["name"]

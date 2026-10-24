@@ -1,0 +1,86 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..30a9792 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5118,7 +5118,7 @@ class GraphQLAuthorizationMiddleware:
+         """
+         field_name = info.field_name
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        if field_name not in self.PROTECTED_FIELDS and not self._is_run_model_versions(info):
+             return next(root, info, **args)
+ 
+         try:
+@@ -5146,6 +5146,13 @@ class GraphQLAuthorizationMiddleware:
+         result = next(root, info, **args)
+         return self._post_resolve(field_name, result, username) if result is not None else None
+ 
++    @staticmethod
++    def _is_run_model_versions(info) -> bool:
++        # ``MlflowRunExtension.modelVersions`` resolves via an unfiltered model version
++        # search, so it is reachable from any readable run (e.g. ``mlflowGetRun``) and
++        # must be filtered by registered model permissions.
++        return info.field_name == "modelVersions" and info.parent_type.name == "MlflowRunExtension"
++
+     def _check_authorization(self, field_name: str, args: dict[str, Any], username: str) -> bool:
+         """
+         Check if the user is authorized to access the requested field.
+@@ -5196,6 +5203,9 @@ class GraphQLAuthorizationMiddleware:
+         """Apply post-resolution filtering on GraphQL results."""
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if field_name == "modelVersions":
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):
+diff --git a/tests/server/auth/test_client_workspace.py b/tests/server/auth/test_client_workspace.py
+index f35fb1a..5228736 100644
+--- a/tests/server/auth/test_client_workspace.py
++++ b/tests/server/auth/test_client_workspace.py
+@@ -343,3 +343,44 @@ def test_registered_model_access_controls_across_workspaces(workspace_setup, mon
+     )
+     assert resp.status_code == 403
+     assert "Permission denied" in resp.text
++
++
++def test_graphql_run_model_versions_filtered_by_model_permission(workspace_setup):
++    _, tracking_uri, workspace, username, password = workspace_setup
++    grant_role_permission(tracking_uri, username, "workspace", "*", "MANAGE", workspace=workspace)
++
++    exp_id = _create_experiment(tracking_uri, workspace, auth=(username, password))
++    run_id = _create_run(tracking_uri, workspace, exp_id, auth=(username, password))
++    readable_model = f"readable-{random_str()}"
++    hidden_model = f"hidden-{random_str()}"
++    for model_name in (readable_model, hidden_model):
++        _create_registered_model(tracking_uri, workspace, model_name, auth=(username, password))
++        _create_model_version(
++            tracking_uri, workspace, model_name, run_id, auth=(username, password)
++        )
++
++    limited_user, limited_password = create_user(tracking_uri)
++    grant_role_permission(tracking_uri, limited_user, "experiment", exp_id, "READ", workspace)
++    grant_role_permission(
++        tracking_uri, limited_user, "registered_model", readable_model, "READ", workspace
++    )
++
++    query = """
++    query GetRun($input: MlflowGetRunInput){
++      mlflowGetRun(input: $input){
++        run { info { runId } modelVersions { name } }
++      }
++    }
++    """
++    resp = requests.post(
++        f"{tracking_uri}/graphql",
++        json={"query": query, "variables": {"input": {"runId": run_id}}},
++        auth=(limited_user, limited_password),
++        headers={WORKSPACE_HEADER_NAME: workspace},
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    run = payload["data"]["mlflowGetRun"]["run"]
++    assert run["info"]["runId"] == run_id
++    assert [mv["name"] for mv in run["modelVersions"]] == [readable_model]

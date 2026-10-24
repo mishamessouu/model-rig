@@ -1,0 +1,101 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..300a457 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -438,10 +438,46 @@ def get_visible_data_column_keys(prepare_params, user):
+     return frozenset(data_column_ids - hidden_data_keys)
+ 
+ 
++def validate_ordering_field_name(raw_field_name: str) -> None:
++    """Reject ordering columns that traverse foreign keys, mirroring `FilterSerializer.validate_column`.
++
++    Ordering reaches `order_by()` with a user-supplied column name, so without this check an
++    ordering expression can walk relations the Data Manager never exposes (the ORM Leak class of
++    issue, see #5012). Accesses into the `task.data` JSONField are safe because they don't leverage
++    foreign keys, and deployments can opt specific traversals back in via DATA_MANAGER_FILTER_ALLOWLIST.
++
++    Edit with care; these validations are critical for security. In particular it is not advisable
++    to use `replace` or other calls that replace all instances of a string within this function.
++    """
++    column = raw_field_name
++
++    # Descending marker `-` may come before and/or after the `tasks:` prefix
++    if column.startswith('-'):
++        column = column[1:]
++    if column.startswith('tasks:'):
++        column = column[len('tasks:') :]
++    if column.startswith('-'):
++        column = column[1:]
++
++    # Underscores are allowed inside `task.data` keys: these don't leverage foreign keys
++    if column.startswith('data.'):
++        return
++
++    if column in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++        return
++
++    if '__' in column:
++        raise ValidationError(
++            f'"__" is not generally allowed in ordering. Consider asking your administrator to add "{column}" '
++            'to DATA_MANAGER_FILTER_ALLOWLIST, but note that some ordering expressions may pose a security risk'
++        )
++
++
+ def apply_ordering(queryset, ordering, project, request, view_data=None):
+     if ordering:
+         preprocess_field_name = load_func(settings.PREPROCESS_FIELD_NAME)
+         raw_field_name = ordering[0]
++        validate_ordering_field_name(raw_field_name)
+         numeric_ordering = False
+         unsigned_field_name = raw_field_name.lstrip('-+')
+         if (
+diff --git a/label_studio/data_manager/tests/test_managers.py b/label_studio/data_manager/tests/test_managers.py
+index c789623..e9715f2 100644
+--- a/label_studio/data_manager/tests/test_managers.py
++++ b/label_studio/data_manager/tests/test_managers.py
+@@ -12,6 +12,7 @@ from django.core.exceptions import FieldDoesNotExist, FieldError
+ from django.db.models import Q
+ from django.test import TestCase, override_settings
+ from projects.tests.factories import ProjectFactory
++from rest_framework.exceptions import ValidationError
+ from tasks.models import Task
+ from tasks.tests.factories import AnnotationFactory, TaskFactory
+ from users.tests.factories import UserFactory
+@@ -462,6 +463,37 @@ class TestApplyOrderingStaleAgreementFields(TestCase):
+         self.assertEqual(queryset.order_by.call_args_list[-1].args, ('id',))
+ 
+ 
++class TestApplyOrderingForeignKeyTraversal(TestCase):
++    """Ordering columns must honour the same foreign-key rules as filter columns."""
++
++    def test_rejects_foreign_key_traversal(self):
++        from data_manager.managers import validate_ordering_field_name
++
++        for raw_field_name in [
++            'tasks:annotations__completed_by__password',
++            'tasks:-updated_by__password',
++            '-tasks:annotations__completed_by__email',
++            'updated_by__password',
++        ]:
++            with self.subTest(raw_field_name=raw_field_name):
++                with self.assertRaises(ValidationError):
++                    validate_ordering_field_name(raw_field_name)
++
++    def test_allows_plain_columns_data_keys_and_allowlisted_traversals(self):
++        from data_manager.managers import validate_ordering_field_name
++
++        for raw_field_name in [
++            'tasks:id',
++            '-tasks:completed_at',
++            'tasks:-total_annotations',
++            'tasks:data.my__nested__key',
++            'tasks:annotations__completed_by',
++            'tasks:updated_by__active_organization',
++        ]:
++            with self.subTest(raw_field_name=raw_field_name):
++                validate_ordering_field_name(raw_field_name)
++
++
+ class TestCastValueDatetimeBooleanValue(TestCase):
+     """Regression test for crashes when a saved view stores a non-string value for a Datetime filter."""
+ 

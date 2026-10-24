@@ -1,0 +1,40 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..c42aa4b 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -927,8 +927,11 @@ def apply_filters(queryset, filters, project, request):
+ 
+             # get type of annotated field
+             value_type = KNOWN_FILTER_VALUE_TYPES.get(field_name, 'str')
+-            if field_name not in KNOWN_FILTER_VALUE_TYPES and queryset.exists():
+-                value_type = type(queryset.values_list(field_name, flat=True)[0]).__name__
++            if field_name not in KNOWN_FILTER_VALUE_TYPES:
++                # single query (instead of exists() + [0]); empty queryset keeps the 'str' default
++                sample = list(queryset.values_list(field_name, flat=True)[:1])
++                if sample:
++                    value_type = type(sample[0]).__name__
+ 
+             if (value_type == 'list' or value_type == 'tuple') and 'equal' in _filter.operator:
+                 raise ValidationError('Not supported filter type')
+diff --git a/label_studio/data_manager/tests/test_managers.py b/label_studio/data_manager/tests/test_managers.py
+index c789623..c9e997c 100644
+--- a/label_studio/data_manager/tests/test_managers.py
++++ b/label_studio/data_manager/tests/test_managers.py
+@@ -4,7 +4,7 @@ This file tests the core functionality of the excluded_fields_for_evaluation
+ feature that optimizes task API performance by excluding expensive fields.
+ """
+ 
+-from unittest.mock import Mock, patch
++from unittest.mock import MagicMock, Mock, patch
+ 
+ from data_manager.prepare_params import ConjunctionEnum, Filter, Filters, PrepareParams
+ from django.conf import settings
+@@ -1111,7 +1111,7 @@ class TestApplyFiltersInList(TestCase):
+         queryset.query.annotations = {}
+         queryset.model._meta.get_field.return_value = Mock()
+         queryset.filter.return_value = queryset
+-        queryset.exists.return_value = False
++        queryset.values_list.return_value = MagicMock(__getitem__=Mock(return_value=[]))
+ 
+         filters = Filters(conjunction=conjunction, items=[_filter])
+ 

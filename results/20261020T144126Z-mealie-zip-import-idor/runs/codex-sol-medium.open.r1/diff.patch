@@ -1,0 +1,99 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..692955d 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -32,6 +33,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+ from mealie.services._base_service import BaseService
+@@ -285,6 +287,20 @@ class RecipeService(RecipeServiceBase):
+             )
+         return self._data_matcher
+ 
++    def _transform_tool(self, data: dict[str, Any]) -> dict[str, Any]:
++        # Exported IDs must never reach auto_init's unscoped relationship lookup.
++        # Resolve tools in this group, returning canonical data so imports cannot edit them.
++        tool = self.repos.tools.get_one(slugify(data["name"]), "slug")
++        if tool is None:
++            tool = self.repos.tools.create(
++                RecipeToolSave(
++                    name=data["name"],
++                    group_id=self.user.group_id,
++                    households_with_tool=data.get("households_with_tool") or [],
++                )
++            )
++        return tool.model_dump()
++
+     def _reset_data_matcher(self) -> None:
+         self._data_matcher = None
+ 
+@@ -392,6 +408,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..c041886 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -641,6 +641,44 @@ def test_create_recipe_from_zip_preserves_extras(api_client: TestClient, unique_
+     assert imported["extras"] == {"my_key": "my_value"}
+ 
+ 
++@pytest.mark.parametrize("empty_slug", [False, True])
++@pytest.mark.parametrize("reuse_local", [False, True])
++def test_create_recipe_from_zip_scopes_tools(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str, empty_slug: bool, reuse_local: bool
++) -> None:
++    route = api_routes.organizers_tools
++    response = api_client.post(route, json={"name": random_string()}, headers=g2_user.token)
++    assert response.status_code == 201
++    foreign = response.json()
++    imported_name = random_string()
++    local = None
++    if reuse_local:
++        response = api_client.post(route, json={"name": imported_name}, headers=unique_user.token)
++        assert response.status_code == 201
++        local = response.json()
++
++    # The archive claims a foreign ID but supplies a new name and slug in our group.
++    supplied = foreign | {"name": imported_name, "slug": "" if empty_slug else slugify(imported_name)}
++    recipe = RecipeSummary(name=random_string(), tools=[supplied])
++    response = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token
++    )
++    assert response.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    imported_tool = imported["tools"][0]
++    assert imported_tool["id"] != foreign["id"]
++    assert imported_tool["groupId"] == str(unique_user.group_id)
++    assert imported_tool["name"] == imported_name
++    if local:
++        assert imported_tool["id"] == local["id"]
++
++    unchanged = api_client.get(f"{route}/{foreign['id']}", headers=g2_user.token)
++    assert unchanged.status_code == 200
++    assert unchanged.json()["name"] == foreign["name"]
++    assert unchanged.json()["groupId"] == foreign["groupId"]
++
++
+ def test_create_recipe_from_zip_invalid_group(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     database = unique_user.repos
+     recipe_name = random_string()

@@ -1,0 +1,99 @@
+{
+  "run_id": "claude-opus-medium.security.r3",
+  "batch": "20261023T224425Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-opus-medium",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 168.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 16,
+  "tokens": {
+    "input": 30,
+    "output": 5122,
+    "cache_read": 286411,
+    "cache_write": 25274
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 30,
+      "output": 5122,
+      "cache_read": 286411,
+      "cache_write": 25274
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 30,
+    "cache_creation_input_tokens": 25274,
+    "cache_read_input_tokens": 286411,
+    "output_tokens": 5122,
+    "output_tokens_details": {
+      "thinking_tokens": 1445
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25274,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.3620342,
+  "costs": {
+    "copilot": {
+      "value": 28.6212,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Limited the attachment list to model types the user may view and added a view-permission check on single-attachment GET, because any authenticated user could read every attachment in the system.",
+  "final": "I fixed a read-access hole in the attachment API: any logged-in user could list and read every attachment in the system, whatever their permissions. That covered attachments on purchase orders, sales orders, build orders and every other model that supports them.\n\n**The problem.** Creating, editing and deleting attachments all check the user's permission on the model the attachment belongs to. Reading didn't: the list and detail endpoints served every attachment to any authenticated user. A user with no rights to view, say, sales orders could still page through `/api/attachment/` and get every sales-order attachment's comment, uploader and file URL.\n\n**The fix** (all in `src/backend/InvenTree/common/api.py`):\n- **List endpoint:** results are now limited to attachments on model types the user has `view` permission for, using the same permission check the write paths use. Bulk delete runs on the same filtered list, so it can only touch attachments the user can see.\n- **Detail GET:** fetching a single attachment now returns 403 (\"User does not have permission to view this attachment\") if the user can't view the parent model type.\n\nI first applied the filter to both endpoints. That broke one existing test: edit and delete for a user without permissions started returning 404 instead of the 403 messages the test expects. So the filter stays on the list only, and the detail endpoint does an explicit check that returns 403.\n\n**Tests:** the requested suite (`common.test_api`, `common.tests.AttachmentTest`, `part.test_api.AttachmentTest`) passes, 52 tests. I didn't add a new test for the read restriction; one that checks a user without view rights gets an empty list and a 403 would be worth having.\n\n**Not fixed:** in debug mode, media files are served by Django's plain static handler with no permission check. Anyone with a file's URL can download it directly. Production deployments normally serve media through the web server, so this is outside the change I made.\n\nNothing is committed, and per the repo's CLAUDE.md I haven't opened a PR; a human needs to review it first.\n\nCHOICE: Limited the attachment list to model types the user may view and added a view-permission check on single-attachment GET, because any authenticated user could read every attachment in the system.",
+  "diff": {
+    "files": 1,
+    "added": 29,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

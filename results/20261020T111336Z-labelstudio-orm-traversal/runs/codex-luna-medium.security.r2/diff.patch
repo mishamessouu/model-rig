@@ -1,0 +1,18 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..b69044c 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -453,6 +453,13 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
+ 
++        # Ordering also compiles client supplied column names into ORM paths. Keep
++        # the same boundary as filters: only task.data JSON keys may contain Django
++        # traversal separators, since relation traversal can expose private fields
++        # through the resulting row order.
++        if '__' in field_name and not field_name.startswith('data__'):
++            raise ValidationError('Ordering by related fields is not allowed.')
++
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+             json_field = field_name.replace('data__', '')

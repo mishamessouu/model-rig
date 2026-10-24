@@ -1,0 +1,87 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..0569f6d 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -260,7 +260,7 @@ class RecipeService(RecipeServiceBase):
+             # default to the current user
+             return str(self.user.id)
+ 
+-    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
++    def _transform_organizer(self, data: dict, repo: RepositoryGeneric) -> dict:
+         slug = data.get("slug")
+         if not slug:
+             return data
+@@ -270,7 +270,9 @@ class RecipeService(RecipeServiceBase):
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
++        # otherwise, create the item; the exported id belongs to the source instance and may
++        # name an existing row in another group, so never carry it over
++        data.pop("id", None)
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
+@@ -387,11 +389,13 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
+-        # make sure categories and tags and food/unit are valid
++        # make sure categories, tags, tools and food/unit are valid
+         if key == "recipe_category":
+-            return self._transform_category_or_tag(data, self.repos.categories)
++            return self._transform_organizer(data, self.repos.categories)
+         elif key == "tags":
+-            return self._transform_category_or_tag(data, self.repos.tags)
++            return self._transform_organizer(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_organizer(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..684bae6 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -438,6 +438,41 @@ def test_create_recipe_from_zip_reimport_into_same_instance(api_client: TestClie
+     assert still_there.json()["id"] == original["id"]
+ 
+ 
++def test_create_recipe_from_zip_does_not_take_over_other_groups_tool(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser
++):
++    """A zip naming another group's tool by id gets a tool in the importer's group; the other group's is untouched."""
++    victim_tool = api_client.post(
++        api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token
++    ).json()
++
++    recipe_name = random_string()
++    recipe_dict = {
++        "name": recipe_name,
++        "slug": slugify(recipe_name),
++        "tools": [{"id": victim_tool["id"], "name": "hijacked", "slug": "hijacked"}],
++    }
++
++    with tempfile.TemporaryDirectory() as tmpdir:
++        zip_path = Path(tmpdir) / "recipe.zip"
++        with ZipFile(zip_path, "w") as zf:
++            zf.writestr("recipe.json", json.dumps(recipe_dict))
++        r = api_client.post(
++            api_routes.recipes_create_zip, files={"archive": zip_path.read_bytes()}, headers=unique_user.token
++        )
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert len(imported["tools"]) == 1
++    assert imported["tools"][0]["id"] != victim_tool["id"]
++    assert imported["tools"][0]["groupId"] == str(unique_user.group_id)
++
++    still_there = api_client.get(api_routes.organizers_tools_item_id(victim_tool["id"]), headers=g2_user.token)
++    assert still_there.status_code == 200
++    assert still_there.json()["name"] == victim_tool["name"]
++    assert still_there.json()["groupId"] == victim_tool["groupId"]
++
++
+ def test_create_recipe_from_zip_reimport_preserves_contents(api_client: TestClient, unique_user: TestUser):
+     """Re-importing an export into the same instance keeps every part of the recipe."""
+     category = api_client.post(

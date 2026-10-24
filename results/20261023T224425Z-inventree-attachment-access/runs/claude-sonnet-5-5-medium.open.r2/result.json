@@ -1,0 +1,99 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.open.r2",
+  "batch": "20261023T224425Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 133.3,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 9,
+  "tokens": {
+    "input": 18,
+    "output": 3035,
+    "cache_read": 136229,
+    "cache_write": 15850
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 18,
+      "output": 3035,
+      "cache_read": 136229,
+      "cache_write": 15850
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 15850,
+    "cache_read_input_tokens": 136229,
+    "output_tokens": 3035,
+    "output_tokens_details": {
+      "thinking_tokens": 364
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 15850,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.1074089,
+  "costs": {
+    "copilot": {
+      "value": 8.3634,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Filter attachment list/detail reads by the user's view permission on each attachment's model type, because any authenticated user could previously read all attachments regardless of roles.",
+  "final": "I changed the attachment list and detail endpoints so that read requests only return attachments for model types the user has view permission on. Before, any logged-in user could list or fetch every attachment, whatever their roles. The 52 tests you listed pass.\n\nThe change is a `get_queryset` method on `AttachmentMixin` in `src/backend/InvenTree/common/api.py`. For GET, HEAD and OPTIONS it excludes attachments whose model type the user can't view, using each model's `check_related_permission('view', user)`. Superusers are not filtered. Write requests are not filtered, because they already return 403 through their own permission checks. I didn't add a test for the new read filtering, so it is only covered indirectly by the existing tests passing.\n\nAn attachment the user can't view now returns 404 on GET rather than 403.\n\nCHOICE: Filter attachment list/detail reads by the user's view permission on each attachment's model type, because any authenticated user could previously read all attachments regardless of roles.",
+  "diff": {
+    "files": 1,
+    "added": 27,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

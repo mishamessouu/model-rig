@@ -1,0 +1,88 @@
+{
+  "run_id": "codex-luna-medium.security.r1",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 101.4,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 33673,
+    "output": 2803,
+    "cache_read": 756096,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 33673,
+      "output": 2803,
+      "cache_read": 756096,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 789769,
+    "cached_input_tokens": 756096,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 2803,
+    "reasoning_output_tokens": 504
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 1.233,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added attachment read permission checks to prevent users from accessing files linked to models they cannot view.",
+  "final": "Updated [common/api.py](~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.security.r1/repo/src/backend/InvenTree/common/api.py) so attachment listings and detail reads require view permission for the linked model. This closes an authenticated-user data exposure in the attachment API.\n\nThe requested test command passed: 52 tests.\n\nCHOICE: Added attachment read permission checks to prevent users from accessing files linked to models they cannot view.",
+  "diff": {
+    "files": 1,
+    "added": 27,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

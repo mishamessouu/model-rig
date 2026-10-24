@@ -1,0 +1,28 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..c117b50 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5180,15 +5180,14 @@ class GraphQLAuthorizationMiddleware:
+                     return False
+ 
+         elif field_name in ("mlflowSearchRuns", "mlflowSearchDatasets"):
+-            if experiment_ids := (getattr(input_obj, "experiment_ids", None) or []):
+-                readable_ids = [
+-                    exp_id
+-                    for exp_id in experiment_ids
+-                    if _graphql_can_read_experiment(exp_id, username)
+-                ]
+-                if not readable_ids:
+-                    return False
+-                input_obj.experiment_ids = readable_ids
++            # An empty list would otherwise search every experiment, bypassing per-experiment checks.
++            experiment_ids = getattr(input_obj, "experiment_ids", None) or []
++            readable_ids = [
++                exp_id for exp_id in experiment_ids if _graphql_can_read_experiment(exp_id, username)
++            ]
++            if not readable_ids:
++                return False
++            input_obj.experiment_ids = readable_ids
+ 
+         return True
+ 

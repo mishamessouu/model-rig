@@ -1,0 +1,99 @@
+{
+  "run_id": "claude-sonnet-5-5-medium.open.r1",
+  "batch": "20261023T224425Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-sonnet-5-5-medium",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 169.4,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 9,
+  "tokens": {
+    "input": 18,
+    "output": 4042,
+    "cache_read": 152092,
+    "cache_write": 21023
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 18,
+      "output": 4042,
+      "cache_read": 152092,
+      "cache_write": 21023
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 21023,
+    "cache_read_input_tokens": 152092,
+    "output_tokens": 4042,
+    "output_tokens_details": {
+      "thinking_tokens": 520
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21023,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.1397572,
+  "costs": {
+    "copilot": {
+      "value": 10.8223,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added view-permission enforcement to attachment list and detail reads in `common/api.py`, because any authenticated user could previously read all attachments regardless of their permissions on the linked model.",
+  "final": "I added a read-permission check to the attachment API. Before this, any logged-in user could list or fetch every attachment, whatever their permissions on the linked model. Creating, editing and deleting were already checked.\n\nThe change is in `src/backend/InvenTree/common/api.py`:\n- **List** (`/api/attachment/`): results now leave out attachments whose linked model the user can't view. Superusers still see everything.\n- **Detail** (GET on a single attachment): returns 403 if the user can't view the linked model. I used 403 rather than hiding it as a 404 because the existing `test_upload_via_api` expects 403 for a missing permission.\n\nThe suite you specified passed in an earlier run (52 tests, OK), but that run was before I split the check across list and detail. I then wrapped one long line and only confirmed the file still parses. I didn't re-run the tests after that, and `ruff` isn't installed here, so formatting isn't checked.\n\nI didn't add a new test for the read restriction.\n\nCHOICE: Added view-permission enforcement to attachment list and detail reads in `common/api.py`, because any authenticated user could previously read all attachments regardless of their permissions on the linked model.",
+  "diff": {
+    "files": 1,
+    "added": 40,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

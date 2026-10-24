@@ -1,0 +1,100 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..157fb55 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Direct queries and ordering bypass FilterSerializer's column validation.
++    # Validate before translating JSON access into Django lookup syntax.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError('Related-field lookups are not allowed in data manager queries.')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_field_security.py b/label_studio/data_manager/tests/test_field_security.py
+new file mode 100644
+index 0000000..b3b6540
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_field_security.py
+@@ -0,0 +1,66 @@
++import json
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from projects.tests.factories import ProjectFactory
++from rest_framework.exceptions import ValidationError
++from rest_framework.test import APIClient
++from tasks.tests.factories import TaskFactory
++
++
++@pytest.mark.parametrize('prefix', ['', 'tasks:', '-tasks:', 'tasks:-', 'filter:tasks:', 'filter:tasks:-'])
++@pytest.mark.parametrize('field', ['project__created_by__password', 'updated_by__email', 'id__gte'])
++def test_related_lookups_rejected(settings, prefix, field):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = []
++    with pytest.raises(ValidationError):
++        preprocess_field_name(prefix + field, project=None)
++
++
++@pytest.mark.parametrize('field', ['id', 'data.text', 'data.key__with_underscores'])
++def test_public_fields_remain_supported(field):
++    project = SimpleNamespace(data_types={}, summary=SimpleNamespace(common_data_columns=[]))
++    assert preprocess_field_name('tasks:' + field, project) == (field.replace('data.', 'data__'), True)
++
++
++def test_explicit_allowlist_remains_supported(settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['project__created_by__email']
++    assert preprocess_field_name('-tasks:project__created_by__email', None) == (
++        'project__created_by__email',
++        False,
++    )
++    with pytest.raises(ValidationError):
++        preprocess_field_name('tasks:project__created_by__email__contains', None)
++
++
++@pytest.mark.django_db
++@pytest.mark.parametrize('query_kind', ['filter', 'child_filter', 'ordering'])
++def test_direct_task_queries_reject_related_lookups(settings, query_kind):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = []
++    project = ProjectFactory()
++    TaskFactory(project=project)
++    client = APIClient()
++    client.force_authenticate(project.created_by)
++    sensitive_filter = {
++        'filter': 'filter:tasks:project__created_by__password',
++        'operator': 'contains',
++        'type': 'String',
++        'value': 'pbkdf2',
++    }
++    if query_kind == 'ordering':
++        query = {'ordering': ['tasks:project__created_by__password']}
++    else:
++        item = sensitive_filter
++        if query_kind == 'child_filter':
++            item = {
++                'filter': 'filter:tasks:id',
++                'operator': 'greater',
++                'type': 'Number',
++                'value': 0,
++                'child_filters': [sensitive_filter],
++            }
++        query = {'filters': {'conjunction': 'and', 'items': [item]}}
++
++    response = client.get('/api/tasks/', {'project': project.id, 'query': json.dumps(query)})
++
++    assert response.status_code == 400

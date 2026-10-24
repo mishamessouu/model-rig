@@ -1,0 +1,55 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..2c89879 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -392,6 +392,11 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            # Never let exported IDs reach the ORM's unscoped relationship lookup.
++            data.pop("id", None)
++            data["slug"] = create_recipe_slug(data["name"])
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..2538a80 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -559,6 +559,34 @@ def test_create_recipe_from_zip_reimport_preserves_contents(api_client: TestClie
+     assert [ref["referenceId"] for ref in step["noteReferences"]] == [imported["notes"][0]["referenceId"]]
+ 
+ 
++def test_create_recipe_from_zip_cannot_take_another_groups_tool(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++) -> None:
++    tool = api_client.post(
++        api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token
++    ).json()
++    imported_name = random_string()
++    recipe_name = random_string()
++    recipe = Recipe(
++        name=recipe_name,
++        tools=[{**tool, "name": imported_name, "slug": slugify(imported_name)}],
++    )
++
++    response = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token
++    )
++    assert response.status_code == 201
++
++    original = api_client.get(api_routes.organizers_tools_item_id(tool["id"]), headers=g2_user.token)
++    assert original.status_code == 200
++    assert original.json()["name"] == tool["name"]
++    assert original.json()["groupId"] == tool["groupId"]
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    assert imported["tools"][0]["id"] != tool["id"]
++    assert imported["tools"][0]["groupId"] == str(unique_user.group_id)
++    assert imported["tools"][0]["name"] == imported_name
++
++
+ def test_create_recipe_from_zip_keeps_unused_id(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     """An id that is not already in use is kept, so imports from elsewhere are unaffected."""
+     recipe_id = uuid4()

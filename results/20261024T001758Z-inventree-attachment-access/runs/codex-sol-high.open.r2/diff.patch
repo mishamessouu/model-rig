@@ -1,0 +1,132 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..7f18d33 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -796,6 +796,20 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Restrict attachment reads to models the user can view."""
++        queryset = super().get_queryset()
++
++        if self.request.method in SAFE_METHODS:
++            model_types = [
++                model.__name__.lower()
++                for model in common.validators.attachment_model_types()
++                if model.check_related_permission('view', self.request.user)
++            ]
++            queryset = queryset.filter(model_type__in=model_types)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..11eba2d 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -1063,6 +1063,93 @@ class AttachmentAPITests(InvenTreeAPITestCase):
+             self.assertFalse(default_storage.exists(att.attachment.path))
+ 
+ 
++class AttachmentReadPermissionAPITests(InvenTreeAPITestCase):
++    """Attachment reads must respect the parent model's view permission."""
++
++    is_staff = False
++
++    def setUp(self):
++        """Create attachments belonging to two different model types."""
++        from part.models import Part
++        from stock.models import StockItem
++
++        super().setUp()
++        part = Part.objects.create(name='Attachment permissions test part')
++        stock = StockItem.objects.create(part=part, quantity=1)
++
++        self.attachments = [
++            common.models.Attachment.objects.create(
++                model_type=model_type,
++                model_id=instance.pk,
++                link='https://example.com/document',
++                comment='Attachment permissions test',
++            )
++            for model_type, instance in [('part', part), ('stockitem', stock)]
++        ]
++        self.url = reverse('api-attachment-list')
++
++    def test_no_view_permission(self):
++        """Authenticated users without view permissions cannot read attachments."""
++        self.assertEqual(self.get(self.url, expected_code=200).data, [])
++
++        for attachment in self.attachments:
++            url = reverse('api-attachment-detail', kwargs={'pk': attachment.pk})
++            self.get(url, expected_code=404)
++            self.assertEqual(self.client.head(url).status_code, 404)
++
++    def test_model_view_permission(self):
++        """List filters and detail requests only expose permitted model types."""
++        self.assignRole('part.view')
++        part_attachment, stock_attachment = self.attachments
++
++        for filters in [{}, {'search': 'permissions'}, {'model_type': 'part'}]:
++            response = self.get(self.url, filters, expected_code=200)
++            self.assertEqual(
++                [attachment['pk'] for attachment in response.data],
++                [part_attachment.pk],
++            )
++
++        response = self.get(
++            self.url,
++            {'model_type': 'stockitem', 'model_id': stock_attachment.model_id},
++            expected_code=200,
++        )
++        self.assertEqual(response.data, [])
++
++        url = reverse('api-attachment-detail', kwargs={'pk': part_attachment.pk})
++        self.get(url, expected_code=200)
++        self.assertEqual(self.client.head(url).status_code, 200)
++        self.get(
++            reverse('api-attachment-detail', kwargs={'pk': stock_attachment.pk}),
++            expected_code=404,
++        )
++
++    def test_superuser(self):
++        """Superusers can read attachments for every model type."""
++        self.user.is_superuser = True
++        self.user.save()
++
++        response = self.get(self.url, expected_code=200)
++        self.assertCountEqual(
++            [attachment['pk'] for attachment in response.data],
++            [attachment.pk for attachment in self.attachments],
++        )
++        for attachment in self.attachments:
++            self.get(
++                reverse('api-attachment-detail', kwargs={'pk': attachment.pk}),
++                expected_code=200,
++            )
++
++    def test_anonymous(self):
++        """Anonymous requests still require authentication."""
++        self.logout()
++        self.get(self.url, expected_code=401)
++        self.get(
++            reverse('api-attachment-detail', kwargs={'pk': self.attachments[0].pk}),
++            expected_code=401,
++        )
++
++
+ class AttachmentThumbnailAPITests(InvenTreeAPITestCase):
+     """Tests for thumbnail generation when uploading attachments via the API."""
+ 

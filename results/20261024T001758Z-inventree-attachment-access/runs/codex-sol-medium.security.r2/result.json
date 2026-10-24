@@ -1,0 +1,89 @@
+{
+  "run_id": "codex-sol-medium.security.r2",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-sol-medium",
+  "harness": "codex",
+  "model": "gpt-6.1-sol",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 169.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 82010,
+    "output": 4491,
+    "cache_read": 921088,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6.1-sol": {
+      "input": 82010,
+      "output": 4491,
+      "cache_read": 921088,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 1003098,
+    "cached_input_tokens": 921088,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 4491,
+    "reasoning_output_tokens": 901
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 30.1039,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Restricted attachment reads by parent-model permissions because any authenticated user could previously retrieve restricted attachment metadata and links.",
+  "final": "Fixed attachment disclosure: list and detail reads now require view permission for the parent model. Added regression coverage for unauthorized access and separate model permissions. This enforces role boundaries within the threat model\u2019s trusted-user assumptions.\n\nRequested suite: all 53 tests passed. `git diff --check` passed; Ruff was unavailable.\n\nCHOICE: Restricted attachment reads by parent-model permissions because any authenticated user could previously retrieve restricted attachment metadata and links.",
+  "diff": {
+    "files": 2,
+    "added": 64,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

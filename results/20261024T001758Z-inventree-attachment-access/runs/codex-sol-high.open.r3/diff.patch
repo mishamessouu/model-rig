@@ -1,0 +1,104 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..7f18d33 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -796,6 +796,20 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Restrict attachment reads to models the user can view."""
++        queryset = super().get_queryset()
++
++        if self.request.method in SAFE_METHODS:
++            model_types = [
++                model.__name__.lower()
++                for model in common.validators.attachment_model_types()
++                if model.check_related_permission('view', self.request.user)
++            ]
++            queryset = queryset.filter(model_type__in=model_types)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..a2e6047 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -956,6 +956,65 @@ class ParameterAPITests(InvenTreeAPITestCase):
+ class AttachmentAPITests(InvenTreeAPITestCase):
+     """Tests for the Attachment API."""
+ 
++    def test_attachment_read_permissions(self):
++        """Only expose attachments for models the user can view."""
++        from company.models import Company
++        from part.models import Part
++
++        self.user.is_staff = False
++        self.user.save()
++
++        attachments = {}
++        for model_type, model in [
++            ('part', Part.objects.create(name='Test Part')),
++            ('company', Company.objects.create(name='Test Company')),
++        ]:
++            attachments[model_type] = common.models.Attachment.objects.create(
++                model_type=model_type,
++                model_id=model.pk,
++                link='https://example.com/datasheet.pdf',
++            )
++
++        url = reverse('api-attachment-list')
++        roles = {'part': 'part', 'company': 'purchase_order'}
++
++        for visible in [[], ['part'], ['company'], ['part', 'company']]:
++            with self.subTest(visible=visible):
++                self.clearRoles()
++                for model_type in visible:
++                    self.assignRole(f'{roles[model_type]}.view')
++
++                expected = {attachments[model_type].pk for model_type in visible}
++                response = self.get(url)
++                self.assertEqual({item['pk'] for item in response.data}, expected)
++
++                # Pagination counts must not disclose inaccessible attachments.
++                response = self.get(url, data={'limit': 1})
++                self.assertEqual(response.data['count'], len(expected))
++                self.assertTrue(
++                    {item['pk'] for item in response.data['results']} <= expected
++                )
++
++                for model_type, attachment in attachments.items():
++                    response = self.get(url, data={'model_type': model_type})
++                    self.assertEqual(
++                        {item['pk'] for item in response.data},
++                        {attachment.pk} if model_type in visible else set(),
++                    )
++                    self.get(
++                        reverse('api-attachment-detail', kwargs={'pk': attachment.pk}),
++                        expected_code=200 if model_type in visible else 404,
++                    )
++
++        self.clearRoles()
++        self.user.is_superuser = True
++        self.user.save()
++        response = self.get(url)
++        self.assertEqual(
++            {item['pk'] for item in response.data},
++            {attachment.pk for attachment in attachments.values()},
++        )
++
+     def test_attachments(self):
+         """Test API functionality for attachments."""
+         from common.models import Attachment

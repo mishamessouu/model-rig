@@ -1,0 +1,16 @@
+diff --git a/src/backend/InvenTree/common/models.py b/src/backend/InvenTree/common/models.py
+index 4d536d9..bb98a1a 100644
+--- a/src/backend/InvenTree/common/models.py
++++ b/src/backend/InvenTree/common/models.py
+@@ -2241,7 +2241,10 @@ class Attachment(
+         except Exception:
+             return False
+ 
+-        img_data = default_storage.open(self.attachment.name).read()
++        try:
++            img_data = default_storage.open(self.attachment.name).read()
++        except Exception:
++            return False
+ 
+         try:
+             Image.open(BytesIO(img_data)).verify()

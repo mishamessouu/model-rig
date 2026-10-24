@@ -1,0 +1,122 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..80ba705 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,6 +5195,10 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        if field_name == "modelVersions":
++            # Run access does not imply access to registered models linked to that run.
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..121f7be 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -10,7 +10,10 @@ from mlflow.environment_variables import MLFLOW_ENABLE_WORKSPACES
+ from mlflow.exceptions import MlflowException
+ from mlflow.prompt.constants import IS_PROMPT_TAG_KEY
+ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
++from mlflow.protos.model_registry_pb2 import ModelVersion, SearchModelVersions
++from mlflow.protos.service_pb2 import GetRun, Run, RunInfo, SearchRuns
+ from mlflow.server import auth as auth_module
++from mlflow.server import handlers
+ from mlflow.server.auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE
+ from mlflow.server.auth.routes import (
+     CREATE_PROMPTLAB_RUN,
+@@ -24,6 +27,7 @@ from mlflow.server.auth.routes import (
+     UPLOAD_ARTIFACT,
+ )
+ from mlflow.server.auth.sqlalchemy_store import SqlAlchemyStore
++from mlflow.server.graphql.graphql_schema_extensions import schema
+ from mlflow.utils import workspace_context
+ 
+ from tests.helper_functions import random_str
+@@ -2300,6 +2304,75 @@ def test_cross_workspace_graphql_access_denied(workspace_permission_setup, monke
+     assert not auth_module._graphql_can_read_model("model-other-ws", username)
+ 
+ 
++@pytest.mark.parametrize("operation", ["get_run", "search_runs_query", "search_runs_mutation"])
++@pytest.mark.parametrize("access", ["none", "read", "admin"])
++def test_graphql_run_model_versions_require_model_permission(
++    workspace_permission_setup, monkeypatch, operation, access
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    store.create_experiment_permission("exp-1", username, READ.name)
++    if access == "read":
++        store.create_registered_model_permission("readable-model", username, READ.name)
++        other_role = store.create_role("other-workspace-reader", workspace="team-b")
++        store.add_role_permission(other_role.id, "registered_model", "private-model", READ.name)
++        store.assign_role_to_user(store.get_user(username).id, other_role.id)
++    elif access == "admin":
++        store.update_user(username, is_admin=True)
++
++    run = Run(info=RunInfo(run_id="run-1", experiment_id="exp-1"))
++    monkeypatch.setattr(handlers, "get_run_impl", lambda _: GetRun.Response(run=run))
++    monkeypatch.setattr(handlers, "search_runs_impl", lambda _: SearchRuns.Response(runs=[run]))
++    search_versions = Mock(
++        return_value=SearchModelVersions.Response(model_versions=[
++            ModelVersion(name="readable-model", version="1"),
++            ModelVersion(name="private-model", version="1", description="private description"),
++        ])
++    )
++    monkeypatch.setattr(handlers, "search_model_versions_impl", search_versions)
++
++    if operation == "get_run":
++        query = """
++            query {
++                result: mlflowGetRun(input: {runId: "run-1"}) {
++                    run { ...Versions }
++                }
++            }
++        """
++    else:
++        operation_type = "mutation" if operation == "search_runs_mutation" else "query"
++        query = operation_type + """ {
++                result: mlflowSearchRuns(input: {experimentIds: ["exp-1"]}) {
++                    runs { ...Versions }
++                }
++            }
++        """
++    query += """
++        fragment Versions on MlflowRunExtension {
++            versions: modelVersions { name version description }
++        }
++    """
++
++    with auth_module.app.test_request_context("/graphql", method="POST"):
++        result = schema.execute(query, middleware=[auth_module.GraphQLAuthorizationMiddleware()])
++
++    assert result.errors is None
++    run_data = (
++        result.data["result"]["run"]
++        if operation == "get_run"
++        else result.data["result"]["runs"][0]
++    )
++    expected_names = {
++        "none": [],
++        "read": ["readable-model"],
++        "admin": ["readable-model", "private-model"],
++    }
++    assert [mv["name"] for mv in run_data["versions"]] == expected_names[access]
++    search_versions.assert_called_once()
++    assert search_versions.call_args.args[0].filter == "run_id='run-1'"
++
++
+ # =============================================================================
+ # Role-based permission coverage for gateway resources
+ # =============================================================================

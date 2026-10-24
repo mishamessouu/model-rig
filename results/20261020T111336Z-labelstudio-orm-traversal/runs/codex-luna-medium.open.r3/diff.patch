@@ -1,0 +1,15 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..d17d74e 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -482,7 +482,9 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+             f = F(field_name).asc(nulls_last=True) if ascending else F(field_name).desc(nulls_last=True)
+ 
+         try:
+-            queryset = queryset.order_by(f)
++            # A unique tie-breaker keeps equal sort values in a stable order
++            # across pages, preventing rows from shifting between requests.
++            queryset = queryset.order_by(f, 'id')
+         except FieldError:
+             if is_agreement_related_field(field_name):
+                 logger.warning('Skipping stale agreement ordering field: %s', field_name, exc_info=True)

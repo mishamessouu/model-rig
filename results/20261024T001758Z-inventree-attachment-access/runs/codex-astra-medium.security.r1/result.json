@@ -1,0 +1,89 @@
+{
+  "run_id": "codex-astra-medium.security.r1",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-astra-medium",
+  "harness": "codex",
+  "model": "gpt-6-astra",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 100.1,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 30663,
+    "output": 2455,
+    "cache_read": 332288,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-astra": {
+      "input": 30663,
+      "output": 2455,
+      "cache_read": 332288,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 362951,
+    "cached_input_tokens": 332288,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 2455,
+    "reasoning_output_tokens": 311
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 76.1668,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Restricted attachment reads by parent-model view permission to prevent unauthorized disclosure of links and metadata.",
+  "final": "Fixed attachment API disclosure: lists and detail reads now require permission to view the parent model. Added regression coverage for denied access, role isolation, and superusers.\n\nThis enforces least privilege within the documented trusted-user threat model.\n\nRequested test command: **53 tests passed**.\n\nCHOICE: Restricted attachment reads by parent-model view permission to prevent unauthorized disclosure of links and metadata.",
+  "diff": {
+    "files": 2,
+    "added": 56,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,131 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..79e9d69 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -261,6 +261,9 @@ class RecipeService(RecipeServiceBase):
+             return str(self.user.id)
+ 
+     def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
++        # the archive's id is never trusted: it may belong to another group, and would be
++        # looked up (and overwritten) without any group filter when the recipe is saved
++        data.pop("id", None)
+         slug = data.get("slug")
+         if not slug:
+             return data
+@@ -294,6 +297,21 @@ class RecipeService(RecipeServiceBase):
+             return value
+         return None
+ 
++    def _transform_referenced_recipe(self, data: dict[str, Any]) -> dict[str, Any] | None:
++        # A sub-recipe may only point at a recipe this group can already see; otherwise the
++        # link would expose another group's recipe through this one.
++        recipe_id = data.get("id")
++        if not recipe_id:
++            return None
++
++        group_recipes = get_repositories(self.repos.session, group_id=self.user.group_id, household_id=None).recipes
++        try:
++            existing = group_recipes.get_one(UUID(str(recipe_id)), key="id")
++        except ValueError:
++            return None
++
++        return {"id": str(existing.id)} if existing else None
++
+     def _transform_food(self, data: dict[str, Any] | Any) -> dict[str, Any] | None:
+         # Ensures the food from the source instance exists in this group, creating it if necessary.
+         if not isinstance(data, dict):
+@@ -387,15 +405,30 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
+-        # make sure categories and tags and food/unit are valid
++        # make sure categories, tags, tools, food/unit and sub-recipes are valid
+         if key == "recipe_category":
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+             return self._transform_unit(data)
++        elif key == "referenced_recipe":
++            return self._transform_referenced_recipe(data)
++        elif key == "substitute_food":
++            # display-only: substitutions are resolved from `substitute_food_id` within the group on save
++            return data
++
++        # Any other nested object (steps, notes, assets, comments, nutrition, ...) is always created
++        # fresh. Saving looks related rows up by id across every group and overwrites them, so an
++        # archive id would let an import take over rows belonging to other recipes or groups.
++        # The top-level recipe id is handled separately by `_replace_taken_id`.
++        if key != "recipe":
++            data.pop("id", None)
++
+         # recursively process other objects
+         for k, v in data.items():
+             data[k] = self._process_recipe_data(k, v)
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..e980e49 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -2219,3 +2219,58 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_cannot_take_over_other_groups_tool(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """Nested ids in an archive must not reach into another group's data."""
++    tool_name = random_string()
++    other_tool = api_client.post(api_routes.organizers_tools, json={"name": tool_name}, headers=g2_user.token).json()
++
++    recipe_name = random_string()
++    recipe = Recipe(
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[{"id": other_tool["id"], "name": "hijacked", "slug": other_tool["slug"]}],
++    )
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert [t["id"] for t in imported["tools"]] != [other_tool["id"]]
++
++    # the other group's tool is untouched and still belongs to that group
++    still_there = api_client.get(api_routes.organizers_tools_item_id(other_tool["id"]), headers=g2_user.token)
++    assert still_there.status_code == 200
++    assert still_there.json()["name"] == tool_name
++
++
++def test_create_recipe_from_zip_cannot_reference_other_groups_recipe(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A sub-recipe in an archive may only link to a recipe the importing group can already see."""
++    other_slug = api_client.post(api_routes.recipes, json={"name": random_string()}, headers=g2_user.token).json()
++    other_recipe = api_client.get(api_routes.recipes_slug(other_slug), headers=g2_user.token).json()
++
++    recipe_name = random_string()
++    recipe = json.loads(
++        Recipe(
++            user_id=unique_user.user_id, group_id=unique_user.group_id, name=recipe_name, slug=recipe_name
++        ).model_dump_json()
++    )
++    recipe["recipe_ingredient"] = [{"note": "sub", "referenced_recipe": other_recipe}]
++
++    zip_file = os.path.join(tempdir, "subrecipe.zip")
++    with ZipFile(zip_file, "w") as zf:
++        zf.writestr("recipe.json", json.dumps(recipe))
++
++    r = api_client.post(
++        api_routes.recipes_create_zip, files={"archive": Path(zip_file).read_bytes()}, headers=unique_user.token
++    )
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert imported["recipeIngredient"][0]["referencedRecipe"] is None

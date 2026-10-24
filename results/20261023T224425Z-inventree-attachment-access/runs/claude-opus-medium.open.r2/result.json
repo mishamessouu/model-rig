@@ -1,0 +1,100 @@
+{
+  "run_id": "claude-opus-medium.open.r2",
+  "batch": "20261023T224425Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-opus-medium",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 156.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 15,
+  "tokens": {
+    "input": 28,
+    "output": 4235,
+    "cache_read": 233516,
+    "cache_write": 20740
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 28,
+      "output": 4235,
+      "cache_read": 233516,
+      "cache_write": 20740
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 28,
+    "cache_creation_input_tokens": 20740,
+    "cache_read_input_tokens": 233516,
+    "output_tokens": 4235,
+    "output_tokens_details": {
+      "thinking_tokens": 884
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 20740,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.2974352,
+  "costs": {
+    "copilot": {
+      "value": 23.5215,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Made the attachment list and detail API only return attachments whose linked model the user has view permission for, because any logged-in user could read every attachment in the system.",
+  "final": "I fixed a data leak in the attachment API: any logged-in user could list or fetch every attachment, whatever it was linked to.\n\n**The problem:** `AttachmentList` and `AttachmentDetail` in `common/api.py` checked permissions for add, change and delete, but never for view. A user with no access to, say, purchase orders or build orders could still call `/api/attachment/` and read every attachment's comment, link and file URL for those records.\n\n**The fix:** `AttachmentMixin` now has a `get_queryset()` that only returns attachments whose `model_type` the user can view. It uses each model's `check_related_permission('view', user)`, the same hook the existing change and delete checks use. Superusers still see everything. Because both endpoints share the mixin, the list, detail, edit, delete and bulk-delete actions all now respect view permission.\n\n**Tests (in `common/tests.py`):**\n- New `test_view_permission`: a user with no roles sees an empty list and gets 404 on the detail URL. After `part.view` is granted, the attachment shows up in both.\n- I changed one existing test, `test_upload_via_api`. It clears all roles and then expects 403 on edit and delete. With this fix, a user who can't view an attachment now gets 404 instead, which also hides whether it exists. I gave that test `part.view` so it still checks the 403 for missing change and delete rights.\n\nThe test command you gave ran 53 tests, all passing.\n\nOne gap remains: this only covers the API. I didn't check whether the uploaded files themselves can still be fetched directly from their `/media/attachments/...` URLs. That's a separate path and would need its own fix.\n\nCHOICE: Made the attachment list and detail API only return attachments whose linked model the user has view permission for, because any logged-in user could read every attachment in the system.",
+  "diff": {
+    "files": 2,
+    "added": 52,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/tests.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": false,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": false,
+      "tail": "    self.patch(\n  File \"~/.model-rig/work/20261023T224425Z-inventree-attachment-access/claude-opus-medium.open.r2/scored/tmpnc7j2zk6/repo/src/backend/InvenTree/InvenTree/unit_test.py\", line 565, in patch\n    return self.query(url, self.client.patch, expected_code=expected_code, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261023T224425Z-inventree-attachment-access/claude-opus-medium.open.r2/scored/tmpnc7j2zk6/repo/src/backend/InvenTree/InvenTree/unit_test.py\", line 520, in query\n    self.check_response(url, response, expected_code=expected_code, msg=msg)\n  File \"~/.model-rig/work/20261023T224425Z-inventree-attachment-access/claude-opus-medium.open.r2/scored/tmpnc7j2zk6/repo/src/backend/InvenTree/InvenTree/unit_test.py\", line 483, in check_response\n    self.assertEqual(response.status_code, expected_code, msg)\nAssertionError: 404 != 403\n\n----------------------------------------------------------------------\nRan 19 tests in 1.228s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    }
+  }
+}

@@ -1,0 +1,17 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..25a6c59 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -453,6 +453,12 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
+ 
++        # Ordering by a relation traversal (e.g. `project__created_by__password`) would leak
++        # related data through sort order, so mirror the filter validation: only task.data keys
++        # and allowlisted paths may contain `__`.
++        if '__' in field_name and not field_name.startswith('data__') and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++            raise ValidationError(f'Cannot order by "{unsigned_field_name}": "__" is not allowed in ordering fields.')
++
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+             json_field = field_name.replace('data__', '')

@@ -1,0 +1,86 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..7418681 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,6 +5195,9 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        if field_name == "modelVersions":
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..4291509 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -24,6 +24,7 @@ from mlflow.server.auth.routes import (
+     UPLOAD_ARTIFACT,
+ )
+ from mlflow.server.auth.sqlalchemy_store import SqlAlchemyStore
++from mlflow.server.graphql.graphql_schema_extensions import schema
+ from mlflow.utils import workspace_context
+ 
+ from tests.helper_functions import random_str
+@@ -2280,6 +2281,51 @@ def test_graphql_permission_functions_denied_without_workspace_permission(
+     assert not auth_module._graphql_can_read_model("model-xyz", username)
+ 
+ 
++@pytest.mark.parametrize("is_admin", [False, True])
++@pytest.mark.parametrize("allowed_models", [[], ["readable-model"]])
++def test_graphql_nested_model_versions_permissions(
++    workspace_permission_setup, monkeypatch, is_admin, allowed_models
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    user = store.get_user(username)
++    role = store.create_role(name="run-reader", workspace="team-a")
++    store.add_role_permission(role.id, "experiment", "exp-1", READ.name)
++    for name in allowed_models:
++        store.add_role_permission(role.id, "registered_model", name, READ.name)
++    store.assign_role_to_user(user.id, role.id)
++    store.update_user(username, is_admin=is_admin)
++
++    model_names = ["readable-model", "private-model"]
++    monkeypatch.setattr(
++        "mlflow.server.handlers.get_run_impl",
++        lambda request: SimpleNamespace(run=SimpleNamespace(info=SimpleNamespace(run_id="run-1"))),
++    )
++    monkeypatch.setattr(
++        "mlflow.server.handlers.search_model_versions_impl",
++        lambda request: SimpleNamespace(
++            model_versions=[SimpleNamespace(name=name) for name in model_names]
++        ),
++    )
++
++    result = schema.execute(
++        """
++        query {
++            mlflowGetRun(input: {runId: "run-1"}) {
++                run { versions: modelVersions { name } }
++            }
++        }
++        """,
++        middleware=[auth_module.GraphQLAuthorizationMiddleware()],
++    )
++
++    assert result.errors is None
++    assert result.data["mlflowGetRun"]["run"]["versions"] == [
++        {"name": name} for name in (model_names if is_admin else allowed_models)
++    ]
++
++
+ def test_cross_workspace_graphql_access_denied(workspace_permission_setup, monkeypatch):
+     # User has MANAGE in team-a but tries to access resources in team-b
+     tracking_store = _TrackingStore(

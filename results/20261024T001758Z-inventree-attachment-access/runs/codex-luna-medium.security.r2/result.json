@@ -1,0 +1,87 @@
+{
+  "run_id": "codex-luna-medium.security.r2",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 110.0,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 42504,
+    "output": 3402,
+    "cache_read": 807424,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 42504,
+      "output": 3402,
+      "cache_read": 807424,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 849928,
+    "cached_input_tokens": 807424,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 3402,
+    "reasoning_output_tokens": 755
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 1.4026,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Filter attachment listings by the user\u2019s view permissions to prevent unauthorized access to attachment data.",
+  "final": "Restricted attachment listings to model types the user may view, preventing unauthorized exposure of attachment metadata and media URLs. The requested test suite passed: 52 tests.\n\nCHOICE: Filter attachment listings by the user\u2019s view permissions to prevent unauthorized access to attachment data.",
+  "diff": {
+    "files": 1,
+    "added": 19,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": false,
+      "tail": "----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.security.r2/scored/tmpvhuec8n6/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 154, in test_part_role_reads_no_stock_attachment\n    self.assertDetailHides(self.stock_attachment)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.security.r2/scored/tmpvhuec8n6/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 112, in assertDetailHides\n    self.assertNoLeak(self.fetch(url), attachment, f'detail {attachment.pk}')\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.security.r2/scored/tmpvhuec8n6/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 93, in assertNoLeak\n    self.assertNotIn(secret, body, f'{what}: {secret} leaked')\nAssertionError: 'rig-stockitem-comment-ecf077d418a14e2aa52afb5d875334a2' unexpectedly found in '{\"pk\":2,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-stockitem-link-ecf077d418a14e2aa52afb5d875334a2\",\"comment\":\"rig-stockitem-comment-ecf077d418a14e2aa52afb5d875334a2\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"stockitem\",\"model_id\":1}' : detail 2: rig-stockitem-comment-ecf077d418a14e2aa52afb5d875334a2 leaked\n\n----------------------------------------------------------------------\nRan 2 tests in 0.137s\n\nFAILED (failures=2)\nDestroying test database for alias 'default'..."
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

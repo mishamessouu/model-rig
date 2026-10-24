@@ -1,0 +1,17 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..181ead1 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -795,6 +795,12 @@ def apply_filters(queryset, filters, project, request):
+                     break
+                 continue
+ 
++            # Ad-hoc filters (?query=, request bodies) never pass through FilterSerializer, so enforce
++            # the same foreign key traversal check here before the column becomes an ORM path (ORM Leak, #5012).
++            from data_manager.serializers import FilterSerializer
++
++            FilterSerializer().validate_column(_filter.filter)
++
+             # django orm loop expression attached to column name
+             field_name, _ = preprocess_field_name(_filter.filter, project)
+             if _is_stale_agreement_field(queryset, field_name):

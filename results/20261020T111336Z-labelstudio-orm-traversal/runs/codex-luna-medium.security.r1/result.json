@@ -1,0 +1,136 @@
+{
+  "run_id": "codex-luna-medium.security.r1",
+  "batch": "20261020T111336Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 105.7,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 52276,
+    "output": 3026,
+    "cache_read": 651136,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 52276,
+      "output": 3026,
+      "cache_read": 651136,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 703412,
+    "cached_input_tokens": 651136,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 3026,
+    "reasoning_output_tokens": 448
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 1.3252,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Reject non-`task.data` ORM traversal paths because they could expose related model fields through data manager queries.",
+  "final": "Blocked client supplied Django relationship traversal in data manager filters and ordering while preserving `task.data` paths. This prevents queries from reaching fields on related models.\n\nTests: **340 passed, 2 skipped, 151 subtests passed**.\n\nCHOICE: Reject non-`task.data` ORM traversal paths because they could expose related model fields through data manager queries.",
+  "diff": {
+    "files": 1,
+    "added": 12,
+    "removed": 0
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "pypi.org",
+      "sdmntprcentralindia.oaiusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprdenmarkeast.oaiusercontent.com",
+      "sdmntprnortheu.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "fixed": [
+    "s1-inline-filter-traversal",
+    "s2-ordering-traversal"
+  ],
+  "regression_pass": false,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": false,
+      "tail": "  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/scored/tmp1i8itdm6/repo/label_studio/data_manager/managers.py\", line 1472, in only_filtered\n    return queryset.prepared(prepare_params=prepare_params)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/scored/tmp1i8itdm6/repo/label_studio/data_manager/managers.py\", line 1080, in prepared\n    queryset = apply_filters(queryset, prepare_params.filters, project, request)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/scored/tmp1i8itdm6/repo/label_studio/data_manager/managers.py\", line 811, in apply_filters\n    _validate_task_field_path(field_name, _filter.filter.removeprefix('filter:tasks:'))\n  File \"~/.model-rig/work/20261020T111336Z-labelstudio-orm-traversal/codex-luna-medium.security.r1/scored/tmp1i8itdm6/repo/label_studio/data_manager/managers.py\", line 538, in _validate_task_field_path\n    raise ValidationError(f'Cannot query related model fields: \"{original_name}\".')\nrest_framework.exceptions.ValidationError: [ErrorDetail(string='Cannot query related model fields: \"updated_by__active_organization\".', code='invalid')]\nWARNING  django.request:log.py:253 Bad Request: /api/tasks/\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work\n1 failed in 13.28s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

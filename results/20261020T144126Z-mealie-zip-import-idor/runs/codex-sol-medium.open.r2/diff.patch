@@ -1,0 +1,77 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..ad3be8c 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -32,6 +32,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+ from mealie.services._base_service import BaseService
+@@ -392,6 +393,12 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            # Resolve exported tools within this group before the ORM can reuse their ids.
++            tool = self.repos.tools.get_one(data.get("slug"), "slug")
++            if tool is None:
++                tool = self.repos.tools.create(RecipeToolSave(**data))
++            return tool.model_dump()
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..4bac2ef 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -559,6 +559,47 @@ def test_create_recipe_from_zip_reimport_preserves_contents(api_client: TestClie
+     assert [ref["referenceId"] for ref in step["noteReferences"]] == [imported["notes"][0]["referenceId"]]
+ 
+ 
++@pytest.mark.parametrize("existing_local_tool", [False, True])
++def test_create_recipe_from_zip_scopes_tools_to_importing_group(
++    api_client: TestClient,
++    unique_user: TestUser,
++    g2_user: TestUser,
++    tempdir: str,
++    existing_local_tool: bool,
++) -> None:
++    name = random_string()
++    response = api_client.post(api_routes.organizers_tools, json={"name": name}, headers=g2_user.token)
++    assert response.status_code == 201
++    foreign_tool = response.json()
++    local_tool = None
++    if existing_local_tool:
++        response = api_client.post(api_routes.organizers_tools, json={"name": name}, headers=unique_user.token)
++        assert response.status_code == 201
++        local_tool = response.json()
++
++    imported_recipe = Recipe(name=random_string(), tools=[foreign_tool])
++    response = api_client.post(
++        api_routes.recipes_create_zip,
++        files=zip_recipe(tempdir, imported_recipe),
++        headers=unique_user.token,
++    )
++    assert response.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(response.json()), headers=unique_user.token).json()
++    assert len(imported["tools"]) == 1
++    tool = imported["tools"][0]
++    assert tool["name"] == name
++    assert tool["groupId"] == str(unique_user.group_id)
++    assert tool["id"] != foreign_tool["id"]
++    if local_tool:
++        assert tool["id"] == local_tool["id"]
++
++    unchanged = api_client.get(api_routes.organizers_tools_item_id(foreign_tool["id"]), headers=g2_user.token)
++    assert unchanged.status_code == 200
++    assert unchanged.json()["groupId"] == str(g2_user.group_id)
++    assert unchanged.json()["name"] == name
++
++
+ def test_create_recipe_from_zip_keeps_unused_id(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     """An id that is not already in use is kept, so imports from elsewhere are unaffected."""
+     recipe_id = uuid4()

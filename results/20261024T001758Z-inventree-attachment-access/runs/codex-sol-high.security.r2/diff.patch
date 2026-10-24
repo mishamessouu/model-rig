@@ -1,0 +1,94 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..15594cd 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,22 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Restrict attachment reads to models the user is allowed to view."""
++        from common.validators import attachment_model_types
++
++        queryset = super().get_queryset()
++
++        if self.request.method in ('GET', 'HEAD'):
++            model_types = [
++                model.__name__.lower()
++                for model in attachment_model_types()
++                if model.check_related_permission('view', self.request.user)
++            ]
++            queryset = queryset.filter(model_type__in=model_types)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..e7b4379 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -956,6 +956,62 @@ class ParameterAPITests(InvenTreeAPITestCase):
+ class AttachmentAPITests(InvenTreeAPITestCase):
+     """Tests for the Attachment API."""
+ 
++    def test_attachment_read_permissions(self):
++        """Attachments must only be readable with view permission on their model."""
++        from common.models import Attachment
++        from company.models import Company
++        from order.models import PurchaseOrder
++        from part.models import Part
++
++        self.user.is_staff = False
++        self.user.save()
++
++        part = Part.objects.create(name='Visible part')
++        supplier = Company.objects.create(name='Supplier', is_supplier=True)
++        order = PurchaseOrder.objects.create(reference='1', supplier=supplier)
++
++        part_attachment = Attachment.objects.create(
++            model_type='part', model_id=part.pk, link='https://example.com/part'
++        )
++        order_attachment = Attachment.objects.create(
++            model_type='purchaseorder',
++            model_id=order.pk,
++            attachment=ContentFile(b'Confidential order', name='order.txt'),
++            comment='Restricted order document',
++        )
++        self.addCleanup(order_attachment.delete)
++
++        url = reverse('api-attachment-list')
++        part_url = reverse('api-attachment-detail', kwargs={'pk': part_attachment.pk})
++        order_url = reverse('api-attachment-detail', kwargs={'pk': order_attachment.pk})
++
++        # Authentication alone must not expose links, files, or comments.
++        self.assertEqual(self.get(url).data, [])
++        self.get(part_url, expected_code=404)
++        self.get(order_url, expected_code=404)
++
++        self.assignRole('part.view')
++        self.assertEqual(
++            [item['pk'] for item in self.get(url).data], [part_attachment.pk]
++        )
++        self.get(part_url, expected_code=200)
++        self.get(order_url, expected_code=404)
++        self.query(order_url, self.client.head, expected_code=404)
++
++        # Explicit filters and pagination must not reveal restricted attachments.
++        self.assertEqual(
++            self.get(url, {'model_type': 'purchaseorder', 'model_id': order.pk}).data,
++            [],
++        )
++        self.assertEqual(self.get(url, {'limit': 1}).data['count'], 1)
++
++        self.assignRole('purchase_order.view')
++        self.assertEqual(
++            {item['pk'] for item in self.get(url).data},
++            {part_attachment.pk, order_attachment.pk},
++        )
++        self.get(order_url, expected_code=200)
++
+     def test_attachments(self):
+         """Test API functionality for attachments."""
+         from common.models import Attachment

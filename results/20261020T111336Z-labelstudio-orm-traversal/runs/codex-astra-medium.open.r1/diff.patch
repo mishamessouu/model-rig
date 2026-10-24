@@ -1,0 +1,106 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..706f5b7 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Validate at query preparation as well as view serialization: direct task
++    # filters and ordering can reach the ORM without passing FilterSerializer.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError('Relationship traversal is not allowed for this data manager field.')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_field_security.py b/label_studio/data_manager/tests/test_field_security.py
+new file mode 100644
+index 0000000..4f32dd6
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_field_security.py
+@@ -0,0 +1,30 @@
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from rest_framework.exceptions import ValidationError
++
++
++@pytest.mark.parametrize('prefix', ['', '-', 'tasks:', '-tasks:', 'tasks:-', 'filter:tasks:', 'filter:tasks:-'])
++@pytest.mark.parametrize('field', ['project__created_by__password', 'updated_by__email', 'id__in'])
++def test_query_fields_reject_unapproved_orm_paths(prefix, field, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = []
++    with pytest.raises(ValidationError):
++        preprocess_field_name(prefix + field, project=None)
++
++
++@pytest.mark.parametrize(
++    'field, expected, ascending',
++    [
++        ('tasks:id', 'id', True),
++        ('-tasks:id', 'id', False),
++        ('filter:tasks:updated_by__active_organization', 'updated_by__active_organization', True),
++        ('-tasks:updated_by__active_organization', 'updated_by__active_organization', False),
++        ('filter:tasks:data.images__0', 'data__images__0', True),
++        ('-tasks:data.images__0', 'data__images__0', False),
++    ],
++)
++def test_query_fields_preserve_data_access_and_explicit_allowlist(field, expected, ascending, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['updated_by__active_organization']
++    project = SimpleNamespace(data_types={}, summary=SimpleNamespace(common_data_columns=[]))
++    assert preprocess_field_name(field, project) == (expected, ascending)
+diff --git a/label_studio/tests/data_manager/test_api_tasks.py b/label_studio/tests/data_manager/test_api_tasks.py
+index e6be555..a200f56 100644
+--- a/label_studio/tests/data_manager/test_api_tasks.py
++++ b/label_studio/tests/data_manager/test_api_tasks.py
+@@ -13,6 +13,37 @@ from projects.models import Project
+ from ..utils import make_annotation, make_prediction, make_task, project_id  # noqa
+ 
+ 
++@pytest.mark.django_db
++@pytest.mark.parametrize('query_type', ['filter', 'child_filter', 'ordering'])
++def test_direct_task_queries_reject_relationship_traversal(business_client, project_id, query_type):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'example'}}, project)
++    unsafe_filter = {
++        'filter': 'filter:tasks:project__created_by__password',
++        'operator': 'contains',
++        'type': 'String',
++        'value': 'a',
++    }
++    if query_type == 'ordering':
++        query = {'ordering': ['-tasks:project__created_by__password']}
++    else:
++        item = unsafe_filter
++        if query_type == 'child_filter':
++            item = {
++                'filter': 'filter:tasks:id',
++                'operator': 'greater',
++                'type': 'Number',
++                'value': 0,
++                'child_filters': [unsafe_filter],
++            }
++        query = {'filters': {'conjunction': 'and', 'items': [item]}}
++
++    response = business_client.get('/api/tasks', {'project': project_id, 'query': json.dumps(query)})
++
++    assert response.status_code == 400, response.content
++    assert 'Relationship traversal is not allowed' in response.content.decode()
++
++
+ def _task_state_point_lookup_queries(captured_queries):
+     return [
+         query['sql']

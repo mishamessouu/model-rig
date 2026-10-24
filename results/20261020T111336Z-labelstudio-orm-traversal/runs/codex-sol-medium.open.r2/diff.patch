@@ -1,0 +1,68 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..0697c33 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Direct task queries and ordering bypass FilterSerializer.validate_column.
++    # Enforce the traversal policy before any client field becomes an ORM path.
++    if (
++        not field_name.startswith('data.')
++        and '__' in field_name
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError('Relationship lookups must be explicitly allowlisted in DATA_MANAGER_FILTER_ALLOWLIST.')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/tests/data_manager/test_api_tasks.py b/label_studio/tests/data_manager/test_api_tasks.py
+index e6be555..d2d95ee 100644
+--- a/label_studio/tests/data_manager/test_api_tasks.py
++++ b/label_studio/tests/data_manager/test_api_tasks.py
+@@ -13,6 +13,35 @@ from projects.models import Project
+ from ..utils import make_annotation, make_prediction, make_task, project_id  # noqa
+ 
+ 
++@pytest.mark.django_db
++@pytest.mark.parametrize('lookup', ['updated_by__password', 'project__created_by__password'])
++@pytest.mark.parametrize('query_type', ['filter', 'ordering', 'descending_ordering', 'child_filter'])
++def test_task_queries_reject_relationship_lookups(business_client, project_id, lookup, query_type):
++    field_filter = {
++        'filter': f'filter:tasks:{lookup}',
++        'operator': 'contains',
++        'value': 'pbkdf2',
++        'type': 'String',
++    }
++    if query_type == 'child_filter':
++        field_filter = {
++            'filter': 'filter:tasks:id',
++            'operator': 'greater',
++            'value': 0,
++            'type': 'Number',
++            'child_filters': [field_filter],
++        }
++    if query_type in ('filter', 'child_filter'):
++        query = {'filters': {'conjunction': 'and', 'items': [field_filter]}}
++    else:
++        direction = '-' if query_type == 'descending_ordering' else ''
++        query = {'ordering': [f'tasks:{direction}{lookup}']}
++
++    response = business_client.get('/api/tasks', {'project': project_id, 'query': json.dumps(query)})
++
++    assert response.status_code == 400, response.content
++
++
+ def _task_state_point_lookup_queries(captured_queries):
+     return [
+         query['sql']

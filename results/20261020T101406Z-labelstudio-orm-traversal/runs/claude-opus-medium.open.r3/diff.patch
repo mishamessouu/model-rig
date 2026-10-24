@@ -1,0 +1,111 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..99df173 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -438,6 +438,20 @@ def get_visible_data_column_keys(prepare_params, user):
+     return frozenset(data_column_ids - hidden_data_keys)
+ 
+ 
++def ensure_no_orm_traversal(field_name, raw_field_name):
++    """Reject ORM field names that traverse relations (``__``), mirroring
++    FilterSerializer.validate_column for ad-hoc filters and ordering that never pass
++    through the serializer (e.g. the ``query`` param). Without this, a column such as
++    ``updated_by__password`` turns filtering or sorting into a data-leak oracle (ORM Leak, #5012).
++
++    ``data__*`` keys are JSONField key lookups, not relation traversals, so they are allowed.
++    """
++    if field_name.startswith('data__') or field_name in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++        return
++    if '__' in field_name:
++        raise ValidationError(f'"__" is not allowed in data manager filters or ordering: "{raw_field_name}"')
++
++
+ def apply_ordering(queryset, ordering, project, request, view_data=None):
+     if ordering:
+         preprocess_field_name = load_func(settings.PREPROCESS_FIELD_NAME)
+@@ -452,6 +466,7 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+         ):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
++        ensure_no_orm_traversal(field_name, raw_field_name)
+ 
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+@@ -797,6 +812,7 @@ def apply_filters(queryset, filters, project, request):
+ 
+             # django orm loop expression attached to column name
+             field_name, _ = preprocess_field_name(_filter.filter, project)
++            ensure_no_orm_traversal(field_name, _filter.filter)
+             if _is_stale_agreement_field(queryset, field_name):
+                 logger.warning('Skipping stale agreement filter field: %s', field_name)
+                 continue
+diff --git a/label_studio/data_manager/tests/test_managers.py b/label_studio/data_manager/tests/test_managers.py
+index c789623..7355d19 100644
+--- a/label_studio/data_manager/tests/test_managers.py
++++ b/label_studio/data_manager/tests/test_managers.py
+@@ -1431,3 +1431,65 @@ class TestApplyFiltersInvalidRegex(TestCase):
+         assert result == 'EMPTY'
+         load_func.assert_not_called()
+         queryset.none.assert_called_once_with()
++
++
++class TestAdHocOrmTraversalRejected(TestCase):
++    """Ad-hoc filters/ordering (e.g. the ``query`` param) skip FilterSerializer.validate_column,
++    so the ``__`` relation-traversal guard must also hold at query time (ORM Leak, #5012)."""
++
++    def setUp(self):
++        self.project = ProjectFactory()
++        self.user = UserFactory()
++        TaskFactory(project=self.project, data={'text': 'a'}, updated_by=self.user)
++
++    def test_filter_traversing_relation_is_rejected(self):
++        from data_manager.managers import apply_filters
++        from rest_framework.exceptions import ValidationError
++
++        filters = Filters(
++            conjunction=ConjunctionEnum.AND,
++            items=[
++                Filter(
++                    filter='filter:tasks:updated_by__password',
++                    operator='starts_with',
++                    type='String',
++                    value='pbkdf2',
++                )
++            ],
++        )
++        with self.assertRaises(ValidationError):
++            apply_filters(Task.objects.filter(project=self.project), filters, self.project, Mock())
++
++    def test_ordering_traversing_relation_is_rejected(self):
++        from data_manager.managers import apply_ordering
++        from rest_framework.exceptions import ValidationError
++
++        for ordering in (['tasks:updated_by__password'], ['-tasks:updated_by__password']):
++            with self.assertRaises(ValidationError):
++                apply_ordering(Task.objects.filter(project=self.project), ordering, self.project, Mock())
++
++    def test_data_keys_and_allowlisted_fields_still_work(self):
++        from data_manager.managers import apply_filters, apply_ordering
++
++        queryset = Task.objects.filter(project=self.project)
++        apply_ordering(queryset, ['tasks:data.text'], self.project, Mock()).count()
++        filters = Filters(
++            conjunction=ConjunctionEnum.AND,
++            items=[
++                Filter(filter='filter:tasks:data.text', operator='equal', type='String', value='a'),
++            ],
++        )
++        self.assertEqual(apply_filters(queryset, filters, self.project, Mock()).count(), 1)
++
++        allowlisted = Filters(
++            conjunction=ConjunctionEnum.AND,
++            items=[
++                Filter(
++                    filter='filter:tasks:updated_by__active_organization',
++                    operator='empty',
++                    type='Unknown',
++                    value=False,
++                ),
++            ],
++        )
++        apply_filters(queryset, allowlisted, self.project, Mock()).count()

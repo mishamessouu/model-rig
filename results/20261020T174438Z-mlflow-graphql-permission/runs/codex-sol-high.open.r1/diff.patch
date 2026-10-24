@@ -1,0 +1,141 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..1ddc15d 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5194,17 +5195,9 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _post_resolve(self, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
+-        if field_name == "mlflowSearchModelVersions":
+-            return self._filter_model_versions_result(result, username)
+-        return result
+-
+-    def _filter_model_versions_result(self, result, username: str):
+-        """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
+-        if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
+-            del result.model_versions[:]
+-            result.model_versions.extend(filtered)
++        if field_name == "modelVersions":
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         return result
+ 
+ 
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..357345f 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -10,6 +10,8 @@ from mlflow.environment_variables import MLFLOW_ENABLE_WORKSPACES
+ from mlflow.exceptions import MlflowException
+ from mlflow.prompt.constants import IS_PROMPT_TAG_KEY
+ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
++from mlflow.protos.model_registry_pb2 import ModelVersion, SearchModelVersions
++from mlflow.protos.service_pb2 import GetRun, Run, RunInfo, SearchRuns
+ from mlflow.server import auth as auth_module
+ from mlflow.server.auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE
+ from mlflow.server.auth.routes import (
+@@ -24,6 +26,7 @@ from mlflow.server.auth.routes import (
+     UPLOAD_ARTIFACT,
+ )
+ from mlflow.server.auth.sqlalchemy_store import SqlAlchemyStore
++from mlflow.server.graphql.graphql_schema_extensions import schema
+ from mlflow.utils import workspace_context
+ 
+ from tests.helper_functions import random_str
+@@ -2300,6 +2303,86 @@ def test_cross_workspace_graphql_access_denied(workspace_permission_setup, monke
+     assert not auth_module._graphql_can_read_model("model-other-ws", username)
+ 
+ 
++@pytest.mark.parametrize("operation", ["get_run", "search_runs", "search_model_versions"])
++@pytest.mark.parametrize(
++    ("access", "expected_names"),
++    [
++        ("none", []),
++        ("model", ["visible"]),
++        ("other_workspace", []),
++        ("workspace", ["visible", "hidden"]),
++        ("admin", ["visible", "hidden"]),
++    ],
++)
++def test_graphql_model_versions_authorization(
++    workspace_permission_setup, monkeypatch, operation, access, expected_names
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    store.grant_user_permission(username, "experiment", "exp-1", READ.name)
++    if access == "model":
++        store.grant_user_permission(username, "registered_model", "visible", READ.name)
++    elif access == "other_workspace":
++        with workspace_context.WorkspaceContext("team-b"):
++            store.grant_user_permission(username, "registered_model", "visible", READ.name)
++    elif access == "workspace":
++        _set_workspace_permission(store, username, MANAGE.name)
++    elif access == "admin":
++        store.update_user(username, is_admin=True)
++
++    run = Run(info=RunInfo(run_id="run-1", experiment_id="exp-1"))
++    monkeypatch.setattr(
++        "mlflow.server.handlers.get_run_impl", lambda request_message: GetRun.Response(run=run)
++    )
++    monkeypatch.setattr(
++        "mlflow.server.handlers.search_runs_impl",
++        lambda request_message: SearchRuns.Response(runs=[run]),
++    )
++    monkeypatch.setattr(
++        "mlflow.server.handlers.search_model_versions_impl",
++        lambda request_message: SearchModelVersions.Response(
++            model_versions=[
++                ModelVersion(name="visible", version="1"),
++                ModelVersion(name="hidden", version="1"),
++            ]
++        ),
++    )
++    if operation == "search_runs":
++        query = """
++            mutation {
++                mlflowSearchRuns(input: {experimentIds: ["exp-1"]}) {
++                    runs { versions: modelVersions { name } }
++                }
++            }
++        """
++    elif operation == "get_run":
++        query = """
++            query {
++                mlflowGetRun(input: {runId: "run-1"}) {
++                    run { versions: modelVersions { name } }
++                }
++            }
++        """
++    else:
++        query = """
++            query {
++                mlflowSearchModelVersions(input: {}) {
++                    versions: modelVersions { name }
++                }
++            }
++        """
++    result = schema.execute(query, middleware=[auth_module.GraphQLAuthorizationMiddleware()])
++    assert result.errors is None
++    if operation == "search_runs":
++        response = result.data["mlflowSearchRuns"]["runs"][0]
++    elif operation == "get_run":
++        response = result.data["mlflowGetRun"]["run"]
++    else:
++        response = result.data["mlflowSearchModelVersions"]
++    assert [version["name"] for version in response["versions"]] == expected_names
++
++
+ # =============================================================================
+ # Role-based permission coverage for gateway resources
+ # =============================================================================

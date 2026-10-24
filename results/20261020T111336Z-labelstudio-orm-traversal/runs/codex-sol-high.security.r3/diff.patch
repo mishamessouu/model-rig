@@ -1,0 +1,98 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..955c7f8 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Validate here so direct queries, ordering and persisted views share the same
++    # protection against probing related models. JSON keys cannot traverse relations.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError(f'Related field lookups are not allowed: "{field_name}".')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_orm_security.py b/label_studio/data_manager/tests/test_orm_security.py
+new file mode 100644
+index 0000000..5864e2c
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_orm_security.py
+@@ -0,0 +1,64 @@
++import json
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from projects.tests.factories import ProjectFactory
++from rest_framework.exceptions import ValidationError
++from rest_framework.test import APIClient
++from tasks.tests.factories import TaskFactory
++
++
++@pytest.mark.django_db
++@pytest.mark.parametrize('source', ['filter', 'child_filter', 'child_filters', 'ordering', 'view_ordering'])
++def test_task_queries_reject_related_user_password(source):
++    project = ProjectFactory()
++    task = TaskFactory(project=project)
++    client = APIClient()
++    client.force_authenticate(project.created_by)
++    sensitive_filter = {
++        'filter': 'filter:tasks:project__created_by__password',
++        'operator': 'equal',
++        'type': 'String',
++        'value': project.created_by.password,
++    }
++    if source in ('ordering', 'view_ordering'):
++        query = {'ordering': ['-tasks:project__created_by__password']}
++    else:
++        item = sensitive_filter
++        if source != 'filter':
++            item = {'filter': 'filter:tasks:id', 'operator': 'equal', 'type': 'Number', 'value': task.id}
++            item[source] = [sensitive_filter] if source == 'child_filters' else sensitive_filter
++        query = {'filters': {'conjunction': 'and', 'items': [item]}}
++
++    params = {'project': project.id, 'query': json.dumps(query)}
++    if source == 'view_ordering':
++        response = client.post('/api/dm/views/', {'project': project.id, 'data': query}, format='json')
++        assert response.status_code == 201
++        params = {'view': response.json()['id']}
++
++    response = client.get('/api/tasks/', params)
++
++    assert response.status_code == 400, response.content
++
++
++@pytest.mark.parametrize('prefix', ['', 'tasks:', 'filter:tasks:', '-', '-tasks:', 'tasks:-', 'filter:tasks:-'])
++def test_field_parser_rejects_unapproved_traversals(prefix, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['updated_by__active_organization']
++    with pytest.raises(ValidationError):
++        preprocess_field_name(prefix + 'updated_by__active_organization__created_by__password', project=None)
++
++
++@pytest.mark.parametrize(
++    'raw, expected, ascending',
++    [
++        ('tasks:id', 'id', True),
++        ('-tasks:created_at', 'created_at', False),
++        ('filter:tasks:updated_by__active_organization', 'updated_by__active_organization', True),
++        ('tasks:-data.images__0', 'data__images__0', False),
++    ],
++)
++def test_field_parser_preserves_supported_columns(raw, expected, ascending, settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['updated_by__active_organization']
++    project = SimpleNamespace(data_types={}, summary=SimpleNamespace(common_data_columns={}))
++    assert preprocess_field_name(raw, project) == (expected, ascending)

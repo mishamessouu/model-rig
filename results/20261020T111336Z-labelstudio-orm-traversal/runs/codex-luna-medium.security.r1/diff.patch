@@ -1,0 +1,37 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..c18a812 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -452,6 +452,7 @@ def apply_ordering(queryset, ordering, project, request, view_data=None):
+         ):
+             numeric_ordering = True
+         field_name, ascending = preprocess_field_name(raw_field_name, project=project)
++        _validate_task_field_path(field_name, raw_field_name)
+ 
+         if field_name.startswith('data__'):
+             # annotate task with data field for float/int/bool ordering support
+@@ -527,6 +528,16 @@ def cast_value(_filter):
+             _filter.value = cast_bool_from_str(_filter.value)
+ 
+ 
++def _validate_task_field_path(field_name: str, original_name: str) -> None:
++    """Reject client supplied Django relationship traversal paths.
++
++    Nested task.data keys remain valid; other double-underscore paths can join
++    related models and expose their fields through Data Manager queries.
++    """
++    if '__' in field_name and not field_name.startswith('data__'):
++        raise ValidationError(f'Cannot query related model fields: "{original_name}".')
++
++
+ def _is_supported_in_list_field(field_name: str) -> bool:
+     """Return True if `field_name` (post-preprocess) is in the MVP allowlist for in_list / not_in_list."""
+     return field_name in SUPPORTED_IN_LIST_FIELDS or field_name.startswith('data__')
+@@ -797,6 +808,7 @@ def apply_filters(queryset, filters, project, request):
+ 
+             # django orm loop expression attached to column name
+             field_name, _ = preprocess_field_name(_filter.filter, project)
++            _validate_task_field_path(field_name, _filter.filter.removeprefix('filter:tasks:'))
+             if _is_stale_agreement_field(queryset, field_name):
+                 logger.warning('Skipping stale agreement filter field: %s', field_name)
+                 continue

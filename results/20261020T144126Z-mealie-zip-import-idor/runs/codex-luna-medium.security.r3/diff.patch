@@ -1,0 +1,26 @@
+diff --git a/mealie/services/backups_v2/backup_file.py b/mealie/services/backups_v2/backup_file.py
+index aa8f043..5078972 100644
+--- a/mealie/services/backups_v2/backup_file.py
++++ b/mealie/services/backups_v2/backup_file.py
+@@ -2,6 +2,10 @@ import json
+ import shutil
+ import tempfile
+ from pathlib import Path
++from zipfile import ZipFile
++
++
++MAX_UNCOMPRESSED_SIZE = 1024 * 1024 * 1024
+ 
+ 
+ class BackupContents:
+@@ -79,6 +83,10 @@ class BackupFile:
+         self.zip = file
+ 
+     def __enter__(self) -> BackupContents:
++        with ZipFile(self.zip) as archive:
++            if sum(member.file_size for member in archive.infolist()) > MAX_UNCOMPRESSED_SIZE:
++                raise ValueError("Backup archive exceeds the maximum uncompressed size")
++
+         self.temp_dir = Path(tempfile.mkdtemp())
+         shutil.unpack_archive(str(self.zip), str(self.temp_dir))
+         return BackupContents(self.temp_dir)

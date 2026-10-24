@@ -1,0 +1,45 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..1455239 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -796,6 +796,31 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Limit attachments to those linked to models the user may view.
++
++        Write operations are checked explicitly against the 'add' / 'change' / 'delete'
++        permissions, so they return a 403 (rather than a 404) when denied.
++        """
++        from common.validators import attachment_model_types
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        if self.request.method not in SAFE_METHODS:
++            return queryset
++
++        hidden = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if not model.check_related_permission('view', user)
++        ]
++
++        if hidden:
++            queryset = queryset.exclude(model_type__in=hidden)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

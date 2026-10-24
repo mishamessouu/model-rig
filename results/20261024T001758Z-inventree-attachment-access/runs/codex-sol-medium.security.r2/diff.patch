@@ -1,0 +1,94 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..0b0baff 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -796,6 +796,23 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Limit attachments to parent models which the user may view."""
++        from common.validators import attachment_model_types
++
++        queryset = super().get_queryset()
++
++        if self.request.method not in SAFE_METHODS:
++            return queryset
++
++        model_types = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if model.check_related_permission('view', self.request.user)
++        ]
++
++        return queryset.filter(model_type__in=model_types)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..dc47479 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -956,6 +956,52 @@ class ParameterAPITests(InvenTreeAPITestCase):
+ class AttachmentAPITests(InvenTreeAPITestCase):
+     """Tests for the Attachment API."""
+ 
++    def test_attachment_view_permissions(self):
++        """Attachments require view permission for their parent model type."""
++        from company.models import Company
++        from part.models import Part
++
++        part = Part.objects.create(name='Restricted part')
++        company = Company.objects.create(name='Restricted company')
++        attachments = [
++            common.models.Attachment.objects.create(
++                model_type=model_type,
++                model_id=parent.pk,
++                link='https://example.com/private-document',
++                comment='Confidential attachment',
++            )
++            for model_type, parent in [('part', part), ('company', company)]
++        ]
++        list_url = reverse('api-attachment-list')
++        detail_urls = [
++            reverse('api-attachment-detail', kwargs={'pk': attachment.pk})
++            for attachment in attachments
++        ]
++
++        self.assertEqual(self.get(list_url).data, [])
++        for url in detail_urls:
++            self.get(url, expected_code=404)
++
++        self.assignRole('part.view')
++        self.assertEqual(
++            [item['pk'] for item in self.get(list_url).data], [attachments[0].pk]
++        )
++        self.get(detail_urls[0])
++        self.get(detail_urls[1], expected_code=404)
++        self.assertEqual(
++            self.get(
++                list_url, {'model_type': 'company', 'model_id': company.pk}
++            ).data,
++            [],
++        )
++
++        self.assignRole('purchase_order.view')
++        self.assertEqual(
++            {item['pk'] for item in self.get(list_url).data},
++            {attachment.pk for attachment in attachments},
++        )
++        self.get(detail_urls[1])
++
+     def test_attachments(self):
+         """Test API functionality for attachments."""
+         from common.models import Attachment

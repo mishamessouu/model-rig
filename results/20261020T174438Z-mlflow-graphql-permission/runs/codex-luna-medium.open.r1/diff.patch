@@ -1,0 +1,28 @@
+diff --git a/mlflow/server/auth/permissions.py b/mlflow/server/auth/permissions.py
+index 733ae88..f5c2501 100644
+--- a/mlflow/server/auth/permissions.py
++++ b/mlflow/server/auth/permissions.py
+@@ -69,6 +69,7 @@ ALL_PERMISSIONS = {
+ 
+ 
+ def get_permission(permission: str) -> Permission:
++    _validate_permission(permission)
+     return ALL_PERMISSIONS[permission]
+ 
+ 
+diff --git a/tests/server/auth/test_permissions.py b/tests/server/auth/test_permissions.py
+index 248a564..21081cc 100644
+--- a/tests/server/auth/test_permissions.py
++++ b/tests/server/auth/test_permissions.py
+@@ -63,6 +63,11 @@ def test_get_permission_roundtrip(permission):
+     assert get_permission(permission.name) is permission
+ 
+ 
++def test_get_permission_rejects_unknown():
++    with pytest.raises(MlflowException, match="Invalid permission"):
++        get_permission("UNKNOWN")
++
++
+ def test_all_permissions_dict_is_complete():
+     assert set(ALL_PERMISSIONS) == {p.name for p in _EXPECTED_ORDER}
+ 

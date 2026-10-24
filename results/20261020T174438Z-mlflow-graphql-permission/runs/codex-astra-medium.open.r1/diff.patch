@@ -1,0 +1,62 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..672a535 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5200,9 +5200,9 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _filter_model_versions_result(self, result, username: str):
+         """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
++        can_read = _rm_or_prompt_read_predicate(username)
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            filtered = [mv for mv in result.model_versions if can_read(mv)]
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..f8433fd 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -10,6 +10,7 @@ from mlflow.environment_variables import MLFLOW_ENABLE_WORKSPACES
+ from mlflow.exceptions import MlflowException
+ from mlflow.prompt.constants import IS_PROMPT_TAG_KEY
+ from mlflow.protos.databricks_pb2 import RESOURCE_DOES_NOT_EXIST
++from mlflow.protos.model_registry_pb2 import SearchModelVersions
+ from mlflow.server import auth as auth_module
+ from mlflow.server.auth.permissions import EDIT, MANAGE, NO_PERMISSIONS, READ, USE
+ from mlflow.server.auth.routes import (
+@@ -2280,6 +2281,33 @@ def test_graphql_permission_functions_denied_without_workspace_permission(
+     assert not auth_module._graphql_can_read_model("model-xyz", username)
+ 
+ 
++@pytest.mark.parametrize("resource_type", ["prompt", "registered_model"])
++@pytest.mark.parametrize("resource_pattern", ["foo", "*"])
++def test_graphql_model_versions_respect_prompt_grant_namespace(
++    workspace_permission_setup, resource_type, resource_pattern
++):
++    store = workspace_permission_setup["store"]
++    username = workspace_permission_setup["username"]
++    _set_workspace_permission(store, username, NO_PERMISSIONS.name)
++    role = store.create_role(name="reader", workspace="team-a")
++    store.add_role_permission(role.id, resource_type, resource_pattern, READ.name)
++    store.assign_role_to_user(store.get_user(username).id, role.id)
++
++    result = SearchModelVersions.Response()
++    result.model_versions.add(
++        name="foo", version="1", tags=[{"key": IS_PROMPT_TAG_KEY, "value": "true"}]
++    )
++    result.model_versions.add(name="foo", version="2")
++
++    filtered = auth_module.GraphQLAuthorizationMiddleware()._post_resolve(
++        "mlflowSearchModelVersions", result, username
++    )
++
++    assert [mv.version for mv in filtered.model_versions] == [
++        "1" if resource_type == "prompt" else "2"
++    ]
++
++
+ def test_cross_workspace_graphql_access_denied(workspace_permission_setup, monkeypatch):
+     # User has MANAGE in team-a but tries to access resources in team-b
+     tracking_store = _TrackingStore(

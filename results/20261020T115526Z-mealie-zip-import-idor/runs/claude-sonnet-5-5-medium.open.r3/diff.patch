@@ -1,0 +1,95 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..f88207b 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -32,6 +33,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+ from mealie.services._base_service import BaseService
+@@ -274,6 +276,23 @@ class RecipeService(RecipeServiceBase):
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
++    def _transform_tool(self, data: dict[str, Any] | Any) -> dict[str, Any] | Any:
++        # Tools are matched by slug within the user's group. The imported id is never trusted: the
++        # many-to-many loader looks ids up across all groups, so a foreign id would link (and
++        # rewrite) another group's tool.
++        if not isinstance(data, dict):
++            return data
++
++        name = self._non_empty_str(data.get("name"))
++        if not name:
++            return None
++
++        existing = self.repos.tools.get_one(slugify(name), "slug")
++        if existing:
++            return existing.model_dump()
++
++        return self.repos.tools.create(RecipeToolSave(name=name, group_id=self.user.group_id)).model_dump()
++
+     def _get_data_matcher(self) -> DataMatcher:
+         if self._data_matcher is None:
+             # Exact matches only: zip imports should rematch name/plural/alias/abbreviation,
+@@ -392,6 +411,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..0fef3b1 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -622,6 +622,37 @@ def test_create_recipe_from_zip_id_taken_in_another_group(
+     assert still_there.json()["id"] == other_recipe["id"]
+ 
+ 
++def test_create_recipe_from_zip_ignores_tool_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A tool id belonging to another group must not be linked to (or rewritten by) the imported recipe."""
++    foreign_name = random_string()
++    foreign_tool = g2_user.repos.tools.create({"name": foreign_name, "group_id": g2_user.group_id})
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[{"id": str(foreign_tool.id), "name": "stolen-" + foreign_name, "slug": foreign_tool.slug}],
++    )
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    imported = unique_user.repos.recipes.get_by_slug(unique_user.group_id, recipe.slug)
++    assert imported
++    assert len(imported.tools) == 1
++    assert imported.tools[0].id != foreign_tool.id
++    assert str(imported.tools[0].group_id) == str(unique_user.group_id)
++
++    untouched = g2_user.repos.tools.get_one(foreign_tool.id)
++    assert untouched
++    assert untouched.name == foreign_name
++    assert str(untouched.group_id) == str(g2_user.group_id)
++
++
+ def test_create_recipe_from_zip_preserves_extras(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     """Importing must not write its own keys into the recipe's free-form extras."""
+     recipe_name = random_string()

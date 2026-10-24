@@ -1,0 +1,22 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..51dd83f 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -42,6 +42,7 @@ from mealie.services.recipe.recipe_data_service import RecipeDataService
+ from .template_service import TemplateService
+ 
+ RECIPE_CREATED_EVENT_SUBJECT = "recipe.recipe-created"
++MAX_RECIPE_ZIP_UNCOMPRESSED_SIZE = 50 * 1024 * 1024
+ 
+ 
+ class RecipeServiceBase(BaseService):
+@@ -440,6 +441,9 @@ class RecipeService(RecipeServiceBase):
+         recipe_image: bytes | None = None
+ 
+         with ZipFile(temp_path) as myzip:
++            if sum(info.file_size for info in myzip.infolist()) > MAX_RECIPE_ZIP_UNCOMPRESSED_SIZE:
++                raise exceptions.MissingRequiredData("Recipe archive exceeds the 50 MiB uncompressed size limit")
++
+             for file in myzip.namelist():
+                 if file.endswith(".json"):
+                     with myzip.open(file) as myfile:

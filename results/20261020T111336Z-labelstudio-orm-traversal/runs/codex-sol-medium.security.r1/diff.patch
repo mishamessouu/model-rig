@@ -1,0 +1,91 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..cf7397b 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Enforce this at query execution too: direct task queries and ordering do
++    # not pass through FilterSerializer's foreign-key traversal validation.
++    if (
++        not field_name.startswith('data.')
++        and '__' in field_name
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError('Relationship traversal is not allowed for this field.')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/tests/data_manager/test_orm_traversal.py b/label_studio/tests/data_manager/test_orm_traversal.py
+new file mode 100644
+index 0000000..572a3b7
+--- /dev/null
++++ b/label_studio/tests/data_manager/test_orm_traversal.py
+@@ -0,0 +1,57 @@
++import json
++from types import SimpleNamespace
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from projects.models import Project
++from tests.utils import make_task, project_id  # noqa: F401
++
++
++@pytest.mark.django_db
++@pytest.mark.parametrize(
++    'query_type, prefix',
++    [
++        ('filters', 'filter:tasks:'),
++        ('filters', 'filter:tasks:-'),
++        ('ordering', ''),
++        ('ordering', 'tasks:'),
++        ('ordering', '-tasks:'),
++        ('ordering', 'tasks:-'),
++        ('ordering', 'filter:tasks:'),
++    ],
++)
++def test_direct_task_query_rejects_relationship_traversal(business_client, project_id, prefix, query_type):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'example'}, 'updated_by': project.created_by}, project)
++    field = f'{prefix}updated_by__password'
++    if query_type == 'filters':
++        query = {
++            'filters': {
++                'conjunction': 'and',
++                'items': [{'filter': field, 'operator': 'contains', 'value': 'pbkdf2', 'type': 'String'}],
++            }
++        }
++    else:
++        query = {'ordering': [field]}
++
++    response = business_client.get('/api/tasks/', {'project': project_id, 'query': json.dumps(query)})
++
++    assert response.status_code == 400, response.content
++    assert b'Relationship traversal is not allowed' in response.content
++
++
++def test_preprocess_preserves_json_keys_and_exact_allowlist(settings):
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['annotations__completed_by']
++    project = SimpleNamespace(data_types={}, summary=SimpleNamespace(common_data_columns={}))
++
++    assert preprocess_field_name('tasks:data.images__0', project) == ('data__images__0', True)
++    assert preprocess_field_name('-tasks:annotations__completed_by', project) == ('annotations__completed_by', False)
++
++
++@pytest.mark.parametrize('field', ['data__password', 'annotations__completed_by__password'])
++def test_preprocess_rejects_raw_orm_paths_and_allowlist_extensions(settings, field):
++    from rest_framework.exceptions import ValidationError
++
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['annotations__completed_by']
++    with pytest.raises(ValidationError):
++        preprocess_field_name(field, project=None)

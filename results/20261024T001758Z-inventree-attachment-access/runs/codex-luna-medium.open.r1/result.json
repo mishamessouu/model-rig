@@ -1,0 +1,85 @@
+{
+  "run_id": "codex-luna-medium.open.r1",
+  "batch": "20261024T001758Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "codex-luna-medium",
+  "harness": "codex",
+  "model": "gpt-6-luna",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 53.6,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": null,
+  "tokens": {
+    "input": 24600,
+    "output": 1323,
+    "cache_read": 288512,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6-luna": {
+      "input": 24600,
+      "output": 1323,
+      "cache_read": 288512,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 313112,
+    "cached_input_tokens": 288512,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1323,
+    "reasoning_output_tokens": 228
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 0.6007,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Validate attachment renames before saving other fields to prevent partial updates when a filename is invalid.",
+  "final": "Changed [common/api.py](~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/repo/src/backend/InvenTree/common/api.py:850) to validate attachment renames before saving other fields, preventing a failed rename from leaving a partial update.\n\nThe requested tests passed: 52 tests, `OK`.\n\nCHOICE: Validate attachment renames before saving other fields to prevent partial updates when a filename is invalid.",
+  "diff": {
+    "files": 1,
+    "added": 5,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": false,
+      "tail": "----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/scored/tmp3paca36d/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 154, in test_part_role_reads_no_stock_attachment\n    self.assertDetailHides(self.stock_attachment)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/scored/tmp3paca36d/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 112, in assertDetailHides\n    self.assertNoLeak(self.fetch(url), attachment, f'detail {attachment.pk}')\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/scored/tmp3paca36d/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 93, in assertNoLeak\n    self.assertNotIn(secret, body, f'{what}: {secret} leaked')\nAssertionError: 'rig-stockitem-comment-67da2eb0ff8340fa91fff056c10bb3e6' unexpectedly found in '{\"pk\":2,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-stockitem-link-67da2eb0ff8340fa91fff056c10bb3e6\",\"comment\":\"rig-stockitem-comment-67da2eb0ff8340fa91fff056c10bb3e6\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"stockitem\",\"model_id\":1}' : detail 2: rig-stockitem-comment-67da2eb0ff8340fa91fff056c10bb3e6 leaked\n\n----------------------------------------------------------------------\nRan 2 tests in 0.657s\n\nFAILED (failures=2)\nDestroying test database for alias 'default'..."
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": false,
+      "tail": "----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/scored/tmp3paca36d/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 139, in test_part_role_lists_no_stock_attachment\n    self.assertListHides(self.stock_attachment, data)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/scored/tmp3paca36d/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 105, in assertListHides\n    self.assertNoLeak(response, attachment, what)\n  File \"~/.model-rig/work/20261024T001758Z-inventree-attachment-access/codex-luna-medium.open.r1/scored/tmp3paca36d/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 93, in assertNoLeak\n    self.assertNotIn(secret, body, f'{what}: {secret} leaked')\nAssertionError: 'rig-stockitem-comment-fd999b83c8df49d6a4dcb7b3088ff23f' unexpectedly found in '[{\"pk\":1,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-part-link-fd999b83c8df49d6a4dcb7b3088ff23f\",\"comment\":\"rig-part-comment-fd999b83c8df49d6a4dcb7b3088ff23f\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"part\",\"model_id\":1},{\"pk\":2,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-stockitem-link-fd999b83c8df49d6a4dcb7b3088ff23f\",\"comment\":\"rig-stockitem-comment-fd999b83c8df49d6a4dcb7b3088ff23f\",\"is_image\":false,\"upload_date\":\"2026-10-24\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"stockitem\",\"model_id\":1}]' : list {}: rig-stockitem-comment-fd999b83c8df49d6a4dcb7b3088ff23f leaked\n\n----------------------------------------------------------------------\nRan 2 tests in 0.484s\n\nFAILED (failures=2)\nDestroying test database for alias 'default'..."
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

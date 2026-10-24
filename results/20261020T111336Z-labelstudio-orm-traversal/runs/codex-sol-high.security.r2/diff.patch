@@ -1,0 +1,115 @@
+diff --git a/label_studio/data_manager/functions.py b/label_studio/data_manager/functions.py
+index 17160e4..f4897f9 100644
+--- a/label_studio/data_manager/functions.py
++++ b/label_studio/data_manager/functions.py
+@@ -10,6 +10,7 @@ from core.utils.common import int_from_request
+ from data_manager.models import View
+ from data_manager.prepare_params import PrepareParams
+ from django.conf import settings
++from rest_framework.exceptions import ValidationError
+ from rest_framework.generics import get_object_or_404
+ from tasks.models import Task
+ 
+@@ -392,6 +393,15 @@ def preprocess_field_name(raw_field_name, project) -> Tuple[str, bool]:
+         ascending = False
+         field_name = field_name[1:]
+ 
++    # Ad hoc filters and ordering bypass FilterSerializer.validate_column().
++    # Check normalized names before converting task.data keys into ORM paths.
++    if (
++        '__' in field_name
++        and not field_name.startswith('data.')
++        and field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST
++    ):
++        raise ValidationError(f'Related field lookups are not allowed: {field_name}')
++
+     if field_name.startswith('data.'):
+         # process as $undefined$ only if real_name is from labeling config, not from task.data
+         real_name = field_name.replace('data.', '')
+diff --git a/label_studio/data_manager/tests/test_query_security.py b/label_studio/data_manager/tests/test_query_security.py
+new file mode 100644
+index 0000000..945d645
+--- /dev/null
++++ b/label_studio/data_manager/tests/test_query_security.py
+@@ -0,0 +1,81 @@
++import json
++
++import pytest
++from data_manager.functions import preprocess_field_name
++from data_manager.models import View
++from projects.tests.factories import ProjectFactory
++from rest_framework.exceptions import ValidationError
++from rest_framework.test import APIClient
++from tasks.tests.factories import TaskFactory
++
++
++@pytest.mark.django_db
++@pytest.mark.parametrize('target', ['filter', 'child_filter', 'ordering', 'saved_ordering'])
++def test_task_queries_reject_related_password_lookups(target):
++    project = ProjectFactory()
++    TaskFactory(project=project)
++    client = APIClient()
++    client.force_authenticate(project.created_by)
++    password_filter = {
++        'filter': 'filter:tasks:project__created_by__password',
++        'operator': 'contains',
++        'type': 'String',
++        'value': project.created_by.password[:8],
++    }
++    if target in ('ordering', 'saved_ordering'):
++        query = {'ordering': ['tasks:project__created_by__password']}
++    else:
++        item = password_filter
++        if target == 'child_filter':
++            item = {
++                'filter': 'filter:tasks:id',
++                'operator': 'greater',
++                'type': 'Number',
++                'value': 0,
++                'child_filters': [password_filter],
++            }
++        query = {'filters': {'conjunction': 'and', 'items': [item]}}
++
++    params = {'project': project.id}
++    if target == 'saved_ordering':
++        params['view'] = View.objects.create(project=project, ordering=query['ordering']).id
++    else:
++        params['query'] = json.dumps(query)
++    response = client.get('/api/tasks/', params)
++
++    assert response.status_code == 400
++
++
++@pytest.mark.parametrize(
++    'field',
++    [
++        'filter:tasks:project__created_by__password',
++        'filter:tasks:-project__created_by__password',
++        'tasks:project__created_by__password',
++        '-tasks:project__created_by__password',
++        'tasks:-project__created_by__password',
++        'project__created_by__password',
++        'tasks:annotations__completed_by__password',
++        'tasks:data__password',
++    ],
++)
++def test_field_normalization_rejects_non_allowlisted_orm_paths(field):
++    with pytest.raises(ValidationError):
++        preprocess_field_name(field, project=None)
++
++
++@pytest.mark.django_db
++def test_field_normalization_preserves_json_keys_and_exact_allowlist(settings):
++    project = ProjectFactory()
++    settings.DATA_MANAGER_FILTER_ALLOWLIST = ['project__created_by__email']
++
++    assert preprocess_field_name('tasks:data.key__with__underscores', project) == (
++        'data__key__with__underscores',
++        True,
++    )
++    assert preprocess_field_name('-tasks:project__created_by__email', project) == (
++        'project__created_by__email',
++        False,
++    )
++    with pytest.raises(ValidationError):
++        preprocess_field_name('tasks:project__created_by__email__contains', project)

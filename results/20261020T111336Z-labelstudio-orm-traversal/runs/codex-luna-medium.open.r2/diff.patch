@@ -1,0 +1,21 @@
+diff --git a/label_studio/data_manager/prepare_params.py b/label_studio/data_manager/prepare_params.py
+index 52f0917..9686173 100644
+--- a/label_studio/data_manager/prepare_params.py
++++ b/label_studio/data_manager/prepare_params.py
+@@ -64,13 +64,13 @@ class Filters(BaseModel):
+ 
+ class SelectedItems(BaseModel):
+     all: bool
+-    included: List[int] = []
+-    excluded: List[int] = []
++    included: List[int] = Field(default_factory=list)
++    excluded: List[int] = Field(default_factory=list)
+ 
+ 
+ class PrepareParams(BaseModel):
+     project: Union[int, List[int]]  # Support both single project and multiple projects
+-    ordering: List[str] = []
++    ordering: List[str] = Field(default_factory=list)
+     selectedItems: Optional[SelectedItems] = None
+     filters: Optional[Filters] = None
+     data: Optional[dict] = None
