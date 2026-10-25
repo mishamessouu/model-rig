@@ -228,6 +228,62 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("| fake-none | open | 1 | no change x1 | 0/1 |", text)
 
 
+class SandboxHideTest(unittest.TestCase):
+    """The rig checkout, the state folder, and home stay hidden even when
+    no emptied folder holds them, as for a rig run as root from /root."""
+
+    def test_rig_state_and_home_are_emptied_before_any_bind(self):
+        from unittest import mock
+
+        from rig import sandbox
+        with mock.patch.object(sandbox, "ROOT", Path("/opt/rig")), \
+                mock.patch.object(sandbox, "STATE", Path("/opt/rig-state")), \
+                mock.patch.object(Path, "exists", return_value=True), \
+                mock.patch.object(Path, "home", return_value=Path("/root")):
+            argv = sandbox.command(["true"], cwd="/opt/rig-state/work/r/repo",
+                                   read=["/opt/rig-state/envs/x"],
+                                   write=["/opt/rig-state/work/r"])
+        pairs = list(zip(argv, argv[1:]))
+        for path in ("/opt/rig", "/opt/rig-state", "/root"):
+            self.assertIn(("--tmpfs", path), pairs)
+        # The run's own folders come back after the hiding.
+        self.assertLess(argv.index("/opt/rig-state"), argv.index("/opt/rig-state/envs/x"))
+        self.assertLess(argv.index("/opt/rig-state"), argv.index("/opt/rig-state/work/r"))
+
+    def test_a_path_under_an_emptied_folder_or_root_is_not_hidden_again(self):
+        from unittest import mock
+
+        from rig import sandbox
+        with mock.patch.object(sandbox, "ROOT", Path("/home/u/rig")), \
+                mock.patch.object(sandbox, "STATE", Path("/tmp/state")), \
+                mock.patch.object(Path, "home", return_value=Path("/")):
+            self.assertEqual(sandbox.hidden_paths(), [])
+
+    @unittest.skipIf(any(Path.home().resolve().is_relative_to(p) for p in
+                         ("/home", "/data", "/tmp", "/run", "/var", "/mnt", "/media",
+                          "/srv", "/snap")) or Path.home() == Path("/"),
+                     "home already sits in an emptied folder")
+    def test_a_state_folder_outside_the_emptied_folders_is_unreadable(self):
+        import subprocess
+        from unittest import mock
+
+        from rig import sandbox
+        with tempfile.TemporaryDirectory(dir=Path.home()) as folder:
+            state = Path(folder)
+            (state / "claude-config").mkdir()
+            secret = state / "claude-config" / ".credentials.json"
+            secret.write_text("{}")
+            (state / "envs").mkdir()
+            (state / "envs" / "marker").write_text("env")
+            with mock.patch.object(sandbox, "STATE", state, create=True):
+                command = sandbox.command(
+                    ["sh", "-c", 'cat "$1" 2>/dev/null; echo; cat "$2"', "-",
+                     str(secret), str(state / "envs" / "marker")],
+                    cwd="/", read=[state / "envs"])
+            done = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(done.stdout.split(), ["env"])
+
+
 class NetworkTest(unittest.TestCase):
     """The sandbox has no network of its own. A cell with hosts reaches
     them through the proxy only, and the run records what it tried."""
@@ -672,6 +728,16 @@ class ScoreboardTest(unittest.TestCase):
         self.assertIn("| app | 7 | yes | 3 | 1 | 0 |", second)
         self.assertIn("| ctl | 2 | yes | 1 | 1 | 1 |", second)
         self.assertIn("lower bound", second)
+
+    def test_one_unpriced_run_makes_the_cell_cost_unknown(self):
+        # The same rule as the batch report: no partial sum read as the whole.
+        board = load_scoreboard()
+        sheet = ReportTest.SHEETS["s"]
+        newest = {("app", "c"): ("b", [scored("a1", fixed=("s1",)),
+                                       scored("a2", fixed=("s1",), by_model={"x": {}})]),
+                  ("app", "d"): ("b", [scored("b1", cell="d", fixed=("s1",))])}
+        lines = board.planted_table(newest, ["c", "d"], sheet)
+        self.assertIn("| Credits per success | n/a | 10 |", lines)
 
     def test_a_bad_triage_file_stops_the_scoreboard(self):
         batch = "20261024T000000Z-app"
