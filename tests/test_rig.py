@@ -284,6 +284,104 @@ class SandboxHideTest(unittest.TestCase):
         self.assertEqual(done.stdout.split(), ["env"])
 
 
+class RuntimeRestoreTest(unittest.TestCase):
+    """Restore runtime installs without restoring private parent folders."""
+
+    @contextlib.contextmanager
+    def layout(self, kind):
+        from unittest import mock
+
+        from rig import sandbox, scenario as scenarios
+        with tempfile.TemporaryDirectory() as folder, contextlib.ExitStack() as stack:
+            base = Path(folder)
+            home, root, state = [base / name for name in ("home", "checkout", "state")]
+            for path in (home, root, state):
+                path.mkdir()
+                (path / "private-marker").write_text("private")
+            # Exercise dynamic masks without requiring a writable /opt or /root.
+            stack.enter_context(mock.patch.object(sandbox, "EMPTIED", ()))
+            stack.enter_context(mock.patch.object(sandbox, "ROOT", root))
+            stack.enter_context(mock.patch.object(sandbox, "STATE", state))
+            stack.enter_context(mock.patch.object(scenarios, "STATE", state))
+            stack.enter_context(mock.patch.object(Path, "home", return_value=home))
+            scenario = scenarios.Scenario("demo", root, {}, [], [], setup=[], kind=kind)
+            (scenario.env / "bin").mkdir(parents=True)
+            (scenario.env / "allowed-marker").write_text("allowed")
+            yield scenario, (home, root, state)
+
+    def point_runtime(self, scenario, install):
+        if scenario.kind == "python":
+            (scenario.env / "pyvenv.cfg").write_text(f"home = {install}/bin\n")
+        binary = "python3" if scenario.kind == "python" else "node"
+        link = scenario.env / "bin" / binary
+        link.unlink(missing_ok=True)
+        link.symlink_to(install / "bin" / binary)
+        return link
+
+    def assert_private(self, scenario, private):
+        import subprocess
+
+        from rig import sandbox
+        argv = sandbox.command(
+            ["/bin/sh", "-c", 'for p do test ! -e "$p" || exit 11; done; '
+             'cat "$ALLOWED_MARKER"', "-", *[p / "private-marker" for p in private]],
+            cwd="/", read=scenario.sandbox_read(),
+            env={"ALLOWED_MARKER": scenario.env / "allowed-marker"})
+        done = subprocess.run(argv, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "allowed")
+
+    def assert_runtime_restored(self, kind):
+        import shutil
+        import subprocess
+
+        from rig import sandbox
+        binary = "python3" if kind == "python" else "node"
+        system = shutil.which(binary)
+        self.assertIsNotNone(system, f"{binary} is required")
+        with self.layout(kind) as (scenario, private):
+            for parent in private:
+                with self.subTest(parent=parent.name):
+                    install = parent / "runtime"
+                    (install / "bin").mkdir(parents=True)
+                    (install / "bin" / binary).symlink_to(system)
+                    named = parent / "runtime-link"
+                    named.symlink_to(install, target_is_directory=True)
+                    executable = self.point_runtime(scenario, named)
+                    reads = scenario.sandbox_read()
+                    done = subprocess.run(sandbox.command(
+                        [executable, "--version"], cwd="/", read=reads),
+                        capture_output=True, text=True)
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                    self.assertTrue(done.stdout.strip())
+                    self.assertEqual(reads, [scenario.env, named, install])
+                    self.assert_private(scenario, private)
+
+    def test_python_install_under_each_dynamic_mask_starts(self):
+        self.assert_runtime_restored("python")
+
+    def test_node_install_under_each_dynamic_mask_starts(self):
+        self.assert_runtime_restored("node")
+
+    def assert_private_parents_not_restored(self, kind):
+        with self.layout(kind) as (scenario, private):
+            home, root, state = private
+            for install in (home, root, state, home.parent):
+                alias = home / f"alias-{install.name}"
+                alias.symlink_to(install, target_is_directory=True)
+                for named in (install, alias):
+                    with self.subTest(install=named):
+                        self.point_runtime(scenario, named)
+                        self.assertEqual(scenario.sandbox_read(), [scenario.env])
+                        self.assert_private(scenario, private)
+
+    def test_python_install_cannot_restore_checkout_or_state_parents(self):
+        self.assert_private_parents_not_restored("python")
+
+    def test_node_install_cannot_restore_checkout_or_state_parents(self):
+        self.assert_private_parents_not_restored("node")
+
+
 class NetworkTest(unittest.TestCase):
     """The sandbox has no network of its own. A cell with hosts reaches
     them through the proxy only, and the run records what it tried."""

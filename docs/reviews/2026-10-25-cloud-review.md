@@ -140,6 +140,30 @@ read better.
 - Codex tokens: cached input moves out of `input`, and the sheet prices
   it as cache read. Correct for the OpenAI usage format.
 
+## Runtime restore follow-up
+
+The new dynamic masks also hide Python and Node installs. Both restore
+helpers now check `EMPTIED` and `sandbox.hidden_paths()`. They restore
+the named install and its resolved target. They reject an install that
+contains the checkout, state folder, or home, including through a link.
+This preserves decisions 7 and 11 without restoring private parents.
+
+`RuntimeRestoreTest` starts Python and Node under each dynamic mask.
+It checks that private markers stay hidden and the environment stays
+visible. Both startup tests fail with the original helpers, with six
+failed subtests. All four new tests pass with the fix.
+
+The follow-up checks use no real model. Run the full suite with
+`python3 -m unittest tests.test_rig tests.test_sources`: `Ran 87 tests`,
+`OK (skipped=1)`. The skipped test requires home outside `EMPTIED`.
+Run `python3 -m rig check booking-ladder`: `scenario OK`.
+The outside-home reproduction shows Python exits `0,0,0` and hidden
+private markers. Its original assertion expects the old `0,1,0`
+failure and therefore fails. A copy expecting `0,0,0` passes.
+
+The fix and regression tests are complete. Integration can continue on
+this branch. Real harness startup remains unverified, as described below.
+
 ## Not verified
 
 - No real model ran, and no upstream fixture was prepared, so the
