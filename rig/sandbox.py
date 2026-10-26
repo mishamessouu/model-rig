@@ -2,8 +2,10 @@
 
 The root file system is read-only. Home, /data, /tmp, /run, and /var are
 replaced by empty folders, so an agent cannot read the rig repo, the hidden
-tests, the person's files, or a Docker or LXD socket. Only the paths a run
-names come back.
+tests, the person's files, or a Docker or LXD socket. The rig checkout, the
+state folder, and the home folder are emptied too when none of those holds
+them, as for a rig run as root from /root. Only the paths a run names come
+back.
 
 The sandbox always has its own network namespace, with loopback only. A
 run that names a proxy socket (rig/proxy.py) gets it bound in, and the
@@ -13,6 +15,8 @@ proxy there is no network at all, and no name resolution.
 """
 import shutil
 from pathlib import Path
+
+from . import ROOT, STATE
 
 EMPTIED = ("/home", "/data", "/tmp", "/run", "/var", "/mnt", "/media", "/srv", "/snap")
 PATH = "/usr/local/bin:/usr/bin:/bin"
@@ -29,6 +33,20 @@ PROXY_ENV = {
 }
 
 
+def hidden_paths():
+    """The rig checkout, the state folder, and home, when no emptied folder
+    already holds them. Sign-ins, other runs, results, and hidden tests
+    live there."""
+    out = []
+    for path in (ROOT, STATE, Path.home()):
+        path = Path(path).resolve()
+        if path == Path("/") or any(path.is_relative_to(folder) for folder in EMPTIED):
+            continue
+        if not any(path.is_relative_to(other) for other in out):
+            out = [other for other in out if not other.is_relative_to(path)] + [path]
+    return out
+
+
 def command(argv, *, cwd, read=(), write=(), mounts=(), env=None, proxy=None):
     """Return the bwrap argv. `write` binds in order, so a later bind may
     sit inside an earlier one. `mounts` are (source, target) pairs bound
@@ -42,6 +60,10 @@ def command(argv, *, cwd, read=(), write=(), mounts=(), env=None, proxy=None):
     for path in EMPTIED:
         if Path(path).exists():
             out += ["--tmpfs", path]
+    # Before the binds, so the run's own folders inside them come back.
+    for path in hidden_paths():
+        if path.exists():
+            out += ["--tmpfs", str(path)]
     out += ["--dev", "/dev", "--proc", "/proc"]
     for path in read:
         out += ["--ro-bind", str(path), str(path)]

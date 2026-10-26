@@ -228,6 +228,160 @@ class PipelineTest(unittest.TestCase):
         self.assertIn("| fake-none | open | 1 | no change x1 | 0/1 |", text)
 
 
+class SandboxHideTest(unittest.TestCase):
+    """The rig checkout, the state folder, and home stay hidden even when
+    no emptied folder holds them, as for a rig run as root from /root."""
+
+    def test_rig_state_and_home_are_emptied_before_any_bind(self):
+        from unittest import mock
+
+        from rig import sandbox
+        with mock.patch.object(sandbox, "ROOT", Path("/opt/rig")), \
+                mock.patch.object(sandbox, "STATE", Path("/opt/rig-state")), \
+                mock.patch.object(Path, "exists", return_value=True), \
+                mock.patch.object(Path, "home", return_value=Path("/root")):
+            argv = sandbox.command(["true"], cwd="/opt/rig-state/work/r/repo",
+                                   read=["/opt/rig-state/envs/x"],
+                                   write=["/opt/rig-state/work/r"])
+        pairs = list(zip(argv, argv[1:]))
+        for path in ("/opt/rig", "/opt/rig-state", "/root"):
+            self.assertIn(("--tmpfs", path), pairs)
+        # The run's own folders come back after the hiding.
+        self.assertLess(argv.index("/opt/rig-state"), argv.index("/opt/rig-state/envs/x"))
+        self.assertLess(argv.index("/opt/rig-state"), argv.index("/opt/rig-state/work/r"))
+
+    def test_a_path_under_an_emptied_folder_or_root_is_not_hidden_again(self):
+        from unittest import mock
+
+        from rig import sandbox
+        with mock.patch.object(sandbox, "ROOT", Path("/home/u/rig")), \
+                mock.patch.object(sandbox, "STATE", Path("/tmp/state")), \
+                mock.patch.object(Path, "home", return_value=Path("/")):
+            self.assertEqual(sandbox.hidden_paths(), [])
+
+    @unittest.skipIf(any(Path.home().resolve().is_relative_to(p) for p in
+                         ("/home", "/data", "/tmp", "/run", "/var", "/mnt", "/media",
+                          "/srv", "/snap")) or Path.home() == Path("/"),
+                     "home already sits in an emptied folder")
+    def test_a_state_folder_outside_the_emptied_folders_is_unreadable(self):
+        import subprocess
+        from unittest import mock
+
+        from rig import sandbox
+        with tempfile.TemporaryDirectory(dir=Path.home()) as folder:
+            state = Path(folder)
+            (state / "claude-config").mkdir()
+            secret = state / "claude-config" / ".credentials.json"
+            secret.write_text("{}")
+            (state / "envs").mkdir()
+            (state / "envs" / "marker").write_text("env")
+            with mock.patch.object(sandbox, "STATE", state, create=True):
+                command = sandbox.command(
+                    ["sh", "-c", 'cat "$1" 2>/dev/null; echo; cat "$2"', "-",
+                     str(secret), str(state / "envs" / "marker")],
+                    cwd="/", read=[state / "envs"])
+            done = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(done.stdout.split(), ["env"])
+
+
+class RuntimeRestoreTest(unittest.TestCase):
+    """Restore runtime installs without restoring private parent folders."""
+
+    @contextlib.contextmanager
+    def layout(self, kind):
+        from unittest import mock
+
+        from rig import sandbox, scenario as scenarios
+        with tempfile.TemporaryDirectory() as folder, contextlib.ExitStack() as stack:
+            base = Path(folder)
+            home, root, state = [base / name for name in ("home", "checkout", "state")]
+            for path in (home, root, state):
+                path.mkdir()
+                (path / "private-marker").write_text("private")
+            # Exercise dynamic masks without requiring a writable /opt or /root.
+            stack.enter_context(mock.patch.object(sandbox, "EMPTIED", ()))
+            stack.enter_context(mock.patch.object(sandbox, "ROOT", root))
+            stack.enter_context(mock.patch.object(sandbox, "STATE", state))
+            stack.enter_context(mock.patch.object(scenarios, "STATE", state))
+            stack.enter_context(mock.patch.object(Path, "home", return_value=home))
+            scenario = scenarios.Scenario("demo", root, {}, [], [], setup=[], kind=kind)
+            (scenario.env / "bin").mkdir(parents=True)
+            (scenario.env / "allowed-marker").write_text("allowed")
+            yield scenario, (home, root, state)
+
+    def point_runtime(self, scenario, install):
+        if scenario.kind == "python":
+            (scenario.env / "pyvenv.cfg").write_text(f"home = {install}/bin\n")
+        binary = "python3" if scenario.kind == "python" else "node"
+        link = scenario.env / "bin" / binary
+        link.unlink(missing_ok=True)
+        link.symlink_to(install / "bin" / binary)
+        return link
+
+    def assert_private(self, scenario, private):
+        import subprocess
+
+        from rig import sandbox
+        argv = sandbox.command(
+            ["/bin/sh", "-c", 'for p do test ! -e "$p" || exit 11; done; '
+             'cat "$ALLOWED_MARKER"', "-", *[p / "private-marker" for p in private]],
+            cwd="/", read=scenario.sandbox_read(),
+            env={"ALLOWED_MARKER": scenario.env / "allowed-marker"})
+        done = subprocess.run(argv, capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout, "allowed")
+
+    def assert_runtime_restored(self, kind):
+        import shutil
+        import subprocess
+
+        from rig import sandbox
+        binary = "python3" if kind == "python" else "node"
+        system = shutil.which(binary)
+        self.assertIsNotNone(system, f"{binary} is required")
+        with self.layout(kind) as (scenario, private):
+            for parent in private:
+                with self.subTest(parent=parent.name):
+                    install = parent / "runtime"
+                    (install / "bin").mkdir(parents=True)
+                    (install / "bin" / binary).symlink_to(system)
+                    named = parent / "runtime-link"
+                    named.symlink_to(install, target_is_directory=True)
+                    executable = self.point_runtime(scenario, named)
+                    reads = scenario.sandbox_read()
+                    done = subprocess.run(sandbox.command(
+                        [executable, "--version"], cwd="/", read=reads),
+                        capture_output=True, text=True)
+                    self.assertEqual(done.returncode, 0, done.stderr)
+                    self.assertTrue(done.stdout.strip())
+                    self.assertEqual(reads, [scenario.env, named, install])
+                    self.assert_private(scenario, private)
+
+    def test_python_install_under_each_dynamic_mask_starts(self):
+        self.assert_runtime_restored("python")
+
+    def test_node_install_under_each_dynamic_mask_starts(self):
+        self.assert_runtime_restored("node")
+
+    def assert_private_parents_not_restored(self, kind):
+        with self.layout(kind) as (scenario, private):
+            home, root, state = private
+            for install in (home, root, state, home.parent):
+                alias = home / f"alias-{install.name}"
+                alias.symlink_to(install, target_is_directory=True)
+                for named in (install, alias):
+                    with self.subTest(install=named):
+                        self.point_runtime(scenario, named)
+                        self.assertEqual(scenario.sandbox_read(), [scenario.env])
+                        self.assert_private(scenario, private)
+
+    def test_python_install_cannot_restore_checkout_or_state_parents(self):
+        self.assert_private_parents_not_restored("python")
+
+    def test_node_install_cannot_restore_checkout_or_state_parents(self):
+        self.assert_private_parents_not_restored("node")
+
+
 class NetworkTest(unittest.TestCase):
     """The sandbox has no network of its own. A cell with hosts reaches
     them through the proxy only, and the run records what it tried."""
@@ -672,6 +826,16 @@ class ScoreboardTest(unittest.TestCase):
         self.assertIn("| app | 7 | yes | 3 | 1 | 0 |", second)
         self.assertIn("| ctl | 2 | yes | 1 | 1 | 1 |", second)
         self.assertIn("lower bound", second)
+
+    def test_one_unpriced_run_makes_the_cell_cost_unknown(self):
+        # The same rule as the batch report: no partial sum read as the whole.
+        board = load_scoreboard()
+        sheet = ReportTest.SHEETS["s"]
+        newest = {("app", "c"): ("b", [scored("a1", fixed=("s1",)),
+                                       scored("a2", fixed=("s1",), by_model={"x": {}})]),
+                  ("app", "d"): ("b", [scored("b1", cell="d", fixed=("s1",))])}
+        lines = board.planted_table(newest, ["c", "d"], sheet)
+        self.assertIn("| Credits per success | n/a | 10 |", lines)
 
     def test_a_bad_triage_file_stops_the_scoreboard(self):
         batch = "20261024T000000Z-app"

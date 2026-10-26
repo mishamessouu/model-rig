@@ -34,7 +34,7 @@ good.
 | wger-log-idor | 6/6 | 6/6 | 4/9 | 1/9 | 5/9 | 2/9 | 5/6 | 5/6 |
 | **All** | **29/36** | **26/36** | **34/39** | **7/39** | **35/39** | **2/9** | **34/36** | **5/6** |
 | 95% interval | 65% to 90% | 56% to 84% | 73% to 94% | 9% to 33% | 76% to 96% | 6% to 55% | 82% to 98% | 44% to 97% |
-| Credits per success | 46 | 16 | 33 | 7 | 22 | 8 | 122 | 160 |
+| Credits per success | n/a | 16 | 33 | 7 | 22 | 8 | 122 | 160 |
 
 Generated with `python3 scripts/scoreboard.py --skip wger-gym-access`.
 Each scenario uses the newest batch that holds the cell. wger-gym-access
@@ -63,7 +63,12 @@ How to read it:
   its successes. It prices the stored tokens with the GitHub Copilot
   price sheet in `config/prices.toml`, read from GitHub's Copilot models
   and pricing page on 2026-10-20. One credit is 0.01 USD, so 24 credits
-  is about 0.24 USD. It is one comparable unit, not your bill.
+  is about 0.24 USD. It is one comparable unit, not your bill. A cell
+  with a run the sheet cannot price shows n/a. One Opus run
+  (`20261020T101406Z-labelstudio-orm-traversal`,
+  `claude-opus-medium.open.r2`) also used `claude-opus-5`, which the
+  sheet does not list. Its other 35 runs and the priced part of that run
+  give at least 46 credits per success.
 - **Two cells ran on one scenario only.** `codex-luna-high` and
   `codex-astra-high` ran on wger-log-idor only. Do not compare their
   totals with the others.
@@ -72,13 +77,20 @@ What it shows:
 
 - **The cells that ran all six scenarios split into two groups.**
   Sol medium (35 of 39), Astra medium (34 of 36), Sol high (34 of 39),
-  Opus (29 of 36), and Sonnet 5.5 (26 of 36) are not separable: their
-  intervals overlap. Luna medium (7 of 39, 9% to 33%) is clearly lower
-  than all five.
+  Opus (29 of 36), and Sonnet 5.5 (26 of 36) are not separable. Two
+  overlapping intervals do not prove that by themselves, so we ran
+  Fisher's exact test on each of the 15 pairs of these six cells, with a
+  Holm correction for the number of pairs. Among the five, the smallest
+  p is Astra medium against Sonnet 5.5: 0.024 alone, 0.24 after the
+  correction. Luna medium (7 of 39, 9% to 33%) is clearly lower than all
+  five (each p below 0.0001 after the correction). The test treats each
+  run as independent and pools the scenarios, which differ in
+  difficulty, so take these as rough.
 - **The expensive cells bought no measurable gain.** In the top group,
-  credits per success ran from 16 (Sonnet 5.5) and 22 (Sol medium) to 46
-  (Opus) and 122 (Astra medium), a factor of about 8. The success rates
-  of those cells are not separable.
+  credits per success ran from 16 (Sonnet 5.5) and 22 (Sol medium) to at
+  least 46 (Opus) and 122 (Astra medium), a factor of about 8. The
+  success rates of those cells are not separable after the correction,
+  though Astra medium against Sonnet 5.5 comes closest.
 - **Luna medium is the cheapest per success, at 7 credits, but it
   misses most runs.** You only know which run worked if you have a test
   that tells you.
@@ -324,9 +336,10 @@ state folder from `~/.model-rig/`.
 - **Cell.** One harness, model, and effort, named in
   `config/matrix.toml`. Model and effort are configuration, not code.
 - **Sandbox.** bubblewrap with a read-only root. Home, `/tmp`, `/run`,
-  `/var`, and other data folders are empty, so the agent cannot see the
-  rig repo, the hidden tests, your files, the sign-ins, or the Docker
-  socket. Only the run folder is writable. A prepared venv, and its base
+  `/var`, and other data folders are empty. So are the rig repo, the
+  state folder, and your home folder wherever they live, such as under
+  `/root` or `/opt`. So the agent cannot see the rig repo, the hidden
+  tests, your files, the sign-ins, or the Docker socket. Only the run folder is writable. A prepared venv, and its base
   Python if that lives under a hidden folder, is bound read-only and comes
   first on `PATH`. A prepared Node `node_modules` is bound read-only over
   the working copy's own, so it never enters the diff.

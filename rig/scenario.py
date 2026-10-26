@@ -127,9 +127,23 @@ class Scenario:
                 f"Run: python3 -m rig prepare {self.name}")
 
 
+def _masked_install(named):
+    """Restore only an install, never a private folder or its parent."""
+    masked = (*sandbox.EMPTIED, *sandbox.hidden_paths())
+    private = [Path(path).resolve() for path in
+               (sandbox.ROOT, sandbox.STATE, Path.home())]
+    out = []
+    for prefix in (named, named.resolve()):
+        if any(path.is_relative_to(prefix.resolve()) for path in private):
+            continue
+        if prefix not in out and any(prefix.is_relative_to(folder) for folder in masked):
+            out.append(prefix)
+    return out
+
+
 def base_interpreter(env):
     """The Python install a venv points to, if it sits under a folder the
-    sandbox empties (pyenv or uv-managed Python under home or /tmp).
+    sandbox masks, including the dynamic checkout, state, and home masks.
     Without it, the venv's `python3` is a broken link in the sandbox.
     Both the named folder and its resolved target are listed, because uv
     names a version folder through a link."""
@@ -139,31 +153,19 @@ def base_interpreter(env):
     for line in config.read_text().splitlines():
         key, _, value = line.partition("=")
         if key.strip() == "home" and value.strip():
-            named = Path(value.strip()).parent
-            out = []
-            for prefix in (named, named.resolve()):
-                if prefix not in out and any(
-                        prefix.is_relative_to(folder) for folder in sandbox.EMPTIED):
-                    out.append(prefix)
-            return out
+            return _masked_install(Path(value.strip()).parent)
     return []
 
 
 def node_install(env):
     """The Node install that a Node environment's `bin/node` links to, if
-    it sits under a folder the sandbox empties (nvm or fnm under home).
+    it sits under any folder the sandbox masks, fixed or dynamic.
     Without it, `node` is a broken link in the sandbox. Both the install
     folder and its resolved target are listed."""
     node = Path(env) / "bin" / "node"
     if not node.is_symlink():
         return []
-    named = Path(os.readlink(node)).parent.parent
-    out = []
-    for prefix in (named, named.resolve()):
-        if prefix not in out and any(
-                prefix.is_relative_to(folder) for folder in sandbox.EMPTIED):
-            out.append(prefix)
-    return out
+    return _masked_install(Path(os.readlink(node)).parent.parent)
 
 
 def load(name):

@@ -10,7 +10,8 @@ out.
 The first table counts planted successes only, without control
 scenarios. A cell shows successes of runs, both prompts together; the
 last rows give each cell's total, its 95% Wilson interval, and its mean
-credits per success over all its runs.
+credits per success over all its runs. A cell with an unpriced run shows
+n/a, as in a batch report.
 
 The second table (design decision 13) adds confirmed finds: real holes
 the scenario did not plant, from `scenarios/<name>/triage.toml`. It also
@@ -59,10 +60,13 @@ def planted_table(newest, cells, sheet):
                 continue
             runs = newest[(s, c)][1]
             wins = sum(report.success(r) for r in runs)
-            cost = sum(report.run_cost(r, sheet) or 0 for r in runs)
+            costs = [report.run_cost(r, sheet) for r in runs]
             totals[c][0] += wins
             totals[c][1] += len(runs)
-            totals[c][2] += cost
+            # One unpriced run makes the cell's cost unknown, as in a batch
+            # report, not a partial sum read as the whole.
+            if totals[c][2] is not None:
+                totals[c][2] = None if None in costs else totals[c][2] + sum(costs)
             row.append(f"{wins}/{len(runs)}")
         lines.append(f"| {s} | " + " | ".join(row) + " |")
     lines += [
@@ -71,7 +75,8 @@ def planted_table(newest, cells, sheet):
             "{:.0%} to {:.0%}".format(*report.wilson(w, n)) for w, n, _ in totals.values())
         + " |",
         "| Credits per success | " + " | ".join(
-            f"{cost / w:.0f}" if w else "n/a" for w, _, cost in totals.values()) + " |",
+            f"{cost / w:.0f}" if w and cost is not None else "n/a"
+            for w, _, cost in totals.values()) + " |",
         "",
         "Batches: " + ", ".join(sorted({b for b, _ in newest.values()})),
     ]
