@@ -1,0 +1,50 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..8605bfe 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -796,6 +796,36 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def filter_queryset(self, queryset):
++        """Only expose attachments for model types the user has 'view' permission for."""
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        queryset = super().filter_queryset(queryset)
++
++        try:
++            user = self.request.user
++        except AttributeError:  # pragma: no cover
++            return queryset.none()
++
++        if not user or not user.is_authenticated:
++            return queryset.none()
++
++        if user.is_superuser:
++            return queryset
++
++        # Write operations perform their own explicit permission checks (403)
++        if self.request.method not in SAFE_METHODS:
++            return queryset
++
++        allowed_types = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'view')
++        ]
++
++        return queryset.filter(model_type__in=allowed_types)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""

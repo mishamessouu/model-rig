@@ -1,0 +1,53 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..609fb82 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,6 +16,9 @@
+ import datetime
+ import logging
+ 
++# Third Party
++from rest_framework import status
++
+ # wger
+ from wger.core.tests import api_base_test
+ from wger.manager.models import WorkoutLog
+@@ -41,3 +44,25 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_post_log_for_other_users_slot_entry(self):
++        """
++        Test that a user can't add logs to a slot entry of another user's routine
++        """
++        self.authenticate('test')
++        count_before = WorkoutLog.objects.count()
++
++        data = {
++            'exercise': 1,
++            'slot_entry': 1,
++            'repetitions': 3,
++            'repetitions_unit': 1,
++            'weight_unit': 1,
++            'weight': 200,
++            'iteration': 1,
++            'date': datetime.date.today(),
++        }
++        response = self.client.post(self.url, data=data)
++
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertEqual(WorkoutLog.objects.count(), count_before)

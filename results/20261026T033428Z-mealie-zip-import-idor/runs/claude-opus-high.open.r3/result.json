@@ -1,0 +1,163 @@
+{
+  "run_id": "claude-opus-high.open.r3",
+  "batch": "20261026T033428Z-mealie-zip-import-idor",
+  "scenario": "mealie-zip-import-idor",
+  "cell": "claude-opus-high",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 3,
+  "seconds": 553.3,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 33,
+  "tokens": {
+    "input": 60,
+    "output": 12034,
+    "cache_read": 1022109,
+    "cache_write": 43852
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 60,
+      "output": 12034,
+      "cache_read": 1022109,
+      "cache_write": 43852
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 60,
+    "cache_creation_input_tokens": 43852,
+    "cache_read_input_tokens": 1022109,
+    "output_tokens": 12034,
+    "output_tokens_details": {
+      "thinking_tokens": 3131
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 43852,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.7961578,
+  "costs": {
+    "copilot": {
+      "value": 66.4602,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Fixed a cross-group security hole where importing a crafted recipe zip could rename and take over another group's tools; tools are now looked up within the importer's group like tags and categories, because it's the only path I found that lets one tenant change another tenant's data.",
+  "final": "I fixed a cross-tenant security hole in recipe zip import: a user could rename and take over another group's kitchen tools.\n\n**The bug:** When a zip is imported, tags, categories, foods and units are each looked up inside the importing user's group. Tools were passed straight to the database layer, which finds rows by ID across all groups and then overwrites their fields. I reproduced it: a user in group A imported a zip naming group B's tool ID. The import returned 201, and B's tool was renamed and moved into group A, so it disappeared from B's view. Any logged-in user can call this endpoint (`POST /api/recipes/create/zip`), and tool IDs show up in shared and exported recipes. I also checked tags and recipe instruction steps; neither can be hijacked this way.\n\n**The fix** (`mealie/services/recipe/recipe_service.py`, two small edits):\n1. Tools now go through the same in-group find-or-create step as tags and categories (`_transform_category_or_tag`), matched by slug.\n2. When that step creates a new item, it drops the ID that came from the zip. Without this, a foreign tool ID made the import fail with a 500 error, because tools don't discard an incoming ID on create the way tags and categories do. An exported ID only means something on the server that produced it, so a fresh one is correct.\n\n**Tests:** I added two tests to `tests/integration_tests/user_recipe_tests/test_recipe_crud.py`:\n- a tool from the same group is reused on import;\n- another group's tool ID can't change that tool, and the import gets its own new tool in the importer's group.\n\nBoth fail without the fix and pass with it. `python3 -m pytest` exits 0. The repo's pytest config hides the summary line, so I ran it again with logging switched off to get counts: 3180 passed, 18 skipped. That run's one error is caused by switching logging off: one test needs it. Ruff isn't installed here, so formatting and lint weren't run; I only checked that no new line is over the 120-character limit.\n\nCHOICE: Fixed a cross-group security hole where importing a crafted recipe zip could rename and take over another group's tools; tools are now looked up within the importer's group like tags and categories, because it's the only path I found that lets one tenant change another tenant's data.",
+  "diff": {
+    "files": 2,
+    "added": 67,
+    "removed": 3,
+    "paths": [
+      "mealie/services/recipe/recipe_service.py",
+      "tests/integration_tests/user_recipe_tests/test_recipe_crud.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "api.github.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/integration_tests/category_tag_tool_tests/test_organizers_common.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/category_tag_tool_tests/test_organizers_merge.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_cross_household.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_crud.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_export_as.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_owner.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_create_recipe_from_zip_keeps_own_subrecipe": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_create_recipe_from_zip_keeps_own_tool": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_copies_recipe_from_another_group": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_hides_subrecipe_of_another_group[camel_case]": {
+      "passed": false,
+      "tail": "INFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\n----------------------------- Captured stdout call -----------------------------\n[INFO|_client|L1085] 2026-10-26T07:45:32: HTTP Request: POST http://testserver/api/recipes \"HTTP/1.1 201 Created\"\n[INFO|_client|L1085] 2026-10-26T07:45:32: HTTP Request: GET http://testserver/api/recipes/j80vhcjyfz \"HTTP/1.1 200 OK\"\n[INFO|_client|L1085] 2026-10-26T07:45:32: HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n[INFO|_client|L1085] 2026-10-26T07:45:32: HTTP Request: GET http://testserver/api/recipes/tv4crhuhun \"HTTP/1.1 200 OK\"\n------------------------------ Captured log call -------------------------------\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/recipes/j80vhcjyfz \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/recipes/tv4crhuhun \"HTTP/1.1 200 OK\"\n=========================== short test summary info ============================\nFAILED tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_hides_subrecipe_of_another_group[camel_case]\n1 failed in 0.49s"
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_hides_subrecipe_of_another_group[snake_case]": {
+      "passed": false,
+      "tail": "INFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\n----------------------------- Captured stdout call -----------------------------\n[INFO|_client|L1085] 2026-10-26T07:45:37: HTTP Request: POST http://testserver/api/recipes \"HTTP/1.1 201 Created\"\n[INFO|_client|L1085] 2026-10-26T07:45:37: HTTP Request: GET http://testserver/api/recipes/2n60815ycy \"HTTP/1.1 200 OK\"\n[INFO|_client|L1085] 2026-10-26T07:45:37: HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n[INFO|_client|L1085] 2026-10-26T07:45:37: HTTP Request: GET http://testserver/api/recipes/rybnug08z3 \"HTTP/1.1 200 OK\"\n------------------------------ Captured log call -------------------------------\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/recipes/2n60815ycy \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/recipes/rybnug08z3 \"HTTP/1.1 200 OK\"\n=========================== short test summary info ============================\nFAILED tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_hides_subrecipe_of_another_group[snake_case]\n1 failed in 0.50s"
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_blank_organizer_of_another_group[recipe_category]": {
+      "passed": false,
+      "tail": "INFO     root:registration_service.py:112 Registering user 5u1zyx3ntz\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/users/register \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/groups \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/users \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\n----------------------------- Captured stdout call -----------------------------\n[INFO|_client|L1085] 2026-10-26T07:45:41: HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n------------------------------ Captured log call -------------------------------\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n=========================== short test summary info ============================\nFAILED tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_blank_organizer_of_another_group[recipe_category]\n1 failed in 0.43s"
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_blank_organizer_of_another_group[tags]": {
+      "passed": false,
+      "tail": "INFO     root:registration_service.py:112 Registering user xhkfempieq\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/users/register \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/groups \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/users \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\n----------------------------- Captured stdout call -----------------------------\n[INFO|_client|L1085] 2026-10-26T07:45:45: HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n------------------------------ Captured log call -------------------------------\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n=========================== short test summary info ============================\nFAILED tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_blank_organizer_of_another_group[tags]\n1 failed in 0.42s"
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_blank_organizer_of_another_group[tools]": {
+      "passed": false,
+      "tail": "INFO     root:registration_service.py:112 Registering user uf4xmbcfj2\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/users/register \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/groups \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/users \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\n----------------------------- Captured stdout call -----------------------------\n[INFO|_client|L1085] 2026-10-26T07:45:49: HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n------------------------------ Captured log call -------------------------------\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n=========================== short test summary info ============================\nFAILED tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_blank_organizer_of_another_group[tools]\n1 failed in 0.42s"
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_camel_case_category_of_another_group": {
+      "passed": false,
+      "tail": "INFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/groups \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/admin/users \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/auth/token \"HTTP/1.1 200 OK\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/users/self \"HTTP/1.1 200 OK\"\n----------------------------- Captured stdout call -----------------------------\n[INFO|_client|L1085] 2026-10-26T07:45:53: HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\n[INFO|_client|L1085] 2026-10-26T07:45:53: HTTP Request: GET http://testserver/api/recipes/ym5cj9ac6i \"HTTP/1.1 200 OK\"\n------------------------------ Captured log call -------------------------------\nINFO     httpx2:_client.py:1085 HTTP Request: POST http://testserver/api/recipes/create/zip \"HTTP/1.1 201 Created\"\nINFO     httpx2:_client.py:1085 HTTP Request: GET http://testserver/api/recipes/ym5cj9ac6i \"HTTP/1.1 200 OK\"\n=========================== short test summary info ============================\nFAILED tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_camel_case_category_of_another_group\n1 failed in 0.45s"
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_camel_case_tool_of_another_group": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/integration_tests/user_recipe_tests/test_recipe_zip_import_groups.py::test_zip_import_keeps_tool_of_another_group": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/multitenant_tests/test_multitenant_cases.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit_tests/services_tests/test_organizer_resolver.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

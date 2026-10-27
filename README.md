@@ -12,7 +12,7 @@ per successful fix.
 ## Results
 
 <!-- RESULTS:START -->
-### All public scenarios: 240 runs, 2026-10-16 to 2026-10-24
+### All public scenarios: 372 runs, 2026-10-16 to 2026-10-27
 
 Six real apps, each with a real security fix taken out again. Each
 cell got two prompts: "find the improvement that matters most" (open)
@@ -24,28 +24,32 @@ regression test, and ended without an agent error or a timeout. A run
 that changed something else counts as a miss, even when that change was
 good.
 
-| Scenario | claude-opus-medium | claude-sonnet-5-5-medium | codex-sol-high | codex-luna-medium | codex-sol-medium | codex-luna-high | codex-astra-medium | codex-astra-high |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| changedetection-processor-traversal | 6/6 | 5/6 | 6/6 | 1/6 | 6/6 |  | 6/6 |  |
-| inventree-attachment-access | 4/6 | 6/6 | 6/6 | 4/6 | 6/6 |  | 6/6 |  |
-| labelstudio-orm-traversal | 6/6 | 3/6 | 6/6 | 1/6 | 6/6 |  | 6/6 |  |
-| mealie-zip-import-idor | 1/6 | 2/6 | 6/6 | 0/6 | 6/6 |  | 6/6 |  |
-| mlflow-graphql-permission | 6/6 | 4/6 | 6/6 | 0/6 | 6/6 |  | 5/6 |  |
-| wger-log-idor | 6/6 | 6/6 | 4/9 | 1/9 | 5/9 | 2/9 | 5/6 | 5/6 |
-| **All** | **29/36** | **26/36** | **34/39** | **7/39** | **35/39** | **2/9** | **34/36** | **5/6** |
-| 95% interval | 65% to 90% | 56% to 84% | 73% to 94% | 9% to 33% | 76% to 96% | 6% to 55% | 82% to 98% | 44% to 97% |
-| Credits per success | n/a | 16 | 33 | 7 | 22 | 8 | 122 | 160 |
+| Scenario | claude-opus-medium | claude-sonnet-5-5-medium | codex-sol-high | codex-luna-medium | codex-sol-medium | codex-luna-high | codex-astra-medium | codex-astra-high | codex-terra-medium | codex-terra-high | claude-opus-high | claude-sonnet-5-5-high | claude-fable-5-1-medium | claude-fable-5-1-high |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| changedetection-processor-traversal | 6/6 | 5/6 | 6/6 | 1/6 | 6/6 |  | 6/6 |  | 5/6 | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 |
+| inventree-attachment-access | 4/6 | 6/6 | 6/6 | 4/6 | 6/6 |  | 6/6 |  |  |  | 4/6 | 6/6 | 5/6 | 5/6 |
+| labelstudio-orm-traversal | 6/6 | 3/6 | 6/6 | 1/6 | 6/6 |  | 6/6 |  |  |  |  |  | 3/6 |  |
+| mealie-zip-import-idor | 1/6 | 2/6 | 6/6 | 0/6 | 6/6 |  | 6/6 |  |  |  | 2/6 | 6/6 | 6/6 | 4/6 |
+| mlflow-graphql-permission | 6/6 | 4/6 | 6/6 | 0/6 | 6/6 |  | 5/6 |  |  |  | 6/6 | 6/6 |  | 6/6 |
+| wger-log-idor | 6/6 | 6/6 | 4/9 | 1/9 | 5/9 | 2/9 | 5/6 | 5/6 |  |  | 6/6 | 6/6 | 6/6 | 6/6 |
+| **All** | **29/36** | **26/36** | **34/39** | **7/39** | **35/39** | **2/9** | **34/36** | **5/6** | **5/6** | **6/6** | **24/30** | **30/30** | **26/30** | **27/30** |
+| 95% interval | 65% to 90% | 56% to 84% | 73% to 94% | 9% to 33% | 76% to 96% | 6% to 55% | 82% to 98% | 44% to 97% | 44% to 97% | 61% to 100% | 63% to 90% | 89% to 100% | 70% to 95% | 74% to 97% |
+| Credits per success | n/a | 16 | 33 | 7 | 22 | 8 | 122 | 160 | 8 | 8 | 56 | 22 | n/a | n/a |
+| Refused by a safety filter | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 |
+| Fixed, but over time | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 
 Generated with `python3 scripts/scoreboard.py --skip wger-gym-access`.
 Each scenario uses the newest batch that holds the cell. wger-gym-access
-is left out of the table: only its Claude batch is public yet, and half
-a scenario would favour one harness.
+is left out of the table: only part of it is public yet, and part of a
+scenario would favour some cells.
 
 | Cell | Harness | Model | Effort |
 |---|---|---|---|
-| `claude-opus-medium` | Claude Code | Claude Opus 5.5 | medium |
-| `claude-sonnet-5-5-medium` | Claude Code | Claude Sonnet 5.5 | medium |
+| `claude-opus-medium`, `claude-opus-high` | Claude Code | Claude Opus 5.5 | medium, high |
+| `claude-sonnet-5-5-medium`, `claude-sonnet-5-5-high` | Claude Code | Claude Sonnet 5.5 | medium, high |
+| `claude-fable-5-1-medium`, `claude-fable-5-1-high` | Claude Code | Claude Fable 5.1 | medium, high |
 | `codex-sol-high`, `codex-sol-medium` | Codex | GPT-6.1 Sol | high, medium |
+| `codex-terra-medium`, `codex-terra-high` | Codex | GPT-6.1 Terra | medium, high |
 | `codex-luna-high`, `codex-luna-medium` | Codex | GPT-6 Luna | high, medium |
 | `codex-astra-high`, `codex-astra-medium` | Codex | GPT-6 Astra | high, medium |
 
@@ -62,47 +66,56 @@ How to read it:
 - **Credits per success** is the cost of all the cell's runs divided by
   its successes. It prices the stored tokens with the GitHub Copilot
   price sheet in `config/prices.toml`, read from GitHub's Copilot models
-  and pricing page on 2026-10-20. One credit is 0.01 USD, so 24 credits
-  is about 0.24 USD. It is one comparable unit, not your bill. A cell
-  with a run the sheet cannot price shows n/a. One Opus run
-  (`20261020T101406Z-labelstudio-orm-traversal`,
+  and pricing page on 2026-10-20 (Terra on 2026-10-27). One credit is
+  0.01 USD, so 24 credits is about 0.24 USD. It is one comparable unit,
+  not your bill. A cell with a run the sheet cannot price shows n/a. One
+  Opus medium run (`20261020T101406Z-labelstudio-orm-traversal`,
   `claude-opus-medium.open.r2`) also used `claude-opus-5`, which the
-  sheet does not list. Its other 35 runs and the priced part of that run
-  give at least 46 credits per success.
-- **Two cells ran on one scenario only.** `codex-luna-high` and
-  `codex-astra-high` ran on wger-log-idor only. Do not compare their
-  totals with the others.
+  sheet does not list. Its priced runs give at least 46 credits per
+  success. A Claude run that times out or stops with an agent error
+  records no tokens, so Fable 5.1 shows n/a too. Its priced runs give at
+  least 110 credits per success at medium and 192 at high.
+- **Refused by a safety filter** and **Fixed, but over time** are
+  failures in the row above. They are shown apart so you can see why a
+  cell failed (design decision 15 in [`docs/design.md`](docs/design.md)).
+- **Some cells are not complete.** The 2026-10-25 to 2026-10-27 batches
+  added Opus and Sonnet 5.5 at high effort, Fable 5.1, and Terra. A blank
+  means the batch is still running, or waits for lab triage before it
+  is published (decision 13). Terra has one public scenario so far, and
+  `codex-luna-high` and `codex-astra-high` ran on wger-log-idor only. Do
+  not compare their totals with the others.
 
 What it shows:
 
-- **The cells that ran all six scenarios split into two groups.**
-  Sol medium (35 of 39), Astra medium (34 of 36), Sol high (34 of 39),
-  Opus (29 of 36), and Sonnet 5.5 (26 of 36) are not separable. Two
-  overlapping intervals do not prove that by themselves, so we ran
-  Fisher's exact test on each of the 15 pairs of these six cells, with a
-  Holm correction for the number of pairs. Among the five, the smallest
-  p is Astra medium against Sonnet 5.5: 0.024 alone, 0.24 after the
-  correction. Luna medium (7 of 39, 9% to 33%) is clearly lower than all
-  five (each p below 0.0001 after the correction). The test treats each
-  run as independent and pools the scenarios, which differ in
-  difficulty, so take these as rough.
-- **The expensive cells bought no measurable gain.** In the top group,
-  credits per success ran from 16 (Sonnet 5.5) and 22 (Sol medium) to at
-  least 46 (Opus) and 122 (Astra medium), a factor of about 8. The
-  success rates of those cells are not separable after the correction,
-  though Astra medium against Sonnet 5.5 comes closest.
-- **Luna medium is the cheapest per success, at 7 credits, but it
-  misses most runs.** You only know which run worked if you have a test
-  that tells you.
-- **We saw no effect of effort for Sol:** 35 of 39 at medium and 34 of
-  39 at high, for 22 and 33 credits per success.
-- **The scenarios differ more than the totals show.** On mealie, Opus
-  succeeded in 1 of 6 runs and Sonnet 5.5 in 2 of 6, while Sol and Astra
-  succeeded in 6 of 6. Four of the Opus runs on mealie broke the
-  regression set.
-- **68 of the 240 runs missed.** 57 changed something other than a
-  planted hole. 11 broke the regression set, and 7 of those 11 had also
-  fixed a planted hole. No run ended in an agent error or a timeout.
+- **Sonnet 5.5 at high effort missed no run: 30 of 30.** No other cell
+  did better than it on any scenario. But with five shared scenarios,
+  no pair of the strong cells is separable yet. Design decision 14 pairs
+  two cells by scenario and gives a 95% bootstrap interval for the mean
+  difference. Sonnet 5.5 high against Sonnet 5.5 medium is +23% (0% to
+  +50%), and against Opus high +20% (0% to +50%). Each interval touches
+  zero. `python3 scripts/scoreboard.py` prints the full paired table.
+- **High effort did not help Opus.** Opus high had 24 of 30 and Opus
+  medium 29 of 36. Paired over five scenarios, high is +3% (-13% to
+  +20%). On mealie, Opus succeeded in 2 of 6 runs at high and 1 of 6 at
+  medium. Most of those misses fixed part of the planted hole only.
+- **Fable 5.1 is in the top group, at the highest cost.** 26 of 30 at
+  medium and 27 of 30 at high, not separable from Sol, Astra, or Opus. It
+  cost at least 110 and 192 credits per success, against 22 for Sonnet
+  5.5 high and Sol medium. On labelstudio, a safety filter stopped 3 of
+  its 6 medium runs. On mealie, 2 high runs hit the 30-minute limit; one
+  of them had fixed the planted holes.
+- **Terra is cheap so far:** 5 of 6 at medium and 6 of 6 at high on
+  changedetection, at 8 credits per success. One scenario says little
+  about the rest.
+- **The older cells keep their results.** Sol medium (35 of 39), Astra
+  medium (34 of 36), Sol high (34 of 39), Opus medium (29 of 36), and
+  Sonnet 5.5 medium (26 of 36) are not separable. Luna medium (7 of 39)
+  is clearly lower than every other cell with five or more scenarios.
+  We saw no effect of effort for Sol: 35 of 39 at medium and 34 of 39 at
+  high.
+- **82 of the 372 runs missed.** 62 changed something other than a
+  planted hole. 11 fixed a planted hole but broke the regression set,
+  and 4 broke it with no fix. A safety filter stopped 3, and 2 timed out.
 
 The 2026-10-16 wger batch ran before the provider-only network (see
 [Fairness rules](#fairness-rules)). Every later batch ran behind it.

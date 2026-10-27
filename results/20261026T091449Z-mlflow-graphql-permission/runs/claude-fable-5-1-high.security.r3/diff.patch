@@ -1,0 +1,139 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..d9d872b 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5103,6 +5103,14 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchModelVersions",
+     }
+ 
++    # Nested fields whose parent object the caller is already authorized to read but
++    # which surface a *different* resource type with its own grant namespace. Keyed by
++    # (GraphQL parent type name, field name). ``MlflowRunExtension.modelVersions``
++    # lists every model version registered from the run; without this, READ on an
++    # experiment leaks model-version metadata for registered models the caller holds
++    # no grant on, bypassing the filter applied to ``mlflowSearchModelVersions``.
++    PROTECTED_NESTED_FIELDS = {("MlflowRunExtension", "modelVersions")}
++
+     def resolve(self, next, root, info, **args):
+         """
+         Middleware resolve function called for every field resolution.
+@@ -5117,8 +5125,12 @@ class GraphQLAuthorizationMiddleware:
+             The resolved value or an error response
+         """
+         field_name = info.field_name
++        nested_key = (info.parent_type.name, field_name)
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        if (
++            field_name not in self.PROTECTED_FIELDS
++            and nested_key not in self.PROTECTED_NESTED_FIELDS
++        ):
+             return next(root, info, **args)
+ 
+         try:
+@@ -5144,7 +5156,7 @@ class GraphQLAuthorizationMiddleware:
+             return None
+ 
+         result = next(root, info, **args)
+-        return self._post_resolve(field_name, result, username) if result is not None else None
++        return self._post_resolve(nested_key, result, username) if result is not None else None
+ 
+     def _check_authorization(self, field_name: str, args: dict[str, Any], username: str) -> bool:
+         """
+@@ -5192,12 +5204,24 @@ class GraphQLAuthorizationMiddleware:
+ 
+         return True
+ 
+-    def _post_resolve(self, field_name: str, result, username: str):
++    def _post_resolve(self, nested_key: tuple[str, str], result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        _, field_name = nested_key
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if nested_key in self.PROTECTED_NESTED_FIELDS:
++            return self._filter_run_model_versions(result, username)
+         return result
+ 
++    def _filter_run_model_versions(self, model_versions, username: str):
++        """Drop run-linked model versions whose parent model/prompt the user can't read.
++
++        Mirrors ``filter_search_model_versions`` on the REST surface: rows are
++        classified by their prompt tag so the matching grant namespace is consulted.
++        """
++        can_read = _rm_or_prompt_read_predicate(username)
++        return [mv for mv in model_versions if can_read(mv)]
++
+     def _filter_model_versions_result(self, result, username: str):
+         """Filter model versions the user doesn't have read access to."""
+         can_read = _role_based_read_predicate(username, "registered_model")
+diff --git a/tests/server/auth/test_auth.py b/tests/server/auth/test_auth.py
+index f3df01e..cc80f49 100644
+--- a/tests/server/auth/test_auth.py
++++ b/tests/server/auth/test_auth.py
+@@ -1530,6 +1530,66 @@ def test_graphql_search_model_versions(client, monkeypatch):
+     assert names == [f"gql_mv_model{i}" for i in readable]
+ 
+ 
++@pytest.mark.parametrize(
++    "client",
++    [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],
++    indirect=True,
++)
++def test_graphql_run_model_versions_filtered_by_registered_model_permission(
++    client, monkeypatch
++):
++    username1, password1 = create_user(client.tracking_uri)
++    username2, password2 = create_user(client.tracking_uri)
++
++    readable = [0, 2]
++
++    with User(username1, password1, monkeypatch):
++        experiment_id = client.create_experiment("gql_run_mv_test_exp")
++        run = client.create_run(experiment_id)
++        run_id = run.info.run_id
++        client.set_terminated(run_id)
++        for i in range(4):
++            rm = client.create_registered_model(f"gql_run_mv_model{i}")
++            client.create_model_version(rm.name, f"runs:/{run_id}/model", run_id=run_id)
++            if i in readable:
++                grant_role_permission(
++                    client.tracking_uri, username2, "registered_model", rm.name, "READ"
++                )
++        # user2 may read the run, but holds grants on only some of its registered models.
++        grant_role_permission(client.tracking_uri, username2, "experiment", experiment_id, "READ")
++
++    query = """
++    query($runId: String!) {
++        mlflowGetRun(input: {runId: $runId}) {
++            run {
++                info { runId }
++                modelVersions { name version }
++            }
++        }
++    }
++    """
++
++    resp = _graphql_query(
++        client.tracking_uri, query, variables={"runId": run_id}, auth=(username1, password1)
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    names = sorted(mv["name"] for mv in payload["data"]["mlflowGetRun"]["run"]["modelVersions"])
++    assert names == [f"gql_run_mv_model{i}" for i in range(4)]
++
++    resp = _graphql_query(
++        client.tracking_uri, query, variables={"runId": run_id}, auth=(username2, password2)
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    run_data = payload["data"]["mlflowGetRun"]["run"]
++    assert run_data["info"]["runId"] == run_id
++    names = sorted(mv["name"] for mv in run_data["modelVersions"])
++    assert names == [f"gql_run_mv_model{i}" for i in readable]
++
++
+ @pytest.mark.parametrize(
+     "client",
+     [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],

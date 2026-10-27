@@ -1,0 +1,18 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..4866a5e 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5200,9 +5200,11 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _filter_model_versions_result(self, result, username: str):
+         """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
++        # Mirror the REST filter: prompt versions are gated by prompt grants, not
++        # registered-model grants.
++        can_read = _rm_or_prompt_read_predicate(username)
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            filtered = [mv for mv in result.model_versions if can_read(mv)]
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result

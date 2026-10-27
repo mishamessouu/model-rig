@@ -1,0 +1,109 @@
+diff --git a/wger/manager/api/serializers.py b/wger/manager/api/serializers.py
+index 58bab5c..25e0ee0 100644
+--- a/wger/manager/api/serializers.py
++++ b/wger/manager/api/serializers.py
+@@ -15,6 +15,7 @@
+ 
+ # Third Party
+ from rest_framework import serializers
++from rest_framework.exceptions import PermissionDenied
+ 
+ # wger
+ from wger.manager.api.consts import BASE_CONFIG_FIELDS
+@@ -442,6 +443,21 @@ class WorkoutLogSerializer(serializers.ModelSerializer):
+ 
+     session = serializers.PrimaryKeyRelatedField(read_only=True)
+ 
++    def validate_slot_entry(self, value: SlotEntry | None):
++        """
++        Only allow slot entries from routines belonging to the requesting user
++
++        Logs are read back via the slot entry (e.g. to calculate the progression
++        of the routine), so logging against a foreign slot entry would let a user
++        tamper with somebody else's routine.
++        """
++        request = self.context.get('request')
++        if value is not None and request is not None:
++            if value.get_owner_object().user != request.user:
++                raise PermissionDenied('You are not allowed to do this')
++
++        return value
++
+     class Meta:
+         model = WorkoutLog
+         fields = (
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..9e4fe7f 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,8 +16,12 @@
+ import datetime
+ import logging
+ 
++# Third Party
++from rest_framework import status
++
+ # wger
+ from wger.core.tests import api_base_test
++from wger.core.tests.base_testcase import BaseTestCase
+ from wger.manager.models import WorkoutLog
+ 
+ 
+@@ -41,3 +45,57 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++
++class WorkoutLogSlotEntryOwnershipTestCase(BaseTestCase, api_base_test.ApiBaseTestCase):
++    """
++    Tests that logs can only be attached to slot entries owned by the user
++
++    The logs of a slot entry are used to calculate the progression of a routine,
++    so a log attached to a foreign slot entry influences somebody else's routine.
++    """
++
++    url = '/api/v2/workoutlog/'
++
++    data = {
++        'exercise': 1,
++        'routine': 3,
++        'repetitions': 3,
++        'repetitions_unit': 1,
++        'weight_unit': 2,
++        'weight': 2,
++    }
++
++    def test_create_log_for_own_slot_entry(self):
++        """
++        Slot entry 4 belongs to routine 1, which belongs to the 'admin' user
++        """
++        self.authenticate('admin')
++
++        response = self.client.post(self.url, {**self.data, 'routine': 1, 'slot_entry': 4})
++
++        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
++        self.assertEqual(response.data['slot_entry'], 4)
++
++    def test_create_log_for_foreign_slot_entry(self):
++        """
++        Slot entry 4 belongs to routine 1, which belongs to the 'admin' user
++        """
++        self.authenticate('test')
++        count_before = WorkoutLog.objects.count()
++
++        response = self.client.post(self.url, {**self.data, 'slot_entry': 4})
++
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertEqual(WorkoutLog.objects.count(), count_before)
++
++    def test_update_log_with_foreign_slot_entry(self):
++        """
++        Log 5 belongs to the 'test' user, slot entry 4 to the 'admin' user
++        """
++        self.authenticate('test')
++
++        response = self.client.patch(f'{self.url}5/', {'slot_entry': 4})
++
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertIsNone(WorkoutLog.objects.get(pk=5).slot_entry)

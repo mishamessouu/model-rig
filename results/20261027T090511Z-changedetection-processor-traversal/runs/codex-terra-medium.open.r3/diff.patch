@@ -1,0 +1,48 @@
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..4a19ce9 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -168,8 +168,10 @@ def get_processor_submodule(processor_name, submodule_name):
+         parent_module_name = parent_module.__name__
+         submodule_full_name = f"{parent_module_name}.{submodule_name}"
+         return importlib.import_module(submodule_full_name)
+-    except (ModuleNotFoundError, ImportError):
+-        return None
++    except ModuleNotFoundError as e:
++        if e.name == submodule_full_name:
++            return None
++        raise
+ 
+ 
+ @lru_cache(maxsize=1)
+diff --git a/changedetectionio/tests/unit/test_processor_submodule_import.py b/changedetectionio/tests/unit/test_processor_submodule_import.py
+new file mode 100644
+index 0000000..040fb42
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_submodule_import.py
+@@ -0,0 +1,25 @@
++from types import SimpleNamespace
++from unittest.mock import patch
++
++import pytest
++
++from changedetectionio import processors
++
++
++@pytest.mark.parametrize("error, expected_missing", [
++    (ModuleNotFoundError(name="example.difference"), True),
++    (ModuleNotFoundError(name="missing_dependency"), False),
++    (ImportError("cannot import name from dependency"), False),
++])
++def test_optional_processor_submodule_only_ignores_its_own_absence(error, expected_missing):
++    processor = SimpleNamespace(__name__="example.processor")
++    parent = SimpleNamespace(__name__="example")
++    with patch.object(processors, "find_processors", return_value=[(processor, "example")]), \
++         patch.object(processors, "get_parent_module", return_value=parent), \
++         patch.object(processors.importlib, "import_module", side_effect=error):
++        if expected_missing:
++            assert processors.get_processor_submodule("example", "difference") is None
++        else:
++            with pytest.raises(type(error)) as exc:
++                processors.get_processor_submodule("example", "difference")
++            assert exc.value is error

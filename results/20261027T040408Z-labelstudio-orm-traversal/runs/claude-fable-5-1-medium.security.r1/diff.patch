@@ -1,0 +1,81 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..2dbd5fe 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -797,6 +797,17 @@ def apply_filters(queryset, filters, project, request):
+ 
+             # django orm loop expression attached to column name
+             field_name, _ = preprocess_field_name(_filter.filter, project)
++            # Reject foreign key traversals here as well as in FilterSerializer.validate_column:
++            # ad hoc filters (``?query=`` / request body) never pass through the view serializer,
++            # so without this check any related model field (e.g. updated_by__password) could be
++            # probed with contains/regex (ORM Leak, #5012). Edit with care.
++            if '__' in field_name and not field_name.startswith('data__'):
++                if field_name not in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++                    raise ValidationError(
++                        f'"__" is not generally allowed in filters. Consider asking your administrator to add '
++                        f'"{field_name}" to DATA_MANAGER_FILTER_ALLOWLIST, but note that some filter expressions '
++                        'may pose a security risk'
++                    )
+             if _is_stale_agreement_field(queryset, field_name):
+                 logger.warning('Skipping stale agreement filter field: %s', field_name)
+                 continue
+diff --git a/label_studio/tests/data_manager/test_adhoc_filter_traversal.py b/label_studio/tests/data_manager/test_adhoc_filter_traversal.py
+new file mode 100644
+index 0000000..9ffc9d1
+--- /dev/null
++++ b/label_studio/tests/data_manager/test_adhoc_filter_traversal.py
+@@ -0,0 +1,53 @@
++"""This file and its contents are licensed under the Apache License 2.0. Please see the included NOTICE for copyright information and LICENSE for a copy of the license."""
++
++import json
++from urllib.parse import quote
++
++import pytest
++from projects.models import Project
++
++from ..utils import make_task, project_id  # noqa
++
++
++def _query(column, operator='contains', value='x'):
++    return quote(
++        json.dumps(
++            {
++                'filters': {
++                    'conjunction': 'and',
++                    'items': [{'filter': column, 'operator': operator, 'type': 'String', 'value': value}],
++                }
++            }
++        )
++    )
++
++
++@pytest.mark.django_db
++def test_adhoc_query_rejects_foreign_key_traversal(business_client, project_id):
++    """Ad hoc filters bypass FilterSerializer.validate_column, so apply_filters must
++    reject '__' traversals itself (ORM Leak, #5012)."""
++    project = Project.objects.get(pk=project_id)
++    task = make_task({'data': {'text': 'x'}}, project)
++    task.updated_by = project.created_by
++    task.save()
++
++    column = 'filter:tasks:updated_by__password'
++    for value in (project.created_by.password[:4], 'not-a-prefix'):
++        response = business_client.get(f'/api/tasks?project={project_id}&query={_query(column, value=value)}')
++        assert response.status_code == 400, response.content
++        assert 'DATA_MANAGER_FILTER_ALLOWLIST' in response.content.decode()
++
++
++@pytest.mark.django_db
++def test_adhoc_query_allows_data_and_allowlisted_columns(business_client, project_id):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'x', 'my_key': 'hello'}}, project)
++
++    response = business_client.get(f'/api/tasks?project={project_id}&query={_query("filter:tasks:data.my_key", value="hell")}')
++    assert response.status_code == 200, response.content
++    assert response.json()['total'] == 1
++
++    response = business_client.get(
++        f'/api/tasks?project={project_id}&query={_query("filter:tasks:updated_by__active_organization", "empty", "true")}'
++    )
++    assert response.status_code == 200, response.content

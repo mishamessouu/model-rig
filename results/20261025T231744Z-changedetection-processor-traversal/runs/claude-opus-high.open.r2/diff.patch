@@ -1,0 +1,109 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..bcde5ad 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,30 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    @staticmethod
++    def _extra_watch_config_path(data_dir, filename):
++        """
++        Resolve a processor config filename inside the watch data directory.
++
++        The filename is usually derived from the watch's 'processor' value, which can come from
++        untrusted sources (backup restore, hand-edited watch.json), so only a plain filename is
++        accepted - anything containing a path separator or '..' could read/write outside data_dir.
++
++        Returns:
++            str: Full path inside data_dir, or None if the filename is not safe
++        """
++        import os
++
++        if (not isinstance(filename, str)
++                or filename in ('', '.', '..')
++                or '\x00' in filename
++                or os.path.basename(filename) != filename
++                or (os.path.altsep and os.path.altsep in filename)):
++            logger.error(f"Refusing unsafe extra watch config filename {filename!r}")
++            return None
++
++        return os.path.join(data_dir, filename)
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,9 +343,9 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = self._extra_watch_config_path(data_dir, filename)
+ 
+-        if not os.path.isfile(filepath):
++        if not filepath or not os.path.isfile(filepath):
+             return {}
+ 
+         try:
+@@ -350,11 +374,13 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = self._extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_extra_watch_config_path.py b/changedetectionio/tests/unit/test_extra_watch_config_path.py
+new file mode 100644
+index 0000000..8d03285
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_extra_watch_config_path.py
+@@ -0,0 +1,40 @@
++"""
++The processor config filename is built from the watch's 'processor' value
++(f'{processor_name}.json'), which can come from a restored backup or a hand-edited
++watch.json. It must never resolve outside the watch data directory.
++"""
++import json
++import os
++from types import SimpleNamespace
++
++from changedetectionio.processors.base import difference_detection_processor
++
++
++def _processor_for(data_dir):
++    watch = SimpleNamespace(data_dir=str(data_dir), ensure_data_dir_exists=lambda: os.makedirs(data_dir, exist_ok=True))
++    instance = difference_detection_processor.__new__(difference_detection_processor)
++    instance.datastore = SimpleNamespace(data={'watching': {'uuid-1': watch}})
++    instance.watch_uuid = 'uuid-1'
++    return instance
++
++
++def test_plain_filename_round_trips(tmp_path):
++    proc = _processor_for(tmp_path / 'uuid-1')
++    proc.update_extra_watch_config('restock_diff.json', {'a': 1})
++    assert proc.get_extra_watch_config('restock_diff.json') == {'a': 1}
++
++
++def test_traversal_filenames_are_refused(tmp_path):
++    data_dir = tmp_path / 'datastore' / 'uuid-1'
++    data_dir.mkdir(parents=True)
++    outside = tmp_path / 'outside.json'
++    outside.write_text(json.dumps({'secret': True}))
++
++    proc = _processor_for(data_dir)
++    for bad in ('../../outside.json', str(outside), 'sub/../../../outside.json', '..', '', 'x\x00.json'):
++        assert proc.get_extra_watch_config(bad) == {}
++        proc.update_extra_watch_config(bad, {'pwned': True})
++
++    assert json.loads(outside.read_text()) == {'secret': True}
++    assert sorted(os.listdir(tmp_path)) == ['datastore', 'outside.json']
++    assert os.listdir(data_dir) == []

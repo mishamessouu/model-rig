@@ -1,0 +1,100 @@
+{
+  "run_id": "claude-fable-5-1-medium.security.r3",
+  "batch": "20261027T113800Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-fable-5-1-medium",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 203.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 12,
+  "tokens": {
+    "input": 354,
+    "output": 5498,
+    "cache_read": 250744,
+    "cache_write": 25050
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 354,
+      "output": 5498,
+      "cache_read": 250744,
+      "cache_write": 25050
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 354,
+    "cache_creation_input_tokens": 25050,
+    "cache_read_input_tokens": 250744,
+    "output_tokens": 5498,
+    "output_tokens_details": {
+      "thinking_tokens": 1555
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 25050,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.8421259999999999,
+  "costs": {
+    "copilot": {
+      "value": 65.4251,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added view-permission filtering to the attachment list and detail API so authenticated users can no longer read attachments for models they lack a view role on, since this was an authorization bypass exposing arbitrary files and links.",
+  "final": "All 52 requested tests pass.\n\n**What I found.** The attachment API at `/api/attachment/` only required an authenticated user. The list and detail views never checked whether the user held a view role for the model the attachment belongs to. Any logged-in user could enumerate attachments and download links or files for purchase orders, sales orders, builds, and other objects they are not permitted to see. Create, update, and delete already had explicit role checks, so reads were the gap.\n\n**What I changed.** In `src/backend/InvenTree/common/api.py` I added a `filter_queryset` method to the shared attachment mixin. For read requests it limits the queryset to model types the user has view permission on, using the existing role-check helper. Superusers see everything. Write requests are left unfiltered so the existing explicit checks still return 403 rather than 404, which keeps current tests and behaviour intact.\n\n**Tests.** The requested suites ran with 52 tests passing. One test initially failed because filtering writes turned an expected 403 into a 404, which is why the filter applies to safe methods only.\n\nCHOICE: Added view-permission filtering to the attachment list and detail API so authenticated users can no longer read attachments for models they lack a view role on, since this was an authorization bypass exposing arbitrary files and links.",
+  "diff": {
+    "files": 1,
+    "added": 31,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

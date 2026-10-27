@@ -1,0 +1,105 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..1ce6e0c 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5199,10 +5199,16 @@ class GraphQLAuthorizationMiddleware:
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):
+-        """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
++        """Filter model versions the user doesn't have read access to.
++
++        Prompt versions share this response with model versions; classify each
++        row by its ``mlflow.prompt.is_prompt`` tag so ``(prompt, name, READ)``
++        grants are honored and ``registered_model`` grants don't leak prompts.
++        Mirrors ``filter_search_model_versions`` on the REST path.
++        """
++        can_read = _rm_or_prompt_read_predicate(username)
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            filtered = [mv for mv in result.model_versions if can_read(mv)]
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result
+diff --git a/tests/server/auth/test_auth.py b/tests/server/auth/test_auth.py
+index f3df01e..23cb512 100644
+--- a/tests/server/auth/test_auth.py
++++ b/tests/server/auth/test_auth.py
+@@ -30,6 +30,7 @@ from mlflow.environment_variables import (
+     MLFLOW_WORKSPACE_STORE_URI,
+ )
+ from mlflow.exceptions import MlflowException
++from mlflow.prompt.constants import IS_PROMPT_TAG_KEY
+ from mlflow.protos.databricks_pb2 import (
+     RESOURCE_DOES_NOT_EXIST,
+     UNAUTHENTICATED,
+@@ -1530,6 +1531,68 @@ def test_graphql_search_model_versions(client, monkeypatch):
+     assert names == [f"gql_mv_model{i}" for i in readable]
+ 
+ 
++@pytest.mark.parametrize(
++    "client",
++    [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],
++    indirect=True,
++)
++def test_graphql_search_model_versions_classifies_prompts_by_grant_namespace(client, monkeypatch):
++    owner, owner_password = create_user(client.tracking_uri)
++    model_reader, model_reader_password = create_user(client.tracking_uri)
++    prompt_reader, prompt_reader_password = create_user(client.tracking_uri)
++
++    with User(owner, owner_password, monkeypatch):
++        experiment_id = client.create_experiment("gql_pv_test_exp")
++        run_id = client.create_run(experiment_id).info.run_id
++        for i in range(2):
++            rm = client.create_registered_model(f"gql_pv_model{i}")
++            client.create_model_version(rm.name, f"runs:/{run_id}/model", run_id=run_id)
++            client.register_prompt(f"gql_pv_prompt{i}", "Hello, {{name}}!")
++        # Wildcard READ on registered models must not leak prompt versions.
++        grant_role_permission(client.tracking_uri, model_reader, "registered_model", "*", "READ")
++        # A prompt-namespace grant must surface that prompt's versions.
++        grant_role_permission(
++            client.tracking_uri, prompt_reader, "prompt", "gql_pv_prompt0", "READ"
++        )
++
++    query = """
++    query SearchModelVersions($input: MlflowSearchModelVersionsInput){
++      mlflowSearchModelVersions(input: $input){
++        modelVersions { name version }
++      }
++    }
++    """
++    # The registry hides prompt versions unless the filter opts in via the prompt
++    # tag, so models and prompts are queried separately.
++    model_filter = "name LIKE 'gql_pv_%'"
++    prompt_filter = f"{model_filter} AND tags.`{IS_PROMPT_TAG_KEY}` = 'true'"
++
++    def _search_names(auth: tuple[str, str], filter_string: str) -> list[str]:
++        resp = requests.post(
++            f"{client.tracking_uri}/graphql",
++            json={"query": query, "variables": {"input": {"filter": filter_string}}},
++            auth=auth,
++        )
++        resp.raise_for_status()
++        payload = resp.json()
++        assert payload.get("errors") in (None, [])
++        return sorted({
++            mv["name"] for mv in payload["data"]["mlflowSearchModelVersions"]["modelVersions"]
++        })
++
++    owner_auth = (owner, owner_password)
++    assert _search_names(owner_auth, model_filter) == ["gql_pv_model0", "gql_pv_model1"]
++    assert _search_names(owner_auth, prompt_filter) == ["gql_pv_prompt0", "gql_pv_prompt1"]
++
++    model_reader_auth = (model_reader, model_reader_password)
++    assert _search_names(model_reader_auth, model_filter) == ["gql_pv_model0", "gql_pv_model1"]
++    assert _search_names(model_reader_auth, prompt_filter) == []
++
++    prompt_reader_auth = (prompt_reader, prompt_reader_password)
++    assert _search_names(prompt_reader_auth, model_filter) == []
++    assert _search_names(prompt_reader_auth, prompt_filter) == ["gql_pv_prompt0"]
++
++
+ @pytest.mark.parametrize(
+     "client",
+     [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],

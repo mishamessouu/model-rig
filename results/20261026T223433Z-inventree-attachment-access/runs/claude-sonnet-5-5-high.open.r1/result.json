@@ -1,0 +1,101 @@
+{
+  "run_id": "claude-sonnet-5-5-high.open.r1",
+  "batch": "20261026T223433Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-sonnet-5-5-high",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 249.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 24,
+  "tokens": {
+    "input": 48,
+    "output": 8709,
+    "cache_read": 639179,
+    "cache_write": 35849
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 48,
+      "output": 8709,
+      "cache_read": 639179,
+      "cache_write": 35849
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 48,
+    "cache_creation_input_tokens": 35849,
+    "cache_read_input_tokens": 639179,
+    "output_tokens": 8709,
+    "output_tokens_details": {
+      "thinking_tokens": 2935
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 35849,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.29449990000000004,
+  "costs": {
+    "copilot": {
+      "value": 24.0726,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Filter attachment list/detail reads by the user's view permission on the target model, because any authenticated user could previously read every attachment, including on models they couldn't view.",
+  "final": "Attachment list and detail reads now hide attachments whose target model the user can't view. The requested test command passes (53 tests, OK).\n\n**The problem:** `AttachmentMixin` used `Attachment.objects.all()` with only `IsAuthenticatedOrReadScope`. Any logged-in user, even one with no roles, could list `/api/attachment/` or fetch `/api/attachment/<pk>/` and see every attachment. That included the file URL, link and comment for parts, stock items, orders, companies and builds they had no `view` permission on. Create, update and delete already checked the target model's permissions. Read was the only gap.\n\n**The fix:** in `src/backend/InvenTree/common/api.py`, `AttachmentMixin.get_queryset()` now excludes attachments for model types where the user lacks view access. It checks both `check_user_permission(..., 'view')` and the model's `check_related_permission('view', ...)`. This is the same pair of checks the serializer uses for writes. Unauthenticated requests get an empty queryset.\n\nWrite requests (PATCH, DELETE and bulk delete) are not filtered. The existing tests expect a roleless PATCH or DELETE to return 403 with the explicit \"User does not have permission\u2026\" message. Filtering would have turned that into a 404 and hidden the message.\n\nI added `AttachmentAPITests.test_view_permission` in `common/test_api.py`. It checks that with no roles the list is empty and detail returns 404. After granting `part.view`, only the part attachment is visible. After granting `stock.view`, the stock item attachment is visible too.\n\nThe test run created a default `config/config.yaml` that isn't tracked, and `git status` doesn't list it.\n\nCHOICE: Filter attachment list/detail reads by the user's view permission on the target model, because any authenticated user could previously read every attachment, including on models they couldn't view.",
+  "diff": {
+    "files": 2,
+    "added": 77,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

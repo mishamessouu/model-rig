@@ -1,0 +1,81 @@
+diff --git a/label_studio/tests/data_manager/test_orm_traversal.py b/label_studio/tests/data_manager/test_orm_traversal.py
+new file mode 100644
+index 0000000..ed8e5fe
+--- /dev/null
++++ b/label_studio/tests/data_manager/test_orm_traversal.py
+@@ -0,0 +1,75 @@
++"""This file and its contents are licensed under the Apache License 2.0. Please see the included NOTICE for copyright information and LICENSE for a copy of the license."""
++
++import json
++from urllib.parse import quote
++
++import pytest
++from projects.models import Project
++from tests.utils import make_task, project_id  # noqa
++
++
++def _tasks_with_query(business_client, project_pk, query):
++    return business_client.get(f'/api/tasks?project={project_pk}&query={quote(json.dumps(query))}')
++
++
++@pytest.mark.django_db
++def test_relation_traversal_in_ad_hoc_filter_is_rejected(business_client, project_id):
++    """Filters sent directly in the request bypass the view serializer allowlist, so the
++    query layer itself must refuse foreign-key traversals like ``project__created_by__password``.
++    """
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'hello'}}, project)
++    password_hash = project.created_by.password
++    assert password_hash  # hashed by business_client fixture
++
++    def matches(prefix):
++        query = {
++            'filters': {
++                'conjunction': 'and',
++                'items': [
++                    {
++                        'filter': 'filter:tasks:project__created_by__password',
++                        'operator': 'regex',
++                        'type': 'String',
++                        'value': f'^{prefix}',
++                    }
++                ],
++            }
++        }
++        return _tasks_with_query(business_client, project_id, query)
++
++    response = matches(password_hash[:10])
++    assert response.status_code == 400, response.content
++    assert '__' in response.json()['validation_errors']['detail'][0] if 'validation_errors' in response.json() else True
++
++    response = matches('definitely-not-the-hash')
++    assert response.status_code == 400, response.content
++
++
++@pytest.mark.django_db
++def test_relation_traversal_in_ad_hoc_ordering_is_rejected(business_client, project_id):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'hello'}}, project)
++
++    response = _tasks_with_query(business_client, project_id, {'ordering': ['tasks:project__created_by__password']})
++    assert response.status_code == 400, response.content
++
++
++@pytest.mark.django_db
++def test_allowlisted_and_data_traversals_still_work(business_client, project_id):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'hello'}}, project)
++
++    query = {
++        'filters': {
++            'conjunction': 'and',
++            'items': [
++                {'filter': 'filter:tasks:updated_by__active_organization', 'operator': 'empty', 'type': 'String', 'value': 'true'},
++                {'filter': 'filter:tasks:data.text', 'operator': 'contains', 'type': 'String', 'value': 'hell'},
++            ],
++        },
++        'ordering': ['tasks:-data.text'],
++    }
++    response = _tasks_with_query(business_client, project_id, query)
++    assert response.status_code == 200, response.content
++    assert response.json()['total'] == 1

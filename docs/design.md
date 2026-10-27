@@ -318,6 +318,45 @@ private, subscription sign-ins, and the "choice" measure.
    file), a judge model triages runs (decision 2), or partial fixes need
    a count of their own.
 
+14. **Compare two cells paired by scenario.** On 2026-10-25 the maintainer
+   compared the scoreboard with the Artificial Analysis index. The
+   Wilson intervals pool every run of a cell, as if each run were
+   independent. They are not: the scenario decides most of the outcome
+   (on mealie, Opus fixed 1 of 6 and Sol 6 of 6). The scoreboard now
+   adds a third table. For each pair of cells it takes only the
+   scenarios both ran, weights each scenario the same, and gives the
+   mean difference in success rate with a 95% two-stage bootstrap
+   interval: scenarios with replacement, then runs within each scenario.
+   It also counts the scenarios where each cell did better. The first
+   run of it gave wider intervals than the pooled Wilson ones (Opus
+   minus Sol high: -35% to +20%). The pooled intervals had overstated
+   how sure we were. More scenarios narrow the paired interval; more
+   repeats in the same scenarios narrow it less. Why not a mixed-effects
+   model: it needs a library and is harder to check by hand, and the
+   bootstrap gives the same answer to "can we tell these apart".
+   Changes if: the cells run on scenarios of very different sizes, or a
+   per-scenario weight (for example, by severity) is wanted.
+
+15. **A refusal and a late fix stay failures, counted apart.** On
+   2026-10-26 two Opus high runs on labelstudio stopped with "Opus 5's
+   safeguards flagged this message" (`stop_reason: "refusal"`), and two
+   Fable 5.1 high runs on mealie hit the 30-minute timeout, one with a
+   diff that fixed two defects. Both stay failures in the success rate:
+   a person who asked for the fix got none, and every cell has the same
+   limit. The rig now records `refused` per run, and the reports count
+   "refused" and "fixed over time" (a timeout whose diff fixed a defect
+   with no regression) apart, so a reader can see why a cell failed. A
+   result from before the field is matched on Claude Code's error text.
+   No retry after a refusal: a retry hides the rate. The maintainer chose this
+   with a paid side batch: `config/matrix-fable-60m.toml` reruns, with a
+   60-minute limit, as many Fable high runs as timed out per scenario
+   and prompt. The scoreboard reads cells from `config/matrix.toml` only,
+   so the side cell stays out of the main table. A timed-out Claude run
+   records no token use, so its cost is missing and the scoreboard counts
+   it as zero; that understates the cost of a slow cell. Changes if:
+   Codex refusals get a known shape, a provider returns a refused run's
+   usage, or the limit changes for every cell.
+
 ## Where things live
 
 | Path | What |

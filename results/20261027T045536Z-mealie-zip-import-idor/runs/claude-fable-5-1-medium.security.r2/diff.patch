@@ -1,0 +1,126 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..6990eac 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -32,6 +32,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+ from mealie.services._base_service import BaseService
+@@ -364,6 +365,23 @@ class RecipeService(RecipeServiceBase):
+         self._reset_data_matcher()
+         return data
+ 
++    def _transform_tool(self, data: dict[str, Any]) -> dict[str, Any] | None:
++        # Only link tools that belong to this group; anything else is matched by slug or created fresh.
++        if data.get("id") and self.repos.tools.get_one(data["id"]):
++            return data
++
++        slug = data.get("slug")
++        existing = self.repos.tools.get_one(slug, "slug") if slug else None
++        if existing:
++            return existing.model_dump()
++
++        name = self._non_empty_str(data.get("name"))
++        if not name:
++            return None
++
++        new_tool = self.repos.tools.create(RecipeToolSave(name=name, group_id=self.user.group_id))
++        return new_tool.model_dump()
++
+     def _process_recipe_data(self, key: str, data: list | dict | Any) -> Any:
+         if isinstance(data, list):
+             return [self._process_recipe_data(key, item) for item in data]
+@@ -392,10 +410,20 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
+-        elif key == "food":
++        elif key in ("food", "substitute_food"):
+             return self._transform_food(data)
+         elif key == "unit":
+             return self._transform_unit(data)
++        elif key == "tools":
++            return self._transform_tool(data)
++
++        # Child objects carry the primary keys of the rows they were exported from. The generic ORM
++        # initializer resolves a related row by its id without any group scoping and then rewrites and
++        # re-parents it, so an id taken from another group must never reach the database. Only the
++        # top-level recipe keeps its id, which `_replace_taken_id` has already checked for collisions.
++        if key != "recipe":
++            data.pop("id", None)
++
+         # recursively process other objects
+         for k, v in data.items():
+             data[k] = self._process_recipe_data(k, v)
+@@ -451,6 +479,8 @@ class RecipeService(RecipeServiceBase):
+         if recipe_dict is None:
+             raise exceptions.UnexpectedNone("No json data found in Zip")
+ 
++        # Comments reference the users who wrote them on the source instance and are never importable.
++        recipe_dict.pop("comments", None)
+         recipe = self.create_one(Recipe(**self.clean_recipe_dict(recipe_dict)))
+ 
+         if recipe and recipe.id:
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..6a2109a 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -54,7 +54,7 @@ def tempdir() -> Generator[str]:
+         yield td
+ 
+ 
+-def zip_recipe(tempdir: str, recipe: RecipeSummary) -> dict:
++def zip_recipe(tempdir: str, recipe: RecipeSummary | Recipe) -> dict:
+     with tempfile.NamedTemporaryFile(mode="w+", dir=tempdir, suffix=".json", delete=False) as data_file:
+         json.dump(json.loads(recipe.model_dump_json()), data_file)
+         data_file.flush()
+@@ -2219,3 +2219,45 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_cannot_claim_other_groups_children(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """Ids in an uploaded zip must not resolve to tools or comments owned by another group."""
++    victim_slug = api_client.post(api_routes.recipes, json={"name": random_string()}, headers=g2_user.token).json()
++    victim = api_client.get(api_routes.recipes_slug(victim_slug), headers=g2_user.token).json()
++    victim_tool = api_client.post(api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token)
++    assert victim_tool.status_code == 201
++    victim_tool = victim_tool.json()
++    victim_comment = api_client.post(
++        api_routes.comments, json={"recipeId": victim["id"], "text": random_string()}, headers=g2_user.token
++    )
++    assert victim_comment.status_code == 201
++    victim_comment = victim_comment.json()
++
++    recipe_name = random_string()
++    recipe = Recipe(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[{"id": victim_tool["id"], "name": "hijacked", "slug": "hijacked"}],
++        comments=[{**victim_comment, "text": "hijacked"}],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert imported["comments"] == []
++    assert all(tool["id"] != victim_tool["id"] for tool in imported["tools"])
++
++    tool_after = api_client.get(f"{api_routes.organizers_tools}/{victim_tool['id']}", headers=g2_user.token)
++    assert tool_after.status_code == 200
++    assert tool_after.json()["name"] == victim_tool["name"]
++
++    victim_after = api_client.get(api_routes.recipes_slug(victim_slug), headers=g2_user.token).json()
++    assert [c["id"] for c in victim_after["comments"]] == [victim_comment["id"]]
++    assert victim_after["comments"][0]["text"] == victim_comment["text"]

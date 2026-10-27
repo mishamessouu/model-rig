@@ -1,0 +1,110 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..6a27176 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -270,7 +270,8 @@ class RecipeService(RecipeServiceBase):
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
++        # otherwise, create the item; the exported id may belong to another group's item, so never reuse it
++        data.pop("id", None)
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
+@@ -387,11 +388,13 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
+-        # make sure categories and tags and food/unit are valid
++        # make sure categories, tags, tools and food/unit are valid
+         if key == "recipe_category":
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..a300818 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -23,7 +23,7 @@ from mealie.pkgs.safehttp.fetch import FetchResult
+ from mealie.pkgs.safehttp.transport import AsyncSafeTransport
+ from mealie.schema.cookbook.cookbook import SaveCookBook
+ from mealie.schema.labels.multi_purpose_label import MultiPurposeLabelSave
+-from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag
++from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag, RecipeTool
+ from mealie.schema.recipe.recipe_category import CategorySave, TagSave
+ from mealie.schema.recipe.recipe_ingredient import (
+     CreateIngredientFoodAlias,
+@@ -795,6 +795,67 @@ def test_create_recipe_from_zip_existing_tag_wrong_ids(api_client: TestClient, u
+     assert str(fetched_recipe.tags[0].id) == str(tag.id)
+ 
+ 
++def test_create_recipe_from_zip_existing_tool(api_client: TestClient, unique_user: TestUser, tempdir: str):
++    database = unique_user.repos
++    tool = database.tools.create(RecipeToolSave(name=random_string(), group_id=unique_user.group_id))
++    exported_tool = RecipeTool(id=uuid4(), name=tool.name, slug=tool.slug)
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[exported_tool],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    fetched_recipe = database.recipes.get_by_slug(unique_user.group_id, recipe.slug)
++    assert fetched_recipe
++    assert len(fetched_recipe.tools) == 1
++    assert str(fetched_recipe.tools[0].id) == str(tool.id)
++
++
++def test_create_recipe_from_zip_tool_id_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A tool id belonging to another group must not let the import rename or take over that group's tool."""
++    other_tool = g2_user.repos.tools.create(RecipeToolSave(name=random_string(), group_id=g2_user.group_id))
++    hijacked_name = random_string()
++    exported_tool = RecipeTool(id=other_tool.id, name=hijacked_name, slug=hijacked_name)
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[exported_tool],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    # the other group's tool is untouched
++    g2_user.repos.session.expire_all()
++    still_there = g2_user.repos.tools.get_one(other_tool.id)
++    assert still_there
++    assert still_there.name == other_tool.name
++    assert str(still_there.group_id) == str(g2_user.group_id)
++
++    # the import got its own tool in the importing group
++    fetched_recipe = unique_user.repos.recipes.get_by_slug(unique_user.group_id, recipe.slug)
++    assert fetched_recipe
++    assert len(fetched_recipe.tools) == 1
++    assert fetched_recipe.tools[0].id != other_tool.id
++    assert fetched_recipe.tools[0].name == hijacked_name
++    assert str(fetched_recipe.tools[0].group_id) == str(unique_user.group_id)
++
++
+ def test_create_recipe_from_zip_invalid_category(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     database = unique_user.repos
+     invalid_name = random_string()

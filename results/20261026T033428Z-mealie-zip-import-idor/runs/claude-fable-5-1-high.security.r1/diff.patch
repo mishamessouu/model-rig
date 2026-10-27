@@ -1,0 +1,120 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..6e926cb 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -260,7 +260,15 @@ class RecipeService(RecipeServiceBase):
+             # default to the current user
+             return str(self.user.id)
+ 
+-    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
++    def _transform_organizer(self, data: dict, repo: RepositoryGeneric) -> dict:
++        """Resolve an exported category, tag or tool against this group, creating it if absent.
++
++        Organizers are matched by slug through the group-scoped repository, never by the id carried
++        in the export: that id belongs to whatever instance and group the file came from, and the
++        ORM's relationship loader would otherwise look it up without a group filter and overwrite
++        the matching row in another group. For the same reason the foreign id is dropped before a
++        missing organizer is created here.
++        """
+         slug = data.get("slug")
+         if not slug:
+             return data
+@@ -271,6 +279,7 @@ class RecipeService(RecipeServiceBase):
+             return query.model_dump()
+ 
+         # otherwise, create the item
++        data.pop("id", None)
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
+@@ -389,9 +398,11 @@ class RecipeService(RecipeServiceBase):
+ 
+         # make sure categories and tags and food/unit are valid
+         if key == "recipe_category":
+-            return self._transform_category_or_tag(data, self.repos.categories)
++            return self._transform_organizer(data, self.repos.categories)
+         elif key == "tags":
+-            return self._transform_category_or_tag(data, self.repos.tags)
++            return self._transform_organizer(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_organizer(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..49e302f 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -23,7 +23,7 @@ from mealie.pkgs.safehttp.fetch import FetchResult
+ from mealie.pkgs.safehttp.transport import AsyncSafeTransport
+ from mealie.schema.cookbook.cookbook import SaveCookBook
+ from mealie.schema.labels.multi_purpose_label import MultiPurposeLabelSave
+-from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag
++from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag, RecipeTool
+ from mealie.schema.recipe.recipe_category import CategorySave, TagSave
+ from mealie.schema.recipe.recipe_ingredient import (
+     CreateIngredientFoodAlias,
+@@ -737,6 +737,63 @@ def test_create_recipe_from_zip_existing_tag(api_client: TestClient, unique_user
+     assert str(fetched_recipe.tags[0].id) == str(tag.id)
+ 
+ 
++def test_create_recipe_from_zip_tool_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A tool id in the export must never resolve to, or modify, a tool owned by another group."""
++    tool_name = random_string()
++    other_tool = api_client.post(api_routes.organizers_tools, json={"name": tool_name}, headers=g2_user.token).json()
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[RecipeTool(id=other_tool["id"], name="hijacked", slug="hijacked")],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert len(imported["tools"]) == 1
++    assert imported["tools"][0]["id"] != other_tool["id"]
++    assert imported["tools"][0]["slug"] == "hijacked"
++    assert imported["tools"][0]["groupId"] == str(unique_user.group_id)
++
++    # the other group's tool is untouched
++    still_there = api_client.get(api_routes.organizers_tools_item_id(other_tool["id"]), headers=g2_user.token)
++    assert still_there.status_code == 200
++    assert still_there.json()["name"] == tool_name
++    assert still_there.json()["groupId"] == str(g2_user.group_id)
++
++
++def test_create_recipe_from_zip_existing_tool(api_client: TestClient, unique_user: TestUser, tempdir: str):
++    database = unique_user.repos
++    tool = database.tools.create({"name": random_string(), "group_id": unique_user.group_id})
++    exported_tool = RecipeTool(id=uuid4(), name=tool.name, slug=tool.slug)
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[exported_tool],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    fetched_recipe = database.recipes.get_by_slug(unique_user.group_id, recipe.slug)
++    assert fetched_recipe
++    assert len(fetched_recipe.tools) == 1
++    assert str(fetched_recipe.tools[0].id) == str(tool.id)
++
++
+ def test_create_recipe_from_zip_existing_category_wrong_ids(
+     api_client: TestClient, unique_user: TestUser, tempdir: str
+ ):

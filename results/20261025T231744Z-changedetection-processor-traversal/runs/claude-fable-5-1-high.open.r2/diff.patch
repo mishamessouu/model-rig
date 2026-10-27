@@ -1,0 +1,228 @@
+diff --git a/changedetectionio/model/Watch.py b/changedetectionio/model/Watch.py
+index c7484f0..20ae133 100644
+--- a/changedetectionio/model/Watch.py
++++ b/changedetectionio/model/Watch.py
+@@ -314,8 +314,13 @@ class model(EntityPersistenceMixin, watch_base):
+         processor = self.get('processor')
+         if not processor or self.get('processor') == 'text_json_diff':
+             return 'history.txt'
+-        else:
+-            return f'history-{processor}.txt'
++
++        # The name is joined onto data_dir, so never let it carry path separators or '..'
++        from changedetectionio.processors import is_safe_processor_name
++        if not is_safe_processor_name(processor):
++            raise ValueError(f"Watch {self.get('uuid')} has an unsafe processor name {processor!r}, refusing to build history filename")
++
++        return f'history-{processor}.txt'
+ 
+     def clear_watch(self):
+         import pathlib
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..1d6a5e4 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -5,6 +5,33 @@ import importlib
+ import inspect
+ import os
+ import pkgutil
++import re
++
++# Processor names end up in on-disk filenames inside the watch data directory
++# (history-<processor>.txt, <processor>.json). Only allow plain identifiers so a
++# crafted name (e.g. from a restored backup or share link) can never traverse out.
++SAFE_PROCESSOR_NAME_RE = re.compile(r'^[A-Za-z0-9_-]+$')
++
++
++def is_safe_processor_name(processor_name):
++    """
++    True if processor_name is a plain identifier safe to embed in a filename.
++
++    :param processor_name: Processor machine name (e.g., 'text_json_diff')
++    """
++    return isinstance(processor_name, str) and bool(SAFE_PROCESSOR_NAME_RE.fullmatch(processor_name))
++
++
++def processor_config_filename(processor_name):
++    """
++    Return the per-processor JSON config filename for a watch, refusing unsafe names.
++
++    :param processor_name: Processor machine name (e.g., 'image_ssim_diff')
++    :raises ValueError: if the name could escape the watch data directory
++    """
++    if not is_safe_processor_name(processor_name):
++        raise ValueError(f"Refusing to build config filename from unsafe processor name {processor_name!r}")
++    return f'{processor_name}.json'
+ 
+ def find_sub_packages(package_name):
+     """
+@@ -460,7 +487,7 @@ def save_processor_config(datastore, watch_uuid, config_data):
+         processor_instance = difference_detection_processor(datastore, watch_uuid)
+ 
+         # Use processor name as filename so each processor keeps its own config
+-        config_filename = f'{processor_name}.json'
++        config_filename = processor_config_filename(processor_name)
+         processor_instance.update_extra_watch_config(config_filename, config_data)
+ 
+         logger.debug(f"Saved processor config to {config_filename}: {config_data}")
+diff --git a/changedetectionio/processors/image_ssim_diff/difference.py b/changedetectionio/processors/image_ssim_diff/difference.py
+index fbeb592..4d638b1 100644
+--- a/changedetectionio/processors/image_ssim_diff/difference.py
++++ b/changedetectionio/processors/image_ssim_diff/difference.py
+@@ -204,7 +204,7 @@ def _draw_bounding_box_if_configured(img_bytes, watch, datastore):
+         from changedetectionio import processors
+         processor_instance = processors.difference_detection_processor(datastore, watch.get('uuid'))
+         processor_name = watch.get('processor', 'default')
+-        config_filename = f'{processor_name}.json'
++        config_filename = processors.processor_config_filename(processor_name)
+         processor_config = processor_instance.get_extra_watch_config(config_filename)
+ 
+         if not processor_config:
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..817f704 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -32,7 +32,7 @@ try:
+ except ImportError:
+     HAS_ORJSON = False
+ 
+-from ..processors import get_custom_watch_obj_for_processor
++from ..processors import get_custom_watch_obj_for_processor, is_safe_processor_name
+ 
+ # Import the base class and helpers
+ from .file_saving_datastore import FileSavingDataStore, load_all_watches, load_all_tags, save_json_atomic
+@@ -326,6 +326,11 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+             watch_class = get_custom_watch_obj_for_processor(processor_override)
+             entity['processor'] = processor_override
+         else:
++            # Stored/restored data is untrusted: the processor name becomes part of on-disk
++            # filenames, so a crafted value (e.g. '../../x') must never make it into a Watch.
++            if entity.get('processor') and not is_safe_processor_name(entity.get('processor')):
++                logger.error(f"Watch {uuid} has unsafe processor name {entity.get('processor')!r}, falling back to 'text_json_diff'")
++                entity['processor'] = 'text_json_diff'
+             watch_class = get_custom_watch_obj_for_processor(entity.get('processor'))
+ 
+         if entity.get('processor') != 'text_json_diff':
+@@ -748,6 +753,14 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+                 logger.error(f"add_watch: URL '{url}' is not permitted or invalid, skipping.")
+             return None
+ 
++        # The processor name is used to build filenames inside the watch data directory
++        if apply_extras.get('processor') and not is_safe_processor_name(apply_extras.get('processor')):
++            from flask import has_request_context
++            if has_request_context():
++                flash(gettext('Invalid processor name'), 'error')
++            logger.error(f"add_watch: processor name {apply_extras.get('processor')!r} is not permitted, skipping.")
++            return None
++
+         # Check PAGE_WATCH_LIMIT if set
+         page_watch_limit = os.getenv('PAGE_WATCH_LIMIT')
+         if page_watch_limit:
+diff --git a/changedetectionio/tests/unit/test_processor_name_safety.py b/changedetectionio/tests/unit/test_processor_name_safety.py
+new file mode 100644
+index 0000000..decf5e4
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_name_safety.py
+@@ -0,0 +1,102 @@
++#!/usr/bin/env python3
++
++# run from dir above changedetectionio/ dir
++# python3 -m unittest changedetectionio.tests.unit.test_processor_name_safety
++
++"""
++The watch 'processor' name is embedded in filenames inside the watch data directory
++(history-<processor>.txt and <processor>.json). Values that arrive from a restored
++backup, a share link or any other untrusted source must never be able to traverse
++out of that directory.
++"""
++
++import os
++import shutil
++import tempfile
++import unittest
++
++from changedetectionio import processors
++from changedetectionio.model import Watch
++from changedetectionio.store import ChangeDetectionStore
++
++TRAVERSAL_NAMES = [
++    '../../../../tmp/pwned',
++    '..',
++    'foo/bar',
++    'foo\\bar',
++    '/etc/passwd',
++    'restock_diff/../../x',
++    '',
++]
++
++SAFE_NAMES = ['text_json_diff', 'restock_diff', 'image_ssim_diff', 'osint_recon', 'plugin-name', 'Abc123']
++
++
++class TestProcessorNameSafety(unittest.TestCase):
++
++    def setUp(self):
++        self.datastore_path = tempfile.mkdtemp()
++        self.mock_datastore = {'settings': {'application': {}}, 'watching': {}}
++
++    def tearDown(self):
++        shutil.rmtree(self.datastore_path, ignore_errors=True)
++
++    def test_is_safe_processor_name(self):
++        for name in SAFE_NAMES:
++            self.assertTrue(processors.is_safe_processor_name(name), name)
++        for name in TRAVERSAL_NAMES + [None, 123]:
++            self.assertFalse(processors.is_safe_processor_name(name), repr(name))
++
++    def test_processor_config_filename(self):
++        self.assertEqual(processors.processor_config_filename('image_ssim_diff'), 'image_ssim_diff.json')
++        for name in TRAVERSAL_NAMES:
++            with self.assertRaises(ValueError, msg=repr(name)):
++                processors.processor_config_filename(name)
++
++    def test_history_index_filename_stays_inside_data_dir(self):
++        for name in SAFE_NAMES:
++            watch = Watch.model(datastore_path=self.datastore_path, __datastore=self.mock_datastore,
++                                default={'processor': name, 'url': 'http://localhost'})
++            full = os.path.realpath(os.path.join(watch.data_dir, watch.history_index_filename))
++            self.assertEqual(os.path.dirname(full), os.path.realpath(watch.data_dir))
++
++        # The constructor already reads the history index, so an unsafe name is refused
++        # before any file path is ever built
++        for name in [n for n in TRAVERSAL_NAMES if n]:
++            with self.assertRaises(ValueError, msg=repr(name)):
++                Watch.model(datastore_path=self.datastore_path, __datastore=self.mock_datastore,
++                            default={'processor': name, 'url': 'http://localhost'})
++
++    def test_add_watch_rejects_unsafe_processor(self):
++        store = ChangeDetectionStore(datastore_path=self.datastore_path, include_default_watches=False)
++        try:
++            uuid = store.add_watch(url='http://localhost', extras={'processor': '../../../../tmp/pwned'})
++            self.assertIsNone(uuid)
++            self.assertEqual(len(store.data['watching']), 0)
++            # Nothing may have been written outside the datastore
++            self.assertFalse(os.path.exists('/tmp/tmp/pwned.txt'))
++
++            uuid = store.add_watch(url='http://localhost', extras={'processor': 'text_json_diff'})
++            self.assertIsNotNone(uuid)
++        finally:
++            store.stop_thread = True
++
++    def test_rehydrate_entity_falls_back_for_unsafe_processor(self):
++        # Mirrors what backup restore / loading from disk does with untrusted watch.json data
++        store = ChangeDetectionStore(datastore_path=self.datastore_path, include_default_watches=False)
++        try:
++            entity = {'url': 'http://localhost', 'processor': '../../../../tmp/pwned'}
++            watch = store.rehydrate_entity('11111111-1111-1111-1111-111111111111', entity)
++            self.assertEqual(watch.get('processor'), 'text_json_diff')
++            self.assertEqual(watch.history_index_filename, 'history.txt')
++
++            entity = {'url': 'http://localhost', 'processor': 'restock_diff'}
++            watch = store.rehydrate_entity('22222222-2222-2222-2222-222222222222', entity)
++            self.assertEqual(watch.get('processor'), 'restock_diff')
++            self.assertEqual(watch.history_index_filename, 'history-restock_diff.txt')
++        finally:
++            store.stop_thread = True
++
++
++if __name__ == '__main__':
++    unittest.main()

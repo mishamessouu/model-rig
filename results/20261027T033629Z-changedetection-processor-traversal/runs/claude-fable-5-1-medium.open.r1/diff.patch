@@ -1,0 +1,142 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..063eced 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -15,6 +15,21 @@ from loguru import logger
+ SCREENSHOT_FORMAT_JPEG = 'JPEG'
+ SCREENSHOT_FORMAT_PNG = 'PNG'
+ 
++def _is_safe_config_filename(filename):
++    """
++    Extra watch config files must live directly inside the watch data directory.
++    Reject anything that could escape it (path separators, '..', absolute paths).
++    """
++    import os
++    if not filename or not isinstance(filename, str):
++        return False
++    if filename in ('.', '..') or os.path.isabs(filename):
++        return False
++    if os.path.basename(filename) != filename or '/' in filename or '\\' in filename:
++        return False
++    return True
++
++
+ class difference_detection_processor():
+     browser_steps = None
+     datastore = None
+@@ -319,6 +334,10 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
++        if not _is_safe_config_filename(filename):
++            logger.warning(f"Refusing to read extra watch config with unsafe filename {filename!r}")
++            return {}
++
+         filepath = os.path.join(data_dir, filename)
+ 
+         if not os.path.isfile(filepath):
+@@ -350,6 +369,10 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        if not _is_safe_config_filename(filename):
++            logger.warning(f"Refusing to write extra watch config with unsafe filename {filename!r}")
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..ceea0b9 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -778,6 +778,19 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+         if apply_extras.get('tags'):
+             apply_extras['tags'] = list(set(apply_extras.get('tags')))
+ 
++        # The processor name is later used as a filename ('{processor}.json' in the watch data dir)
++        # and as a module lookup key, so only accept names of processors that actually exist.
++        if 'processor' in apply_extras:
++            from ..processors import find_processors
++            known_processors = [name for _, name in find_processors()]
++            if apply_extras.get('processor') not in known_processors:
++                from flask import has_request_context
++                msg = f"Unknown processor '{apply_extras.get('processor')}', refusing to add watch {url}"
++                if has_request_context():
++                    flash(gettext("Unknown processor '{}', watch not added.").format(apply_extras.get('processor')), 'error')
++                logger.error(msg)
++                return None
++
+         # If the processor also has its own Watch implementation
+         watch_class = get_custom_watch_obj_for_processor(apply_extras.get('processor'))
+         new_watch = watch_class(datastore_path=self.datastore_path, __datastore=self.__data, url=url)
+diff --git a/changedetectionio/tests/unit/test_processor_name_validation.py b/changedetectionio/tests/unit/test_processor_name_validation.py
+new file mode 100644
+index 0000000..deb23a7
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_name_validation.py
+@@ -0,0 +1,64 @@
++"""
++The watch 'processor' value is used as a filename ('{processor}.json' inside the watch
++data directory) and as a module lookup key. Make sure an attacker-controlled value such as
++'../../something' can never reach the filesystem, neither via add_watch nor via the
++extra-config read/write helpers directly.
++"""
++import json
++import os
++import tempfile
++
++from changedetectionio.processors.base import _is_safe_config_filename, difference_detection_processor
++
++
++def test_unsafe_config_filenames_are_rejected():
++    for bad in ['../x.json', '../../etc/passwd', '/etc/passwd', 'a/b.json', 'a\\b.json', '..', '.', '', None]:
++        assert not _is_safe_config_filename(bad), bad
++    for good in ['text_json_diff.json', 'restock_diff.json', 'my-plugin_1.json']:
++        assert _is_safe_config_filename(good), good
++
++
++def test_add_watch_rejects_unknown_processor_name():
++    from changedetectionio import store
++
++    with tempfile.TemporaryDirectory() as datastore_path:
++        datastore = store.ChangeDetectionStore(datastore_path=datastore_path, include_default_watches=False)
++        try:
++            # Path traversal style and simply unknown processor names must both be refused
++            for bad in ['../../evil', '../text_json_diff', 'does_not_exist']:
++                assert datastore.add_watch(url='https://example.com/x', extras={'processor': bad}) is None, bad
++            assert len(datastore.data['watching']) == 0
++
++            # A real processor is still accepted
++            uuid = datastore.add_watch(url='https://example.com/x', extras={'processor': 'text_json_diff'})
++            assert uuid
++            assert datastore.data['watching'][uuid]['processor'] == 'text_json_diff'
++        finally:
++            datastore.stop_thread = True
++
++
++def test_extra_watch_config_never_escapes_watch_data_dir():
++    from changedetectionio import store
++
++    with tempfile.TemporaryDirectory() as datastore_path:
++        datastore = store.ChangeDetectionStore(datastore_path=datastore_path, include_default_watches=False)
++        try:
++            uuid = datastore.add_watch(url='https://example.com/x')
++            watch = datastore.data['watching'][uuid]
++            processor = difference_detection_processor(datastore, uuid)
++
++            escaped = os.path.join(datastore_path, 'escaped.json')
++            processor.update_extra_watch_config('../escaped.json', {'a': 1})
++            assert not os.path.exists(escaped)
++
++            # A valid name still round-trips inside the watch dir
++            processor.update_extra_watch_config('text_json_diff.json', {'a': 1})
++            assert os.path.isfile(os.path.join(watch.data_dir, 'text_json_diff.json'))
++            assert processor.get_extra_watch_config('text_json_diff.json') == {'a': 1}
++
++            # Reading via a traversal name returns nothing, even if the target exists
++            with open(escaped, 'w') as f:
++                json.dump({'secret': True}, f)
++            assert processor.get_extra_watch_config('../escaped.json') == {}
++        finally:
++            datastore.stop_thread = True

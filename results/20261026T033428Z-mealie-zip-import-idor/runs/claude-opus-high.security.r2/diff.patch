@@ -1,0 +1,30 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..18a3902 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -261,6 +261,10 @@ class RecipeService(RecipeServiceBase):
+             return str(self.user.id)
+ 
+     def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
++        # never trust an id from the archive: it may belong to another group's organizer, which the
++        # relationship lookup would then fetch and move into this group
++        data.pop("id", None)
++
+         slug = data.get("slug")
+         if not slug:
+             return data
+@@ -387,11 +391,13 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
+-        # make sure categories and tags and food/unit are valid
++        # make sure categories, tags, tools and food/unit are valid
+         if key == "recipe_category":
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":

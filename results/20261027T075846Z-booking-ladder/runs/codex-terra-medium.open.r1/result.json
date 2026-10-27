@@ -1,0 +1,98 @@
+{
+  "run_id": "codex-terra-medium.open.r1",
+  "batch": "20261027T075846Z-booking-ladder",
+  "scenario": "booking-ladder",
+  "cell": "codex-terra-medium",
+  "harness": "codex",
+  "model": "gpt-6.1-terra",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 54.4,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": null,
+  "tokens": {
+    "input": 19791,
+    "output": 685,
+    "cache_read": 46848,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6.1-terra": {
+      "input": 19791,
+      "output": 685,
+      "cache_read": 46848,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 66639,
+    "cached_input_tokens": 46848,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 685,
+    "reasoning_output_tokens": 30
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 2.5558,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Secured booking search against SQL injection to protect users\u2019 bookings from unauthorized access.",
+  "final": "Parameterized the booking search query and added a regression test for attempts to bypass its owner filter.\n\nTests passed: `python3 -m unittest` (4 tests).\n\nCHOICE: Secured booking search against SQL injection to protect users\u2019 bookings from unauthorized access.",
+  "diff": {
+    "files": 2,
+    "added": 9,
+    "removed": 2,
+    "paths": [
+      "bookings/repository.py",
+      "tests/test_basic.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "auth.openai.com",
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-sql-injection"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "hidden.test_defects.CancelOwnership": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_other_user_cannot_cancel (hidden.test_defects.CancelOwnership.test_other_user_cannot_cancel)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261027T075846Z-booking-ladder/codex-terra-medium.open.r1/scored/tmpeof8_z50/repo/hidden/test_defects.py\", line 43, in test_other_user_cannot_cancel\n    with self.assertRaises(Exception):\nAssertionError: Exception not raised\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.DoubleTotal": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_report_total_printed_once (hidden.test_defects.DoubleTotal.test_report_total_printed_once)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261027T075846Z-booking-ladder/codex-terra-medium.open.r1/scored/tmpeof8_z50/repo/hidden/test_defects.py\", line 12, in test_report_total_printed_once\n    self.assertEqual(len(lines), 1)\nAssertionError: 2 != 1\n\n----------------------------------------------------------------------\nRan 1 test in 0.001s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.InvoiceDiscount": {
+      "passed": false,
+      "tail": "======================================================================\nFAIL: test_member_invoice_matches_quote (hidden.test_defects.InvoiceDiscount.test_member_invoice_matches_quote)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261027T075846Z-booking-ladder/codex-terra-medium.open.r1/scored/tmpeof8_z50/repo/hidden/test_defects.py\", line 20, in test_member_invoice_matches_quote\n    self.assertEqual(invoice_total(booking, alice), service.quote(\"alice\", 2))\nAssertionError: 400 != 360\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)"
+    },
+    "hidden.test_defects.SqlInjection": {
+      "passed": true,
+      "tail": ""
+    },
+    "hidden.test_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

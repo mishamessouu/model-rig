@@ -548,6 +548,18 @@ class ReportTest(unittest.TestCase):
         self.assertEqual(row["success"], 1)
         self.assertEqual(row["errors"], 1)
 
+    def test_refused_and_over_time_runs_are_failures_counted_apart(self):
+        # Decision 15. An old result has no "refused" key, so the error text decides.
+        flagged = "api_error: API Error: Opus 5's safeguards flagged this message"
+        late = result(timed_out=True, error="unreadable agent output: no result event")
+        late_broken = {**late, "regression_pass": False}
+        row = self.row([result(), result(error=flagged), {**result(error="x"), "refused": True},
+                        late, late_broken, result(fixed=(), timed_out=True)])
+        self.assertEqual(row["success"], 1)
+        self.assertEqual(row["errors"], 5)
+        self.assertEqual(row["refused"], 2)
+        self.assertEqual(row["over_time"], 1)
+
     def test_cost_comes_from_stored_tokens_and_todays_sheet(self):
         # The run stored no cost; the sheet prices its tokens now.
         row = self.row([result(), result()])
@@ -813,6 +825,8 @@ class ScoreboardTest(unittest.TestCase):
         first, second = text.split("Planted successes and confirmed finds")
         # The first table stays as it was: planted successes, no controls.
         self.assertIn("| app | 2/6 | 0/1 |", first)
+        self.assertIn("| Refused by a safety filter | 0 | 0 |", first)
+        self.assertIn("| Fixed, but over time | 0 | 0 |", first)
         self.assertNotIn("ctl", first)
         # c: 8 runs (6 planted, 2 control). 2 planted successes; a3 and k1
         # are confirmed finds. a2 counts as planted only, a4 broke the
@@ -846,6 +860,40 @@ class ScoreboardTest(unittest.TestCase):
                                           evidence="private report pending", **HELD)})
             with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()):
                 board.main([], root=root)
+
+
+    def test_paired_table_compares_cells_on_shared_scenarios(self):
+        def runs(scenario, cell, wins, n=3):
+            return [scored(f"{scenario}-{cell}{i}", scenario=scenario, cell=cell,
+                           fixed=("s1",) if i < wins else ()) for i in range(n)]
+        batches = {}
+        for k, scenario in enumerate(("s1", "s2", "s3")):
+            batches[f"2026102{k}T000000Z-{scenario}"] = (
+                runs(scenario, "c", 3) + runs(scenario, "d", 0) + runs(scenario, "e", 3)
+                + (runs(scenario, "f", 3) if scenario != "s3" else []))
+        board = load_scoreboard()
+        with tempfile.TemporaryDirectory() as folder:
+            root = fake_tree(folder, batches, {}, cells=("c", "d", "e", "f"))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                board.main([], root=root)
+        third = out.getvalue().split("Paired by scenario")[1]
+        self.assertIn("| c | d | 3 | 3, 0, 0 | +100% | +100% to +100% | c higher |", third)
+        self.assertIn("| c | e | 3 | 0, 3, 0 | +0% | +0% to +0% | not separable |", third)
+        self.assertIn("| d | e | 3 | 0, 0, 3 | -100% | -100% to -100% | e higher |", third)
+        # f shares only two scenarios with each cell, so it has no pair.
+        self.assertNotIn("| f |", third)
+
+    def test_paired_interval_holds_the_mean_and_repeats(self):
+        board = load_scoreboard()
+        a = {"s1": [1, 1, 0], "s2": [1, 0, 0], "s3": [1, 1, 1], "s4": [0, 0, 0]}
+        b = {"s1": [1, 0, 0], "s2": [1, 1, 0], "s3": [0, 0, 1], "s4": [0, 0, 0], "s5": [1]}
+        n, signs, mean, (low, high) = board.paired(a, b)
+        self.assertEqual((n, signs), (4, (2, 1, 1)))
+        self.assertAlmostEqual(mean, 1 / 6)
+        self.assertLess(low, mean)
+        self.assertGreater(high, mean)
+        self.assertEqual(board.paired(a, b), (n, signs, mean, (low, high)))
 
 
 class CutoffTest(unittest.TestCase):
@@ -921,6 +969,18 @@ class ClaudeParseTest(unittest.TestCase):
         parsed = parse_claude(log)
         self.assertEqual(parsed["error"], "api_error: Not logged in")
         self.assertEqual(parsed["by_model"], {})
+
+
+class ClaudeRefusalParseTest(unittest.TestCase):
+    def test_a_safety_refusal_is_recorded(self):
+        # The shape Claude Code 2.1.304 wrote in batch 20261026T004730Z.
+        log = json.dumps({"type": "result", "subtype": "success", "is_error": True,
+                          "stop_reason": "refusal", "terminal_reason": "api_error",
+                          "modelUsage": {}, "result": "API Error: safeguards flagged"})
+        self.assertTrue(parse_claude(log)["refused"])
+        clean = json.dumps({"type": "result", "subtype": "success", "is_error": False,
+                            "stop_reason": "end_turn", "modelUsage": {}, "result": "done"})
+        self.assertFalse(parse_claude(clean)["refused"])
 
 
 class ClaudeInvocationTest(unittest.TestCase):

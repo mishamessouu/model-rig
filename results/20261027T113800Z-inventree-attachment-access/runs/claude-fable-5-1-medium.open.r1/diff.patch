@@ -1,0 +1,104 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..3f3291c 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,46 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def filter_queryset(self, queryset):
++        """Only expose attachments for models which the user is allowed to view.
++
++        Attachments are linked to a target model (e.g. Part, PurchaseOrder) and
++        must not be visible to users who lack 'view' permission on that model.
++        """
++        from common.validators import attachment_model_class_from_label
++        from users.permissions import check_user_permission
++
++        queryset = super().filter_queryset(queryset)
++
++        user = getattr(self.request, 'user', None)
++
++        if user is None or not user.is_authenticated:  # pragma: no cover
++            return queryset.none()
++
++        if user.is_superuser:
++            return queryset
++
++        model_types = queryset.values_list('model_type', flat=True).distinct()
++
++        hidden_types = []
++
++        for model_type in model_types:
++            try:
++                model_class = attachment_model_class_from_label(model_type)
++            except ValidationError:
++                hidden_types.append(model_type)
++                continue
++
++            if not check_user_permission(
++                user, model_class, 'view'
++            ) or not model_class.check_related_permission('view', user):
++                hidden_types.append(model_type)
++
++        if hidden_types:
++            queryset = queryset.exclude(model_type__in=hidden_types)
++
++        return queryset
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/tests.py b/src/backend/InvenTree/common/tests.py
+index 49463df..75821e0 100644
+--- a/src/backend/InvenTree/common/tests.py
++++ b/src/backend/InvenTree/common/tests.py
+@@ -188,7 +188,9 @@ class AttachmentTest(InvenTreeAPITestCase):
+         self.assertEqual(attachment.comment, 'New comment')
+ 
+         # And check that we cannot edit the attachment without the correct permissions
++        # (the user retains 'view' access, so the attachment is still visible)
+         self.clearRoles()
++        self.assignRole('part.view')
+ 
+         self.patch(
+             reverse('api-attachment-detail', kwargs={'pk': pk}),
+@@ -209,6 +211,38 @@ class AttachmentTest(InvenTreeAPITestCase):
+         self.assignRole('part.delete')
+         self.delete(url, expected_code=204)
+ 
++    def test_view_permission(self):
++        """Attachments must only be visible to users who can view the target model."""
++        part = Part.objects.first()
++
++        attachment = Attachment.objects.create(
++            attachment=self.generate_file('visible.txt'),
++            comment='Attachment visibility test',
++            model_type='part',
++            model_id=part.pk,
++        )
++
++        list_url = reverse('api-attachment-list')
++        detail_url = reverse('api-attachment-detail', kwargs={'pk': attachment.pk})
++
++        self.user.is_staff = False
++        self.user.is_superuser = False
++        self.user.save()
++        self.clearRoles()
++
++        # Without 'part.view' the attachment must be hidden entirely
++        response = self.get(list_url, {'model_type': 'part'}, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++        self.get(detail_url, expected_code=404)
++
++        # With 'part.view' the attachment becomes visible
++        self.assignRole('part.view')
++
++        response = self.get(list_url, {'model_type': 'part'}, expected_code=200)
++        self.assertEqual(len(response.data), 1)
++        self.assertEqual(response.data[0]['pk'], attachment.pk)
++        self.get(detail_url, expected_code=200)
++
+     def test_fully_qualified_url(self):
+         """Test that the fully qualified URL is returned correctly."""
+         part = Part.objects.first()

@@ -1,0 +1,98 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..59c7894 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,21 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    @staticmethod
++    def _extra_config_path(data_dir, filename):
++        """
++        Resolve filename inside data_dir, or return None if it would escape it.
++
++        The filename is built from the watch's 'processor' value, which can come from
++        unvalidated input (URL list import, restored backups), so never trust it as a path.
++        """
++        base = os.path.realpath(data_dir)
++        filepath = os.path.realpath(os.path.join(base, filename))
++        if os.path.dirname(filepath) != base:
++            logger.warning(f"Refusing extra watch config path outside watch data directory: {filename!r}")
++            return None
++        return filepath
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,9 +334,9 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = self._extra_config_path(data_dir, filename)
+ 
+-        if not os.path.isfile(filepath):
++        if not filepath or not os.path.isfile(filepath):
+             return {}
+ 
+         try:
+@@ -350,11 +365,13 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = self._extra_config_path(data_dir, filename)
++        if not filepath:
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_extra_watch_config_path.py b/changedetectionio/tests/unit/test_extra_watch_config_path.py
+new file mode 100644
+index 0000000..d6a82f3
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_extra_watch_config_path.py
+@@ -0,0 +1,38 @@
++#!/usr/bin/env python3
++import os
++import tempfile
++import unittest
++from types import SimpleNamespace
++
++from changedetectionio.processors.base import difference_detection_processor
++
++
++def _processor(data_dir):
++    watch = SimpleNamespace(data_dir=data_dir, ensure_data_dir_exists=lambda: os.makedirs(data_dir, exist_ok=True))
++    p = difference_detection_processor.__new__(difference_detection_processor)
++    p.watch_uuid = 'u'
++    p.datastore = SimpleNamespace(data={'watching': {'u': watch}})
++    return p
++
++
++class TestExtraWatchConfigPath(unittest.TestCase):
++    def test_traversal_filename_is_not_written_or_read(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            data_dir = os.path.join(tmp, 'watch')
++            p = _processor(data_dir)
++            p.update_extra_watch_config('../../escaped.json', {'a': 1})
++            self.assertFalse(os.path.exists(os.path.join(tmp, 'escaped.json')))
++            with open(os.path.join(tmp, 'secret.json'), 'w') as f:
++                f.write('{"a": 1}')
++            os.makedirs(data_dir, exist_ok=True)
++            self.assertEqual(p.get_extra_watch_config('../secret.json'), {})
++
++    def test_normal_filename_round_trips(self):
++        with tempfile.TemporaryDirectory() as tmp:
++            p = _processor(os.path.join(tmp, 'watch'))
++            p.update_extra_watch_config('restock_diff.json', {'a': 1})
++            self.assertEqual(p.get_extra_watch_config('restock_diff.json'), {'a': 1})
++
++
++if __name__ == '__main__':
++    unittest.main()

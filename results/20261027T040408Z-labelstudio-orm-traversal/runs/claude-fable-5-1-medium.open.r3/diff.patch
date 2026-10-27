@@ -1,0 +1,22 @@
+diff --git a/label_studio/tests/data_manager/test_zz_probe.py b/label_studio/tests/data_manager/test_zz_probe.py
+new file mode 100644
+index 0000000..275ba91
+--- /dev/null
++++ b/label_studio/tests/data_manager/test_zz_probe.py
+@@ -0,0 +1,16 @@
++import json
++import pytest
++from ..utils import make_task, project_id  # noqa
++from projects.models import Project
++
++@pytest.mark.django_db
++def test_probe(business_client, project_id):
++    project = Project.objects.get(pk=project_id)
++    make_task({'data': {'text': 'a'}}, project)
++    token = project.organization.token
++    for f in ['filter:tasks:project__organization__token', 'filter:tasks:-project__organization__token']:
++        for op, val in [('contains', token[:3]), ('contains', 'zzzzzzzz'), ('regex', '^' + token[:2])]:
++            query = {'filters': {'conjunction': 'and', 'items': [{'filter': f, 'operator': op, 'type': 'String', 'value': val}]}}
++            r = business_client.get(f'/api/tasks?project={project_id}&query={json.dumps(query)}')
++            print(f, op, val, r.status_code, r.json().get('total') if r.status_code == 200 else r.content[:200])
++    assert False

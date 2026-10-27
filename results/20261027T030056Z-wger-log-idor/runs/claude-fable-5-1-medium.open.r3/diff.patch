@@ -1,0 +1,79 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..fb66d6e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,12 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++            (WorkoutLog, 'next_log'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..579a768 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,6 +16,9 @@
+ import datetime
+ import logging
+ 
++# Third Party
++from rest_framework import status
++
+ # wger
+ from wger.core.tests import api_base_test
+ from wger.manager.models import WorkoutLog
+@@ -41,3 +44,46 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_post_foreign_slot_entry_fails(self):
++        """
++        A user must not be able to attach a log to a slot entry of a routine
++        that belongs to somebody else, even when the routine itself is their own
++        """
++        self.authenticate(self.user_access)
++        data = {**self.data, 'slot_entry': 1}
++        response = self.client.post(self.url, data)
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertFalse(WorkoutLog.objects.filter(slot_entry_id=1, user__username='test').exists())
++
++    def test_patch_foreign_slot_entry_fails(self):
++        """
++        Updating an own log to point to a foreign slot entry is not allowed either
++        """
++        self.authenticate(self.user_access)
++        response = self.client.patch(self.url_detail, {'slot_entry': 1})
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertIsNone(WorkoutLog.objects.get(pk=self.pk).slot_entry_id)
++
++    def test_post_foreign_next_log_fails(self):
++        """
++        A user must not be able to chain their log to another user's log
++        """
++        self.authenticate(self.user_access)
++        data = {**self.data, 'next_log': 1}
++        response = self.client.post(self.url, data)
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertFalse(WorkoutLog.objects.filter(next_log_id=1, user__username='test').exists())
++
++    def test_post_own_slot_entry_and_next_log_succeeds(self):
++        """
++        Referencing the user's own slot entry and log works as before
++        """
++        self.authenticate(self.user_fail)
++        data = {**self.data, 'routine': 1, 'slot_entry': 1, 'next_log': 1}
++        response = self.client.post(self.url, data)
++        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
++        log = WorkoutLog.objects.get(pk=response.data['id'])
++        self.assertEqual(log.slot_entry_id, 1)
++        self.assertEqual(log.next_log_id, 1)
++        self.assertEqual(log.user.username, 'admin')

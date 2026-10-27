@@ -1,0 +1,47 @@
+diff --git a/changedetectionio/processors/__init__.py b/changedetectionio/processors/__init__.py
+index 7baf870..f890581 100644
+--- a/changedetectionio/processors/__init__.py
++++ b/changedetectionio/processors/__init__.py
+@@ -455,6 +455,12 @@ def save_processor_config(datastore, watch_uuid, config_data):
+             return False
+ 
+         processor_name = watch.get('processor', 'text_json_diff')
++        # Processor names can come from imported or API-supplied watch data.
++        # Keep the resulting config filename inside the watch directory.
++        if (not isinstance(processor_name, str) or not processor_name or
++                any(c in processor_name for c in ('/', '\\', '\0'))):
++            logger.error(f"Cannot save processor config: invalid processor name {processor_name!r}")
++            return False
+ 
+         # Create a processor instance to access config methods
+         processor_instance = difference_detection_processor(datastore, watch_uuid)
+diff --git a/changedetectionio/tests/unit/test_processor_config_filename.py b/changedetectionio/tests/unit/test_processor_config_filename.py
+new file mode 100644
+index 0000000..2d73a95
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_filename.py
+@@ -0,0 +1,24 @@
++from types import SimpleNamespace
++
++import pytest
++
++from changedetectionio import processors
++from changedetectionio.processors import base
++
++
++@pytest.mark.parametrize('name', ['../../outside', '/tmp/outside', r'..\outside', '', None])
++def test_processor_config_rejects_unsafe_names(monkeypatch, name):
++    datastore = SimpleNamespace(data={'watching': {'watch': {'processor': name}}})
++    monkeypatch.setattr(base, 'difference_detection_processor', lambda *args: pytest.fail('unexpected write'))
++
++    assert processors.save_processor_config(datastore, 'watch', {'enabled': True}) is False
++
++
++def test_processor_config_accepts_plugin_name(monkeypatch):
++    datastore = SimpleNamespace(data={'watching': {'watch': {'processor': 'my-plugin'}}})
++    writes = []
++    instance = SimpleNamespace(update_extra_watch_config=lambda filename, data: writes.append((filename, data)))
++    monkeypatch.setattr(base, 'difference_detection_processor', lambda *args: instance)
++
++    assert processors.save_processor_config(datastore, 'watch', {'enabled': True}) is True
++    assert writes == [('my-plugin.json', {'enabled': True})]

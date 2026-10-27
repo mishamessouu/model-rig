@@ -1,0 +1,58 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..672a535 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5200,9 +5200,9 @@ class GraphQLAuthorizationMiddleware:
+ 
+     def _filter_model_versions_result(self, result, username: str):
+         """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
++        can_read = _rm_or_prompt_read_predicate(username)
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            filtered = [mv for mv in result.model_versions if can_read(mv)]
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result
+diff --git a/tests/server/auth/test_auth_workspace.py b/tests/server/auth/test_auth_workspace.py
+index c24ffce..af5c70a 100644
+--- a/tests/server/auth/test_auth_workspace.py
++++ b/tests/server/auth/test_auth_workspace.py
+@@ -2300,6 +2300,37 @@ def test_cross_workspace_graphql_access_denied(workspace_permission_setup, monke
+     assert not auth_module._graphql_can_read_model("model-other-ws", username)
+ 
+ 
++def test_graphql_search_model_versions_filters_prompts_by_prompt_grants(monkeypatch):
++    grants = {"registered_model": {"model-ok"}, "prompt": {"prompt-ok"}}
++    monkeypatch.setattr(
++        auth_module,
++        "_role_based_read_predicate",
++        lambda username, resource_type: lambda name: name in grants[resource_type],
++    )
++
++    def _version(name, is_prompt):
++        tags = [SimpleNamespace(key=IS_PROMPT_TAG_KEY, value="true")] if is_prompt else []
++        return SimpleNamespace(name=name, tags=tags)
++
++    result = SimpleNamespace(
++        model_versions=[
++            _version("model-ok", is_prompt=False),
++            _version("model-denied", is_prompt=False),
++            _version("prompt-ok", is_prompt=True),
++            # Readable as a registered model, but not as a prompt
++            _version("model-ok", is_prompt=True),
++        ]
++    )
++
++    middleware = auth_module.GraphQLAuthorizationMiddleware()
++    filtered = middleware._filter_model_versions_result(result, "alice")
++
++    assert [(mv.name, bool(mv.tags)) for mv in filtered.model_versions] == [
++        ("model-ok", False),
++        ("prompt-ok", True),
++    ]
++
++
+ # =============================================================================
+ # Role-based permission coverage for gateway resources
+ # =============================================================================

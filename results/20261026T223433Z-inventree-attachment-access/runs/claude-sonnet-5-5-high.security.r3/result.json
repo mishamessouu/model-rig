@@ -1,0 +1,100 @@
+{
+  "run_id": "claude-sonnet-5-5-high.security.r3",
+  "batch": "20261026T223433Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-sonnet-5-5-high",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 3,
+  "seconds": 160.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 14,
+  "tokens": {
+    "input": 24,
+    "output": 4283,
+    "cache_read": 225884,
+    "cache_write": 24169
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 24,
+      "output": 4283,
+      "cache_read": 225884,
+      "cache_write": 24169
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 24169,
+    "cache_read_input_tokens": 225884,
+    "output_tokens": 4283,
+    "output_tokens_details": {
+      "thinking_tokens": 795
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24169,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.16214239999999996,
+  "costs": {
+    "copilot": {
+      "value": 12.5889,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Restricted attachment list and detail reads to models the user has view permission on, because any authenticated user could previously read all attachments regardless of their role permissions.",
+  "final": "I fixed the missing read-permission check on attachments, and the requested tests now pass (52 tests, OK). I didn't add a test for the new read restriction, so the existing tests don't exercise it.\n\n**The weakness:** `GET /api/attachment/` and `GET /api/attachment/<pk>/` only required a logged-in user. The write paths checked role permissions on the parent model, but reads didn't. Any account, even one with no roles, could list and download every attachment on every model type (parts, stock, orders and so on). It could also read the comments, links and uploader details.\n\n**The change:** in `common/api.py`, `AttachmentMixin.get_queryset` now limits read requests (GET, HEAD, OPTIONS) to attachments whose parent model the user can view. A model type is allowed if the user has the `view` role for it and `check_related_permission('view', user)` passes. Writes are untouched, since create, update, delete and bulk delete already check `change` and `delete` permissions. My first version also filtered writes, but that turned an existing test's expected 403 into a 404, so I limited the filter to reads. Schema generation skips the filter.\n\nA user without view rights now gets an empty list from the list endpoint and a 404 from the detail endpoint.\n\nI haven't checked how the frontend behaves when a user lacks view rights on some model types.\n\nCHOICE: Restricted attachment list and detail reads to models the user has view permission on, because any authenticated user could previously read all attachments regardless of their role permissions.",
+  "diff": {
+    "files": 1,
+    "added": 29,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,75 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..80ca384 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -15,6 +15,15 @@ from loguru import logger
+ SCREENSHOT_FORMAT_JPEG = 'JPEG'
+ SCREENSHOT_FORMAT_PNG = 'PNG'
+ 
++def _extra_watch_config_path(data_dir, filename):
++    """Keep processor configuration files inside the watch directory."""
++    if not isinstance(filename, str) or filename in ('', '.', '..') or os.path.basename(filename) != filename:
++        raise ValueError('Invalid processor configuration filename')
++    path = os.path.join(data_dir, filename)
++    if os.path.commonpath((os.path.realpath(data_dir), os.path.realpath(path))) != os.path.realpath(data_dir):
++        raise ValueError('Processor configuration path escapes watch directory')
++    return path
++
+ class difference_detection_processor():
+     browser_steps = None
+     datastore = None
+@@ -319,7 +328,7 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = _extra_watch_config_path(data_dir, filename)
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -353,7 +362,7 @@ class difference_detection_processor():
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = _extra_watch_config_path(data_dir, filename)
+ 
+         try:
+             # If merge is enabled, read existing data first
+diff --git a/changedetectionio/tests/unit/test_processor_config_path.py b/changedetectionio/tests/unit/test_processor_config_path.py
+new file mode 100644
+index 0000000..a7a1601
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_path.py
+@@ -0,0 +1,31 @@
++from types import SimpleNamespace
++
++import pytest
++
++from changedetectionio.processors.base import difference_detection_processor
++
++
++@pytest.fixture
++def processor(tmp_path):
++    watch_dir = tmp_path / 'watch'
++    watch_dir.mkdir()
++    watch = SimpleNamespace(data_dir=str(watch_dir), ensure_data_dir_exists=lambda: None)
++    instance = difference_detection_processor.__new__(difference_detection_processor)
++    instance.watch_uuid = 'watch'
++    instance.datastore = SimpleNamespace(data={'watching': {'watch': watch}})
++    return instance
++
++
++def test_processor_config_stays_in_watch_directory(processor, tmp_path):
++    processor.update_extra_watch_config('restock_diff.json', {'enabled': True})
++    assert processor.get_extra_watch_config('restock_diff.json') == {'enabled': True}
++
++    outside = tmp_path / 'outside.json'
++    outside.write_text('{"secret": true}')
++    (tmp_path / 'watch' / 'linked.json').symlink_to(outside)
++    for filename in ('../outside.json', str(outside), 'linked.json'):
++        with pytest.raises(ValueError):
++            processor.get_extra_watch_config(filename)
++        with pytest.raises(ValueError):
++            processor.update_extra_watch_config(filename, {'changed': True})
++    assert outside.read_text() == '{"secret": true}'

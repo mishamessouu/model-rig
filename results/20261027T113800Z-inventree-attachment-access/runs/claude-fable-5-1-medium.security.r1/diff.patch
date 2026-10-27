@@ -1,0 +1,105 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..81e074a 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -41,6 +41,7 @@ from taggit.models import Tag
+ import common.filters
+ import common.models
+ import common.serializers
++import common.validators
+ import InvenTree.conversion
+ import InvenTree.models
+ import InvenTree.ready
+@@ -796,6 +797,37 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def filter_queryset(self, queryset):
++        """Only expose attachments for models the user is allowed to view.
++
++        Attachment permissions are derived from the model to which they are attached,
++        so for read requests restrict the queryset to those model types
++        for which the user has 'view' permission.
++
++        Write requests are not filtered here, as they perform explicit
++        permission checks (and return a descriptive 403 response).
++        """
++        from users.permissions import check_user_permission
++
++        queryset = super().filter_queryset(queryset)
++
++        if self.request.method not in SAFE_METHODS:
++            return queryset
++
++        user = getattr(self.request, 'user', None)
++
++        if user is None or not user.is_authenticated:
++            return queryset.none()
++
++        allowed_model_types = [
++            model_class.__name__.lower()
++            for model_class in common.validators.attachment_model_types()
++            if check_user_permission(user, model_class, 'view')
++            and model_class.check_related_permission('view', user)
++        ]
++
++        return queryset.filter(model_type__in=allowed_model_types)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..12c54d8 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -956,6 +956,41 @@ class ParameterAPITests(InvenTreeAPITestCase):
+ class AttachmentAPITests(InvenTreeAPITestCase):
+     """Tests for the Attachment API."""
+ 
++    def test_attachment_view_permissions(self):
++        """Attachments are only visible to users with 'view' permission on the target model."""
++        from common.models import Attachment
++        from part.models import Part
++
++        part = Part.objects.create(name='Hidden Part', description='Secret attachments')
++
++        attachment = Attachment.objects.create(
++            link='https://example.com/secret', model_type='part', model_id=part.pk
++        )
++
++        list_url = reverse('api-attachment-list')
++        detail_url = reverse('api-attachment-detail', kwargs={'pk': attachment.pk})
++
++        # User has no roles - attachment should be hidden
++        self.clearRoles()
++
++        response = self.get(list_url, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++        self.get(detail_url, expected_code=404)
++
++        # Granting an unrelated role does not expose the attachment
++        self.assignRole('stock.view')
++
++        response = self.get(list_url, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++
++        # Granting 'view' permission on the target model exposes the attachment
++        self.assignRole('part.view')
++
++        response = self.get(list_url, expected_code=200)
++        self.assertEqual(len(response.data), 1)
++        self.assertEqual(response.data[0]['pk'], attachment.pk)
++        self.get(detail_url, expected_code=200)
++
+     def test_attachments(self):
+         """Test API functionality for attachments."""
+         from common.models import Attachment

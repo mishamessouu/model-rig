@@ -1,0 +1,52 @@
+diff --git a/changedetectionio/blueprint/imports/__init__.py b/changedetectionio/blueprint/imports/__init__.py
+index b088ab6..3182c17 100644
+--- a/changedetectionio/blueprint/imports/__init__.py
++++ b/changedetectionio/blueprint/imports/__init__.py
+@@ -1,4 +1,5 @@
+ from flask import Blueprint, request, redirect, url_for, flash, render_template
++from flask_babel import gettext
+ from loguru import logger
+ 
+ from changedetectionio.store import ChangeDetectionStore
+@@ -27,8 +28,14 @@ def construct_blueprint(datastore: ChangeDetectionStore, update_q, queuedWatchMe
+             if request.values.get('urls') and len(request.values.get('urls').strip()):
+                 # Import and push into the queue for immediate update check
+                 from changedetectionio import processors
++                # The processor name ends up in on-disk filenames (history-<processor>.txt, <processor>.json),
++                # so only ever accept a known processor, never raw user input
++                processor = request.values.get('processor', processors.get_default_processor())
++                if processor not in [p[0] for p in processors.available_processors()]:
++                    flash(gettext("Invalid processor '{}'").format(processor), 'error')
++                    return redirect(url_for('imports.import_page'))
+                 importer_handler = import_url_list()
+-                importer_handler.run(data=request.values.get('urls'), flash=flash, datastore=datastore, processor=request.values.get('processor', processors.get_default_processor()))
++                importer_handler.run(data=request.values.get('urls'), flash=flash, datastore=datastore, processor=processor)
+                 logger.debug(f"Imported {len(importer_handler.new_uuids)} new UUIDs")
+                 # Dont' add to queue because scheduler can see that they haven't been checked and will add them to the queue
+ #                for uuid in importer_handler.new_uuids:
+diff --git a/changedetectionio/tests/test_import.py b/changedetectionio/tests/test_import.py
+index c033ffd..9f7eb67 100644
+--- a/changedetectionio/tests/test_import.py
++++ b/changedetectionio/tests/test_import.py
+@@ -34,6 +34,21 @@ https://example.com tag1, other tag"""
+     res = client.get( url_for("watchlist.index"))
+     res = client.get( url_for("watchlist.index"))
+ 
++def test_import_rejects_unknown_processor(client, live_server, measure_memory_usage, datastore_path):
++    # The processor name is used in on-disk filenames, so arbitrary values must never be stored
++    res = client.post(
++        url_for("imports.import_page"),
++        data={
++            "distill-io": "",
++            "processor": "../../../../tmp/evil",
++            "urls": "https://example.com"
++        },
++        follow_redirects=True,
++    )
++    assert b"Invalid processor" in res.data
++    assert b"Imported" not in res.data
++    assert not live_server.app.config['DATASTORE'].data['watching']
++
+ def xtest_import_skip_url(client, live_server, measure_memory_usage, datastore_path):
+ 
+ 

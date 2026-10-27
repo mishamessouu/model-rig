@@ -1,0 +1,100 @@
+{
+  "run_id": "claude-fable-5-1-medium.security.r2",
+  "batch": "20261027T113800Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-fable-5-1-medium",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "medium",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 255.0,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 17,
+  "tokens": {
+    "input": 514,
+    "output": 9931,
+    "cache_read": 441515,
+    "cache_write": 34343
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 514,
+      "output": 9931,
+      "cache_read": 441515,
+      "cache_write": 34343
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 514,
+    "cache_creation_input_tokens": 34343,
+    "cache_read_input_tokens": 441515,
+    "output_tokens": 9931,
+    "output_tokens_details": {
+      "thinking_tokens": 4183
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 34343,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.2989287499999997,
+  "costs": {
+    "copilot": {
+      "value": 104.1356,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added view-permission enforcement to the attachment list and detail read endpoints in common/api.py, because any authenticated user could previously enumerate and read every attachment across all models without holding view rights on them.",
+  "final": "**Finding:** The attachment API enforced permissions on create, update, and delete, but not on reads. Any authenticated user, or any API token with read scope, could list every attachment in the system via the attachment list endpoint, or fetch any single attachment by primary key. That exposed file URLs, filenames, comments, and the linked model and ID for parts, purchase orders, sales orders, companies, and every other model that supports attachments, regardless of whether the user had view permission on those models. Under the threat model this is an authorization bypass across role boundaries, which is the most serious class of issue here because attachments routinely hold quotes, invoices, and supplier documents.\n\n**Fix** in `src/backend/InvenTree/common/api.py`:\n\n- The list view now overrides `filter_queryset` to restrict results to model types the user holds view permission for. It uses the same two checks the serializer already applies on write, the role-based check and the model's related-permission hook.\n- The detail view now overrides `retrieve` and returns 403 when the user lacks view permission on the linked model. This mirrors the existing update and destroy handling and keeps the existing 403 expectations for edit and delete intact.\n\n**Verification:** The requested suites pass.\n\n```\nRan 52 tests in 4.681s\nOK\n```\n\nI also ran a throwaway test confirming a user without part view permission gets an empty list and a 403 on detail, and gets both back after the role is assigned. That file was removed, so the only change is the one file above. The change is uncommitted.\n\nCHOICE: Added view-permission enforcement to the attachment list and detail read endpoints in common/api.py, because any authenticated user could previously enumerate and read every attachment across all models without holding view rights on them.",
+  "diff": {
+    "files": 1,
+    "added": 33,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

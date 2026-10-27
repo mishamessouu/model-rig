@@ -1,0 +1,111 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/models/log.py b/wger/manager/models/log.py
+index bd0c94f..b6edfda 100644
+--- a/wger/manager/models/log.py
++++ b/wger/manager/models/log.py
+@@ -252,6 +252,12 @@ class WorkoutLog(models.Model):
+         if self.routine and self.routine.user != self.user:
+             return
+ 
++        # If the slot entry does not belong to this user, do not save. The
++        # routine's progression logic reads all logs linked to its slot entries,
++        # so a foreign log could manipulate another user's routine.
++        if self.slot_entry and self.slot_entry.get_owner_object().user != self.user:
++            return
++
+         # If there is no session for this date and routine, create one
+         self.session = WorkoutSession.objects.get_or_create(
+             user=self.user,
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..a94dcce 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,8 +16,12 @@
+ import datetime
+ import logging
+ 
++# Django
++from django.urls import reverse
++
+ # wger
+ from wger.core.tests import api_base_test
++from wger.core.tests.base_testcase import WgerTestCase
+ from wger.manager.models import WorkoutLog
+ 
+ 
+@@ -41,3 +45,63 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++
++class WorkoutLogSlotEntryOwnershipTestCase(WgerTestCase):
++    """
++    A workout log must not be attached to a slot entry belonging to another
++    user's routine. The routine's progression logic reads every log linked to
++    its slot entries, so a foreign log would alter the owner's calculated
++    weights, repetitions and iteration requirements.
++    """
++
++    # Slot entry 1 belongs to routine 1, owned by user "admin" (pk 1)
++    FOREIGN_SLOT_ENTRY_PK = 1
++
++    def setUp(self):
++        super().setUp()
++        self.url = reverse('workoutlog-list')
++        self.data = {
++            'exercise': 1,
++            'routine': 3,
++            'slot_entry': self.FOREIGN_SLOT_ENTRY_PK,
++            'repetitions': 3,
++            'repetitions_unit': 1,
++            'weight_unit': 2,
++            'weight': 2,
++            'date': datetime.date.today(),
++        }
++
++    def test_cannot_create_log_for_foreign_slot_entry(self):
++        self.user_login('test')
++        count_before = WorkoutLog.objects.filter(slot_entry_id=self.FOREIGN_SLOT_ENTRY_PK).count()
++
++        response = self.client.post(self.url, self.data)
++
++        self.assertEqual(response.status_code, 403)
++        self.assertEqual(
++            WorkoutLog.objects.filter(slot_entry_id=self.FOREIGN_SLOT_ENTRY_PK).count(),
++            count_before,
++        )
++
++    def test_cannot_move_log_to_foreign_slot_entry(self):
++        self.user_login('test')
++        log = WorkoutLog.objects.filter(user__username='test').first()
++        self.assertIsNotNone(log)
++
++        response = self.client.patch(
++            reverse('workoutlog-detail', kwargs={'pk': log.pk}),
++            {'slot_entry': self.FOREIGN_SLOT_ENTRY_PK},
++            content_type='application/json',
++        )
++
++        self.assertEqual(response.status_code, 403)
++        log.refresh_from_db()
++        self.assertNotEqual(log.slot_entry_id, self.FOREIGN_SLOT_ENTRY_PK)
++
++    def test_owner_can_create_log_for_own_slot_entry(self):
++        self.user_login('admin')
++        self.data['routine'] = 1
++        response = self.client.post(self.url, self.data)
++        self.assertEqual(response.status_code, 201)
++        self.assertEqual(response.data['slot_entry'], self.FOREIGN_SLOT_ENTRY_PK)

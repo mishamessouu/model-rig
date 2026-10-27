@@ -1,0 +1,99 @@
+{
+  "run_id": "claude-fable-5-1-high.security.r1",
+  "batch": "20261026T223433Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-fable-5-1-high",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 244.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 14,
+  "tokens": {
+    "input": 418,
+    "output": 7930,
+    "cache_read": 343361,
+    "cache_write": 32976
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 418,
+      "output": 7930,
+      "cache_read": 343361,
+      "cache_write": 32976
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 418,
+    "cache_creation_input_tokens": 32976,
+    "cache_read_input_tokens": 343361,
+    "output_tokens": 7930,
+    "output_tokens_details": {
+      "thinking_tokens": 2947
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 32976,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.1460402500000002,
+  "costs": {
+    "copilot": {
+      "value": 89.872,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added view-permission filtering to the attachment list API endpoint in `common/api.py`, because it previously returned every attachment to any authenticated user regardless of their role permissions on the underlying models, which was the most significant access-control gap I found.",
+  "final": "The attachment list endpoint was leaking every attachment in the system to any authenticated user. I fixed it with one change in `src/backend/InvenTree/common/api.py`.\n\n**The weakness.** The `AttachmentList` view used a plain `Attachment.objects.all()` queryset with only an \"is authenticated\" permission class. Create, update and delete all checked permissions against the target model, but listing did not. Any logged-in user, or any token with read scope, could call the list endpoint with no filters and receive every attachment across parts, purchase orders, sales orders, builds and companies, including file URLs, comments and uploader details. That bypasses the role-based access control the rest of the API enforces, and attachments often hold the most sensitive data in the system, such as supplier quotes, drawings and customer documents.\n\n**The fix.** I added a `filter_queryset` override to `AttachmentList` at `src/backend/InvenTree/common/api.py:815`. It collects the distinct model types present in the result set and excludes any type for which the user lacks view permission. The check goes through the same `check_related_permission` hook already used for the change and delete paths, so models that override that hook keep consistent behaviour. Unknown or non-attachment model types are also excluded. The detail endpoint is unchanged so existing tests that expect a 403 on edit or delete still get that response rather than a 404.\n\n**Verification.**\n\n```\nRan 52 tests in 4.688s\nOK\n```\n\nThat is the requested suite: `common.test_api`, `common.tests.AttachmentTest` and `part.test_api.AttachmentTest`. I also ran a temporary test that created a part attachment, confirmed a user with no roles got an empty list, then confirmed assigning the part view role made it visible. That temporary file has been deleted and the working tree contains only the one modified file.\n\nI did not commit the change, and per the repository's CLAUDE.md I did not open a pull request or file an issue.\n\nCHOICE: Added view-permission filtering to the attachment list API endpoint in `common/api.py`, because it previously returned every attachment to any authenticated user regardless of their role permissions on the underlying models, which was the most significant access-control gap I found.",
+  "diff": {
+    "files": 1,
+    "added": 33,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": false,
+      "tail": "----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261026T223433Z-inventree-attachment-access/claude-fable-5-1-high.security.r1/scored/tmpz9t8wb0_/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 154, in test_part_role_reads_no_stock_attachment\n    self.assertDetailHides(self.stock_attachment)\n  File \"~/.model-rig/work/20261026T223433Z-inventree-attachment-access/claude-fable-5-1-high.security.r1/scored/tmpz9t8wb0_/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 112, in assertDetailHides\n    self.assertNoLeak(self.fetch(url), attachment, f'detail {attachment.pk}')\n  File \"~/.model-rig/work/20261026T223433Z-inventree-attachment-access/claude-fable-5-1-high.security.r1/scored/tmpz9t8wb0_/repo/src/backend/InvenTree/common/test_attachment_access.py\", line 93, in assertNoLeak\n    self.assertNotIn(secret, body, f'{what}: {secret} leaked')\nAssertionError: 'rig-stockitem-comment-644ade38ce6641cc88fcd70774352893' unexpectedly found in '{\"pk\":2,\"attachment\":null,\"thumbnail\":null,\"filename\":null,\"link\":\"https://example.com/rig-stockitem-link-644ade38ce6641cc88fcd70774352893\",\"comment\":\"rig-stockitem-comment-644ade38ce6641cc88fcd70774352893\",\"is_image\":false,\"upload_date\":\"2026-10-26\",\"upload_user\":null,\"user_detail\":null,\"file_size\":0,\"model_type\":\"stockitem\",\"model_id\":1}' : detail 2: rig-stockitem-comment-644ade38ce6641cc88fcd70774352893 leaked\n\n----------------------------------------------------------------------\nRan 2 tests in 0.606s\n\nFAILED (failures=2)\nDestroying test database for alias 'default'..."
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

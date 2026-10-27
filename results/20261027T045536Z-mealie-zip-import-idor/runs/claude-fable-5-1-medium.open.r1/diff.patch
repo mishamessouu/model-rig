@@ -1,0 +1,103 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..3eac4db 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -31,6 +32,7 @@ from mealie.schema.recipe.recipe_ingredient import (
+ )
+ from mealie.schema.recipe.recipe_settings import RecipeSettings
+ from mealie.schema.recipe.recipe_step import RecipeStep
++from mealie.schema.recipe.recipe_tool import RecipeToolSave
+ from mealie.schema.recipe.recipe_timeline_events import RecipeTimelineEventCreate, TimelineEventType
+ from mealie.schema.recipe.request_helpers import RecipeDuplicate
+ from mealie.schema.user.user import PrivateUser, UserRatingCreate
+@@ -274,6 +276,29 @@ class RecipeService(RecipeServiceBase):
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
++    def _transform_tool(self, data: dict[str, Any] | Any) -> dict[str, Any] | None:
++        """Resolve a tool from the export to a tool in this group, creating it if necessary.
++
++        The exported id must never be used to look the tool up: tools are only unique per group, and
++        the model auto-init resolves relationships by primary key across every group, so an id that
++        happens to belong to another group's tool would link to -- and overwrite -- that tool.
++        """
++        if not isinstance(data, dict):
++            return None
++
++        name = self._non_empty_str(data.get("name"))
++        if not name:
++            return None
++
++        slug = self._non_empty_str(data.get("slug")) or slugify(name)
++        existing_tool = self.repos.tools.get_one(slug, "slug")
++        if existing_tool:
++            return existing_tool.model_dump()
++
++        # households are per-instance, so the exported household slugs are dropped
++        new_tool = self.repos.tools.create(RecipeToolSave(name=name, group_id=self.user.group_id))
++        return new_tool.model_dump()
++
+     def _get_data_matcher(self) -> DataMatcher:
+         if self._data_matcher is None:
+             # Exact matches only: zip imports should rematch name/plural/alias/abbreviation,
+@@ -392,6 +417,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..8210097 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -2219,3 +2219,39 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_does_not_touch_other_groups_tools(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A zip whose tool carries another group's tool id must not link to or modify that tool."""
++    victim_tool = api_client.post(
++        api_routes.organizers_tools, json={"name": random_string()}, headers=unique_user.token
++    ).json()
++
++    attacker_tool_name = random_string()
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=g2_user.user_id,
++        group_id=g2_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[{"id": victim_tool["id"], "name": attacker_tool_name, "slug": attacker_tool_name}],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=g2_user.token)
++    assert r.status_code == 201
++
++    # the victim's tool is unchanged and still in the victim's group
++    r = api_client.get(api_routes.organizers_tools_item_id(victim_tool["id"]), headers=unique_user.token)
++    assert r.status_code == 200
++    assert r.json()["name"] == victim_tool["name"]
++    assert r.json()["groupId"] == str(unique_user.group_id)
++
++    # the importer got their own tool, in their own group, not the victim's
++    imported = api_client.get(api_routes.recipes_slug(recipe.slug), headers=g2_user.token).json()
++    assert len(imported["tools"]) == 1
++    assert imported["tools"][0]["id"] != victim_tool["id"]
++    assert imported["tools"][0]["name"] == attacker_tool_name
++    assert imported["tools"][0]["groupId"] == str(g2_user.group_id)

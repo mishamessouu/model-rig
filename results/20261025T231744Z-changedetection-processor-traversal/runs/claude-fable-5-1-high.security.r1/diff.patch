@@ -1,0 +1,167 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..149c778 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,39 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    @staticmethod
++    def _safe_extra_watch_config_path(data_dir, filename):
++        """
++        Resolve an extra-config filename to a path that is guaranteed to live directly
++        inside the watch's data_dir.
++
++        The filename is often derived from the watch's 'processor' value, which can arrive
++        from the API, imports, shared-watch metadata or plugins, so it must never be allowed
++        to escape the watch directory (e.g. '../../url-watches.json' or an absolute path).
++
++        Raises ValueError if the filename is not a plain, single-component file name or the
++        resolved path is not inside data_dir.
++        """
++        import os
++
++        if not isinstance(filename, str) or not filename.strip():
++            raise ValueError("extra watch config filename must be a non-empty string")
++
++        # Must be a single path component, no separators, no traversal, no NULs
++        if (filename in ('.', '..')
++                or os.path.isabs(filename)
++                or os.path.basename(filename) != filename
++                or '/' in filename or '\\' in filename
++                or '\x00' in filename):
++            raise ValueError(f"Unsafe extra watch config filename rejected: {filename!r}")
++
++        base_real = os.path.realpath(data_dir)
++        full_real = os.path.realpath(os.path.join(data_dir, filename))
++        if os.path.dirname(full_real) != base_real:
++            raise ValueError(f"Extra watch config path escapes watch data_dir: {filename!r}")
++
++        return os.path.join(data_dir, filename)
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,7 +352,11 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        try:
++            filepath = self._safe_extra_watch_config_path(data_dir, filename)
++        except ValueError as e:
++            logger.error(f"Refusing to read extra watch config: {e}")
++            return {}
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -350,11 +387,16 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        # Validate BEFORE touching the filesystem so a bad name never escapes data_dir
++        try:
++            filepath = self._safe_extra_watch_config_path(data_dir, filename)
++        except ValueError as e:
++            logger.error(f"Refusing to write extra watch config: {e}")
++            raise
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_processor_config_path_traversal.py b/changedetectionio/tests/unit/test_processor_config_path_traversal.py
+new file mode 100644
+index 0000000..00617a7
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_path_traversal.py
+@@ -0,0 +1,85 @@
++#!/usr/bin/env python3
++"""
++Regression tests: processor-specific extra config files must never escape the
++watch's data_dir, even if the watch's 'processor' value (used as the filename)
++contains path traversal or an absolute path.
++
++Run from the tests/ directory:
++    python -m unittest unit/test_processor_config_path_traversal.py
++"""
++
++import json
++import os
++import shutil
++import tempfile
++import time
++import unittest
++
++from changedetectionio.store import ChangeDetectionStore
++from changedetectionio.processors.base import difference_detection_processor
++from changedetectionio import processors
++
++
++class TestProcessorConfigPathTraversal(unittest.TestCase):
++    def setUp(self):
++        self.datastore_path = tempfile.mkdtemp()
++        self.store = ChangeDetectionStore(datastore_path=self.datastore_path, include_default_watches=False)
++        self.uuid = self.store.add_watch(url='https://example.com', extras={'processor': 'text_json_diff'})
++        self.watch = self.store.data['watching'][self.uuid]
++        self.processor = difference_detection_processor(self.store, self.uuid)
++
++    def tearDown(self):
++        self.store.stop_thread = True
++        time.sleep(0.5)
++        shutil.rmtree(self.datastore_path, ignore_errors=True)
++
++    def test_safe_filename_round_trips(self):
++        self.processor.update_extra_watch_config('restock_diff.json', {'a': 1})
++        self.assertTrue(os.path.isfile(os.path.join(self.watch.data_dir, 'restock_diff.json')))
++        self.assertEqual(self.processor.get_extra_watch_config('restock_diff.json'), {'a': 1})
++
++    def test_traversal_filenames_rejected_on_write(self):
++        bad_names = [
++            '../evil.json',
++            '../../evil.json',
++            '..',
++            '.',
++            '/tmp/evil.json',
++            'sub/dir.json',
++            'back\\slash.json',
++            'nul\x00byte.json',
++            '',
++        ]
++        for name in bad_names:
++            with self.subTest(name=name):
++                with self.assertRaises(ValueError):
++                    self.processor.update_extra_watch_config(name, {'owned': True})
++        # Nothing escaped into the datastore root
++        self.assertFalse(os.path.exists(os.path.join(self.datastore_path, 'evil.json')))
++        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(self.datastore_path), 'evil.json')))
++        self.assertFalse(os.path.exists('/tmp/evil.json'))
++
++    def test_traversal_filenames_rejected_on_read(self):
++        # Plant a file one level up that must NOT be readable through the watch helper
++        with open(os.path.join(self.datastore_path, 'secret.json'), 'w', encoding='utf-8') as f:
++            json.dump({'secret': 'yes'}, f)
++        self.assertEqual(self.processor.get_extra_watch_config('../secret.json'), {})
++        self.assertEqual(self.processor.get_extra_watch_config('/etc/passwd'), {})
++
++    def test_save_processor_config_with_malicious_processor_name_does_not_escape(self):
++        # Simulate a watch whose 'processor' value carries a traversal payload
++        self.watch['processor'] = '../../url-watches'
++        ok = processors.save_processor_config(self.store, self.uuid, {'owned': True})
++        self.assertFalse(ok)
++        # Nothing was written outside the watch's own directory
++        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(self.datastore_path), 'url-watches.json')))
++        self.assertFalse(os.path.exists(os.path.join(self.datastore_path, 'url-watches.json')))
++        # And nothing was written into the watch directory under the mangled name either
++        self.assertEqual(
++            [f for f in os.listdir(self.watch.data_dir) if 'owned' in open(os.path.join(self.watch.data_dir, f), 'rb').read().decode('utf-8', 'ignore')],
++            [],
++        )
++
++
++if __name__ == '__main__':
++    unittest.main()

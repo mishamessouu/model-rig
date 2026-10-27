@@ -1,0 +1,82 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..7ac6122 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,21 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Limit attachments to those linked to models the user can view."""
++        from common.validators import attachment_model_types
++
++        queryset = super().get_queryset()
++        user = self.request.user
++
++        allowed_types = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if model.check_related_permission('view', user)
++        ]
++
++        return queryset.filter(model_type__in=allowed_types)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..c37a450 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -1062,6 +1062,37 @@ class AttachmentAPITests(InvenTreeAPITestCase):
+             # Ensure that the file associated with each attachment has been removed
+             self.assertFalse(default_storage.exists(att.attachment.path))
+ 
++    def test_attachment_view_permission(self):
++        """Attachments are only visible to users who can view the linked model."""
++        from common.models import Attachment
++        from part.models import Part
++
++        part = Part.objects.create(name='Secret Part', description='Hidden part')
++
++        att = Attachment.objects.create(
++            model_type='part',
++            model_id=part.pk,
++            link='https://www.example.com/secret',
++            comment='Secret attachment',
++        )
++
++        list_url = reverse('api-attachment-list')
++        detail_url = reverse('api-attachment-detail', kwargs={'pk': att.pk})
++
++        # Without 'view' permission for parts, the attachment is hidden
++        self.clearRoles()
++
++        response = self.get(list_url, {'model_type': 'part'}, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++        self.get(detail_url, expected_code=404)
++
++        # With 'view' permission, the attachment is visible
++        self.assignRole('part.view')
++
++        response = self.get(list_url, {'model_type': 'part'}, expected_code=200)
++        self.assertIn(att.pk, [item['pk'] for item in response.data])
++        self.get(detail_url, expected_code=200)
++
+ 
+ class AttachmentThumbnailAPITests(InvenTreeAPITestCase):
+     """Tests for thumbnail generation when uploading attachments via the API."""
+diff --git a/src/backend/InvenTree/common/tests.py b/src/backend/InvenTree/common/tests.py
+index 49463df..fa5e6d9 100644
+--- a/src/backend/InvenTree/common/tests.py
++++ b/src/backend/InvenTree/common/tests.py
+@@ -188,7 +188,9 @@ class AttachmentTest(InvenTreeAPITestCase):
+         self.assertEqual(attachment.comment, 'New comment')
+ 
+         # And check that we cannot edit the attachment without the correct permissions
++        # (the user can still view the attachment, but not change or delete it)
+         self.clearRoles()
++        self.assignRole('part.view')
+ 
+         self.patch(
+             reverse('api-attachment-detail', kwargs={'pk': pk}),

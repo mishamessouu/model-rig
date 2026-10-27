@@ -1,0 +1,195 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..c50d57a 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -300,6 +300,36 @@ class difference_detection_processor():
+ 
+         # After init, call run_changedetection() which will do the actual change-detection
+ 
++    @staticmethod
++    def _safe_extra_watch_config_path(data_dir, filename):
++        """
++        Resolve `filename` to a path that is guaranteed to live directly inside `data_dir`.
++
++        The filename is often derived from the watch's `processor` value, which can come
++        from user input (e.g. the import form). Reject anything that is not a plain file
++        name (path separators, '..', absolute paths) or that resolves outside data_dir,
++        so a hostile processor name can't be used to read or write arbitrary files.
++
++        Returns:
++            str: Absolute, resolved path inside data_dir, or None if the filename is unsafe.
++        """
++        import os
++
++        if not isinstance(filename, str) or not filename or filename in ('.', '..'):
++            return None
++
++        # Must be a bare file name - no directory component of any kind
++        if os.path.basename(filename) != filename or '/' in filename or '\\' in filename:
++            return None
++
++        safe_data_dir = os.path.realpath(data_dir)
++        resolved_path = os.path.realpath(os.path.join(safe_data_dir, filename))
++
++        if os.path.dirname(resolved_path) != safe_data_dir:
++            return None
++
++        return resolved_path
++
+     def get_extra_watch_config(self, filename):
+         """
+         Read processor-specific JSON config file from watch data directory.
+@@ -319,7 +349,9 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = self._safe_extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            return {}
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -350,11 +382,14 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = self._safe_extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            logger.error(f"Refusing to write extra watch config, unsafe filename {filename!r} for watch {self.watch_uuid}")
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_processor_config_path_traversal.py b/changedetectionio/tests/unit/test_processor_config_path_traversal.py
+new file mode 100644
+index 0000000..ae9c606
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_path_traversal.py
+@@ -0,0 +1,120 @@
++#!/usr/bin/env python3
++"""
++Unit tests for processor-specific config file handling.
++
++The per-watch processor config file name is built from the watch's `processor`
++value (``f"{processor}.json"``), and that value can originate from user input
++(e.g. the import form). These tests make sure a hostile processor name can not
++be used to read or write files outside the watch's own data directory.
++
++Run from the tests/ directory:
++    python -m unittest unit/test_processor_config_path_traversal.py
++"""
++
++import json
++import os
++import shutil
++import tempfile
++import time
++import unittest
++
++from changedetectionio.store import ChangeDetectionStore
++from changedetectionio.processors import save_processor_config
++from changedetectionio.processors.base import difference_detection_processor
++
++
++class TestProcessorConfigPathTraversal(unittest.TestCase):
++    def setUp(self):
++        # Everything lives under one private root so traversal attempts can be checked
++        # without touching (or depending on) shared locations like /tmp.
++        self.root = tempfile.mkdtemp()
++        self.test_datastore_path = os.path.join(self.root, 'datastore')
++        os.makedirs(self.test_datastore_path)
++        self.store = ChangeDetectionStore(
++            datastore_path=self.test_datastore_path,
++            include_default_watches=False,
++        )
++        self.uuid = self.store.add_watch(url="https://example.com")
++        self.watch = self.store.data['watching'][self.uuid]
++        self.watch.ensure_data_dir_exists()
++        self.processor = difference_detection_processor(self.store, self.uuid)
++
++    def tearDown(self):
++        self.store.stop_thread = True
++        time.sleep(0.5)
++        shutil.rmtree(self.root, ignore_errors=True)
++
++    def _files_in(self, path):
++        return set(os.listdir(path))
++
++    def test_normal_filename_round_trips(self):
++        self.processor.update_extra_watch_config('text_json_diff.json', {'a': 1})
++        self.assertTrue(os.path.isfile(os.path.join(self.watch.data_dir, 'text_json_diff.json')))
++        self.assertEqual(self.processor.get_extra_watch_config('text_json_diff.json'), {'a': 1})
++
++    def test_safe_path_helper_rejects_escapes(self):
++        data_dir = self.watch.data_dir
++        for bad in [
++            '../evil.json',
++            '../../evil.json',
++            '..',
++            '.',
++            '',
++            None,
++            '/tmp/evil.json',
++            'sub/dir.json',
++            'sub\\dir.json',
++            f'../{os.path.basename(data_dir)}/../evil.json',
++        ]:
++            with self.subTest(filename=bad):
++                self.assertIsNone(difference_detection_processor._safe_extra_watch_config_path(data_dir, bad))
++
++        ok = difference_detection_processor._safe_extra_watch_config_path(data_dir, 'restock_diff.json')
++        self.assertEqual(ok, os.path.join(os.path.realpath(data_dir), 'restock_diff.json'))
++
++    def test_update_refuses_to_write_outside_data_dir(self):
++        parent = os.path.dirname(self.watch.data_dir)
++        before_parent = self._files_in(parent)
++        before_datastore = self._files_in(self.test_datastore_path)
++
++        absolute_target = os.path.join(self.root, 'absolute-pwned.json')
++        self.processor.update_extra_watch_config('../pwned.json', {'owned': True})
++        self.processor.update_extra_watch_config('../../pwned.json', {'owned': True})
++        self.processor.update_extra_watch_config(absolute_target, {'owned': True})
++
++        self.assertEqual(self._files_in(parent), before_parent)
++        self.assertEqual(self._files_in(self.test_datastore_path), before_datastore)
++        self.assertFalse(os.path.exists(absolute_target))
++        self.assertFalse(os.path.exists(os.path.join(parent, 'pwned.json')))
++        self.assertFalse(os.path.exists(os.path.join(self.root, 'pwned.json')))
++
++    def test_get_refuses_to_read_outside_data_dir(self):
++        parent = os.path.dirname(self.watch.data_dir)
++        secret_path = os.path.join(parent, 'secret.json')
++        with open(secret_path, 'w', encoding='utf-8') as f:
++            json.dump({'token': 'hunter2'}, f)
++
++        self.assertEqual(self.processor.get_extra_watch_config('../secret.json'), {})
++
++    def test_hostile_processor_name_does_not_escape_data_dir(self):
++        # The import form lets a user supply an arbitrary processor name, which then
++        # becomes "{processor}.json" when the edit page saves processor config.
++        # data_dir is <root>/datastore/<uuid>, so "../../pwned" lands in <root>/pwned.json
++        self.watch['processor'] = '../../pwned'
++        parent = os.path.dirname(self.watch.data_dir)
++        before_parent = self._files_in(parent)
++        before_datastore = self._files_in(self.test_datastore_path)
++        before_root = self._files_in(self.root)
++
++        save_processor_config(self.store, self.uuid, {'restock_diff': {'price_change_min': 1}})
++
++        self.assertEqual(self._files_in(parent), before_parent)
++        self.assertEqual(self._files_in(self.test_datastore_path), before_datastore)
++        self.assertEqual(self._files_in(self.root), before_root)
++        self.assertFalse(os.path.exists(os.path.join(self.root, 'pwned.json')))
++        # And nothing odd landed inside the watch dir either
++        self.assertNotIn('pwned.json', self._files_in(self.watch.data_dir))
++
++
++if __name__ == '__main__':
++    unittest.main()

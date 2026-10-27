@@ -1,0 +1,105 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..0f20734 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5101,6 +5101,10 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        # Nested on a run (``MlflowRunExtension.model_versions``): resolves model versions
++        # by run id straight from the registry store, so reading a run would otherwise
++        # expose registered models the caller has no grant on.
++        "modelVersions",
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5144,7 +5148,7 @@ class GraphQLAuthorizationMiddleware:
+             return None
+ 
+         result = next(root, info, **args)
+-        return self._post_resolve(field_name, result, username) if result is not None else None
++        return self._post_resolve(info, result, username) if result is not None else None
+ 
+     def _check_authorization(self, field_name: str, args: dict[str, Any], username: str) -> bool:
+         """
+@@ -5192,10 +5196,16 @@ class GraphQLAuthorizationMiddleware:
+ 
+         return True
+ 
+-    def _post_resolve(self, field_name: str, result, username: str):
++    def _post_resolve(self, info, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        field_name = info.field_name
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        # ``modelVersions`` also names the list inside ``mlflowSearchModelVersions``'s
++        # response, which is filtered above; only the run-nested list is unfiltered.
++        if field_name == "modelVersions" and info.parent_type.name == "MlflowRunExtension":
++            can_read = _rm_or_prompt_read_predicate(username)
++            return [mv for mv in result if can_read(mv)]
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):
+diff --git a/tests/server/auth/test_client_workspace.py b/tests/server/auth/test_client_workspace.py
+index f35fb1a..64ea587 100644
+--- a/tests/server/auth/test_client_workspace.py
++++ b/tests/server/auth/test_client_workspace.py
+@@ -343,3 +343,58 @@ def test_registered_model_access_controls_across_workspaces(workspace_setup, mon
+     )
+     assert resp.status_code == 403
+     assert "Permission denied" in resp.text
++
++
++def _graphql_get_run_model_versions(
++    tracking_uri: str, workspace_name: str, auth: tuple[str, str], run_id: str
++):
++    query = """
++    query GetRun($input: MlflowGetRunInput){
++      mlflowGetRun(input: $input){
++        run { info { runId } modelVersions { name version } }
++      }
++    }
++    """
++    variables = {"input": {"runId": run_id}}
++    resp = requests.post(
++        f"{tracking_uri}/graphql",
++        json={"query": query, "variables": variables},
++        auth=auth,
++        headers={WORKSPACE_HEADER_NAME: workspace_name},
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    run = payload["data"]["mlflowGetRun"]["run"]
++    assert run["info"]["runId"] == run_id
++    return run["modelVersions"]
++
++
++def test_graphql_run_model_versions_filtered_by_registered_model_permission(workspace_setup):
++    client, tracking_uri, workspace, username, password = workspace_setup
++    grant_role_permission(tracking_uri, username, "workspace", "*", "MANAGE", workspace=workspace)
++
++    exp = _create_experiment(tracking_uri, workspace, auth=(username, password))
++    run = _create_run(tracking_uri, workspace, exp, auth=(username, password))
++    model = f"model-{random_str()}"
++    _create_registered_model(tracking_uri, workspace, model, auth=(username, password))
++    _create_model_version(tracking_uri, workspace, model, run, auth=(username, password))
++
++    # A user who can read the experiment but holds no registered-model grant must not see
++    # the model versions linked to the run through the nested GraphQL field.
++    limited_user, limited_password = create_user(tracking_uri)
++    grant_role_permission(
++        tracking_uri, limited_user, "experiment", exp, "READ", workspace=workspace
++    )
++    versions = _graphql_get_run_model_versions(
++        tracking_uri, workspace, auth=(limited_user, limited_password), run_id=run
++    )
++    assert versions == []
++
++    grant_role_permission(
++        tracking_uri, limited_user, "registered_model", model, "READ", workspace=workspace
++    )
++    versions = _graphql_get_run_model_versions(
++        tracking_uri, workspace, auth=(limited_user, limited_password), run_id=run
++    )
++    assert [(v["name"], v["version"]) for v in versions] == [(model, "1")]

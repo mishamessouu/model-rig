@@ -1,0 +1,100 @@
+{
+  "run_id": "claude-opus-high.security.r2",
+  "batch": "20261026T223433Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-opus-high",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 279.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 30,
+  "tokens": {
+    "input": 54,
+    "output": 10353,
+    "cache_read": 722243,
+    "cache_write": 41035
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 54,
+      "output": 10353,
+      "cache_read": 722243,
+      "cache_write": 41035
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 54,
+    "cache_creation_input_tokens": 41035,
+    "cache_read_input_tokens": 722243,
+    "output_tokens": 10353,
+    "output_tokens_details": {
+      "thinking_tokens": 4140
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 41035,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.6800046000000001,
+  "costs": {
+    "copilot": {
+      "value": 55.69,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I restricted read access to attachments in `common/api.py` to the model types the user can view, because any authenticated user could read every attachment's file URL and metadata regardless of role.",
+  "final": "I fixed a hole in the attachment API: any logged-in user could read every attachment in the system, even with no roles at all.\n\n**The problem:** The attachment list and detail endpoints (`/api/attachment/`) only checked that the user was logged in. Attachments are also on the ruleset-ignore list, so no role check applied to them either. That meant a user with zero roles could list or fetch attachments on purchase orders, sales orders, builds and so on, including file URLs, external links, comments and who uploaded them. Creating, editing, renaming and deleting attachments were already checked against the parent record's permissions; only reading wasn't.\n\n**The fix** (`src/backend/InvenTree/common/api.py`): I added a `get_queryset` override to `AttachmentMixin`. For read requests (GET, HEAD, OPTIONS), it only returns attachments whose parent model the user has `view` permission for. It uses the same `check_related_permission` hook the write paths use. Hidden attachments drop out of the list, and fetching one directly returns 404.\n\nWrite requests skip this filter on purpose. They already return a clear 403 with a reason, and the existing tests expect that 403 rather than a 404.\n\n**Verification:**\n- The requested test command passes: 52 tests, OK.\n- I also wrote a throwaway test to check the fix itself. A user with no roles now gets an empty attachment list and a 404 on the detail URL, and gets both back once given `part.view`. The same test fails on the original code, where the no-role user can see the attachment. I deleted the throwaway test afterwards, so no regression test for this was added.\n\n**Not changed:** Parameters (`ParameterList`/`ParameterDetail`) have the same open read access. `ParameterDetail` also doesn't appear to check permissions before deleting a parameter. I left both alone to keep this to one change.\n\nCHOICE: I restricted read access to attachments in `common/api.py` to the model types the user can view, because any authenticated user could read every attachment's file URL and metadata regardless of role.",
+  "diff": {
+    "files": 1,
+    "added": 23,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

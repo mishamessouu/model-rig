@@ -1,0 +1,162 @@
+{
+  "run_id": "claude-fable-5-1-medium.open.r1",
+  "batch": "20261027T033629Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "claude-fable-5-1-medium",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 163.2,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 16,
+  "tokens": {
+    "input": 482,
+    "output": 7274,
+    "cache_read": 436829,
+    "cache_write": 37231
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 482,
+      "output": 7274,
+      "cache_read": 436829,
+      "cache_write": 37231
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 482,
+    "cache_creation_input_tokens": 37231,
+    "cache_read_input_tokens": 436829,
+    "output_tokens": 7274,
+    "output_tokens_details": {
+      "thinking_tokens": 1530
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 37231,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.22234725,
+  "costs": {
+    "copilot": {
+      "value": 94.3115,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I closed a path traversal where an unvalidated watch `processor` name became a filename inside the watch data directory, by validating processor names centrally in `add_watch` and hardening the config file helpers, because it was a real security bug reachable from the UI and from remote shared-watch links.",
+  "final": "All 350 tests pass, including the 3 new ones.\n\n**What I found.** A watch's `processor` value is used as a filename. The edit page reads `{processor}.json` from the watch data directory, and saving processor settings writes the same file. The REST API validates the processor name against an enum, but three other entry points did not:\n\n- The quick-add form on the watch list, which takes `processor` straight from the POST body.\n- The URL import page, which passes `processor` from the request through to the importer.\n- The \"shared watch link\" feature, which copies `processor` out of JSON fetched from a remote server.\n\nAny logged-in user, or a remote server hosting a shared-watch link, could therefore set a processor like `../../anything` and have the app read or write JSON files outside the watch directory.\n\n**What I changed.**\n\n- `changedetectionio/store/__init__.py`: `add_watch` now refuses any processor name that is not a discovered processor, with a flash message in request context and a log line otherwise. This covers every creation path in one place.\n- `changedetectionio/processors/base.py`: the two extra-config helpers now reject filenames containing path separators, `..`, or absolute paths before touching the filesystem, so stored or future values can never escape the watch directory.\n- `changedetectionio/tests/unit/test_processor_name_validation.py`: new tests for the filename guard, for `add_watch` rejecting bad names while still accepting real ones, and for the read/write helpers refusing to escape the data dir.\n\nNothing is committed. The working tree has the two modified files and the new test file.\n\nCHOICE: I closed a path traversal where an unvalidated watch `processor` name became a filename inside the watch data directory, by validating processor names centrally in `add_watch` and hardening the config file helpers, because it was a real security bug reachable from the UI and from remote shared-watch links.",
+  "diff": {
+    "files": 3,
+    "added": 100,
+    "removed": 0,
+    "paths": [
+      "changedetectionio/processors/base.py",
+      "changedetectionio/store/__init__.py",
+      "changedetectionio/tests/unit/test_processor_name_validation.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "example.com",
+      "raw.githubusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-config-write-traversal",
+    "s2-unknown-processor-stored",
+    "s3-import-page-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

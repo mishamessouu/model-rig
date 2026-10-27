@@ -1,0 +1,19 @@
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..7f45528 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -778,6 +778,14 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+         if apply_extras.get('tags'):
+             apply_extras['tags'] = list(set(apply_extras.get('tags')))
+ 
++        # The processor name is used to build on-disk filenames (history-{processor}.txt, {processor}.json),
++        # so only accept names of actually registered processors (blocks path traversal like '../../x')
++        if 'processor' in apply_extras:
++            from ..processors import find_processors
++            if apply_extras.get('processor') not in [name for _, name in find_processors()]:
++                logger.warning(f"add_watch: Ignoring unknown processor '{apply_extras.get('processor')}' for {url}")
++                del apply_extras['processor']
++
+         # If the processor also has its own Watch implementation
+         watch_class = get_custom_watch_obj_for_processor(apply_extras.get('processor'))
+         new_watch = watch_class(datastore_path=self.datastore_path, __datastore=self.__data, url=url)

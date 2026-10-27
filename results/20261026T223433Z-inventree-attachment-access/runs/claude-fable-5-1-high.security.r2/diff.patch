@@ -1,0 +1,94 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..ce976be 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,43 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def filter_queryset(self, queryset):
++        """Restrict read access to attachments the user is permitted to view.
++
++        An attachment inherits its permissions from the model it is attached to.
++        For read requests, only return attachments linked to model types for which
++        the user has 'view' permission - otherwise any authenticated user could
++        enumerate (and download) attachments for models they cannot otherwise access.
++
++        Write requests (change / delete) are explicitly checked against the target
++        model elsewhere, and are not filtered here (so that they return 403, not 404).
++        """
++        from rest_framework.permissions import SAFE_METHODS
++
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        queryset = super().filter_queryset(queryset)
++
++        if self.request.method not in SAFE_METHODS:
++            return queryset
++
++        user = getattr(self.request, 'user', None)
++
++        if user is None or not user.is_authenticated:
++            return queryset.none()
++
++        if user.is_superuser:
++            return queryset
++
++        allowed_models = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'view')
++        ]
++
++        return queryset.filter(model_type__in=allowed_models)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/common/tests.py b/src/backend/InvenTree/common/tests.py
+index 49463df..1e799f7 100644
+--- a/src/backend/InvenTree/common/tests.py
++++ b/src/backend/InvenTree/common/tests.py
+@@ -209,6 +209,41 @@ class AttachmentTest(InvenTreeAPITestCase):
+         self.assignRole('part.delete')
+         self.delete(url, expected_code=204)
+ 
++    def test_view_permission(self):
++        """Test that attachments can only be read by users with 'view' permission on the linked model."""
++        part = Part.objects.first()
++        url = reverse('api-attachment-list')
++
++        attachment = Attachment.objects.create(
++            link='https://www.example.org',
++            comment='Permission test',
++            model_type='part',
++            model_id=part.pk,
++        )
++
++        detail_url = reverse('api-attachment-detail', kwargs={'pk': attachment.pk})
++
++        self.user.is_staff = False
++        self.user.is_superuser = False
++        self.user.save()
++        self.clearRoles()
++
++        # Without 'part.view' permission, the attachment must not be visible
++        response = self.get(url, {'model_type': 'part'}, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++
++        self.get(detail_url, expected_code=404)
++
++        # With 'part.view' permission, the attachment is visible
++        self.assignRole('part.view')
++
++        response = self.get(url, {'model_type': 'part'}, expected_code=200)
++        self.assertEqual(len(response.data), 1)
++        self.assertEqual(response.data[0]['pk'], attachment.pk)
++
++        response = self.get(detail_url, expected_code=200)
++        self.assertEqual(response.data['pk'], attachment.pk)
++
+     def test_fully_qualified_url(self):
+         """Test that the fully qualified URL is returned correctly."""
+         part = Part.objects.first()

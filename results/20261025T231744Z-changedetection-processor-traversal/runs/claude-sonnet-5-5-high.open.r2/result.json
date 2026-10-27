@@ -1,0 +1,159 @@
+{
+  "run_id": "claude-sonnet-5-5-high.open.r2",
+  "batch": "20261025T231744Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "claude-sonnet-5-5-high",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 80.8,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 17,
+  "tokens": {
+    "input": 32,
+    "output": 5761,
+    "cache_read": 458623,
+    "cache_write": 40002
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 32,
+      "output": 5761,
+      "cache_read": 458623,
+      "cache_write": 40002
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 32,
+    "cache_creation_input_tokens": 40002,
+    "cache_read_input_tokens": 458623,
+    "output_tokens": 5761,
+    "output_tokens_details": {
+      "thinking_tokens": 1238
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40002,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.2635443,
+  "costs": {
+    "copilot": {
+      "value": 20.3541,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Validate the `processor` name in `add_watch` against installed processors, because the Add Watch form, URL importer and share links passed it unchecked into filenames like `history-{processor}.txt`, which allowed path traversal.",
+  "final": "I added validation of the `processor` name in `ChangeDetectionStore.add_watch` (`store/__init__.py`). I didn't commit the change. `python3 -m pytest tests/unit/ tests/llm/` gives 350 passed, including 3 new tests.\n\n**The problem.** A watch's `processor` value is used to build filenames inside the watch's data directory: `history-{processor}.txt` and `{processor}.json`. The REST API checks it against an enum. The Add Watch form (`request.form.get('processor')`), the URL importer and `changedetection.io/share/...` links all pass it to `add_watch` unchecked. A value like `../../x` would be stored, and later reads and writes of those files could land outside the watch's own directory.\n\n**The fix.** `add_watch` now checks `processor` against the installed processors from `find_processors()`, which includes plugin processors. An unknown name is dropped with a warning, and the watch gets the default `text_json_diff`. I put the check there because every path that creates a watch goes through it. I used `find_processors()` rather than `available_processors()` so a processor listed in `DISABLED_PROCESSORS` isn't rejected.\n\n**Tests.** The new tests are in `tests/unit/test_add_watch_processor_validation.py`. They check that a known processor is kept and that `../../evil` and `does_not_exist` fall back to `text_json_diff`.\n\n**Not covered.** This only stops bad values at creation. A `watch.json` that already holds a malicious `processor` would still be loaded as-is. Making `history_index_filename` and the processor-config save reject unsafe names would close that, but I kept to one change.\n\nCHOICE: Validate the `processor` name in `add_watch` against installed processors, because the Add Watch form, URL importer and share links passed it unchecked into filenames like `history-{processor}.txt`, which allowed path traversal.",
+  "diff": {
+    "files": 2,
+    "added": 59,
+    "removed": 1,
+    "paths": [
+      "changedetectionio/store/__init__.py",
+      "changedetectionio/tests/unit/test_add_watch_processor_validation.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "example.com",
+      "raw.githubusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s2-unknown-processor-stored",
+    "s3-import-page-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r2/scored/tmplu7xblcd/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r2/scored/tmplu7xblcd/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r2/scored/tmplu7xblcd/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r2/scored/tmplu7xblcd/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

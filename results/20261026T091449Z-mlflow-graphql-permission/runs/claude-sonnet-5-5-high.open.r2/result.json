@@ -1,0 +1,160 @@
+{
+  "run_id": "claude-sonnet-5-5-high.open.r2",
+  "batch": "20261026T091449Z-mlflow-graphql-permission",
+  "scenario": "mlflow-graphql-permission",
+  "cell": "claude-sonnet-5-5-high",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 234.4,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 24,
+  "tokens": {
+    "input": 40,
+    "output": 11502,
+    "cache_read": 704312,
+    "cache_write": 52050
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 40,
+      "output": 11502,
+      "cache_read": 704312,
+      "cache_write": 52050
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 40,
+    "cache_creation_input_tokens": 52050,
+    "cache_read_input_tokens": 704312,
+    "output_tokens": 11502,
+    "output_tokens_details": {
+      "thinking_tokens": 6121
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 52050,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.39373120000000006,
+  "costs": {
+    "copilot": {
+      "value": 31.5656,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Filtered GraphQL `modelVersions` on runs by registered-model/prompt read permission, using the REST predicate. That field previously leaked model versions to anyone with run read access. Tests could not be run here.",
+  "final": "I made the change, but I couldn't run any tests, including your five test files. A hook in this environment rejects every bare `python3` call, saying to use `uv run python`. `uv` can't start because it can't download Python 3.10 offline, and there is no `.venv`. I didn't work around the hook, for example by calling the interpreter through another path.\n\nSo the change is unverified. It hasn't been run, imported or syntax-checked, and I haven't confirmed the new test passes. To verify, either allow `python3 -m pytest` or give me a working environment. You can also run the five files plus `uv run pytest tests/server/auth/test_auth.py -k graphql` yourself.\n\n**The problem.** With auth enabled, anyone who could read a run could list its linked model versions through GraphQL, including versions of registered models they had no permission on. The nested `modelVersions` field on a run was never permission-checked. Only the top-level `mlflowSearchModelVersions` query was filtered.\n\n**The fix, in `mlflow/server/auth/__init__.py`:**\n- `GraphQLAuthorizationMiddleware` now also covers `modelVersions` when it sits under `MlflowRunExtension`, and drops entries the caller can't read.\n- Both model-version filters now use `_rm_or_prompt_read_predicate`, the same check the REST `filter_search_model_versions` uses. Before, the GraphQL filter looked only at `registered_model` grants and ignored prompt grants. That could hide prompt versions a user was granted and show prompt versions they weren't.\n\nI added `test_graphql_get_run_filters_unreadable_model_versions` in `tests/server/auth/test_auth.py`. The run links two models and the second user can read only one, so it checks that only the readable one comes back.\n\nThe new branch relies on graphene naming the parent type `MlflowRunExtension`. I took that name from the schema source and didn't check it at runtime. If it differs, the new test will fail.\n\nCHOICE: Filtered GraphQL `modelVersions` on runs by registered-model/prompt read permission, using the REST predicate. That field previously leaked model versions to anyone with run read access. Tests could not be run here.",
+  "diff": {
+    "files": 2,
+    "added": 61,
+    "removed": 6,
+    "paths": [
+      "mlflow/server/auth/__init__.py",
+      "tests/server/auth/test_auth.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "github.com",
+      "releases.astral.sh"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-nested-run-model-versions",
+    "s2-prompt-versions-by-model-grant"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/server/auth/test_auth.py::test_graphql_get_experiment_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_get_run_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_list_artifacts_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_nonexistent_run": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_requires_authentication": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_search_model_versions": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_graphql_search_runs_authorization": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_search_model_versions": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_auth.py::test_search_registered_models": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_client_workspace.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_nested_run_model_versions_filtered_by_model_permission": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_model_grant_does_not_reveal_prompt": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_graphql_search_model_versions_prompt_grant_reveals_prompt": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_follow_a_new_grant": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_permitted_reader_sees_all": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_use_requested_workspace_grants": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/server/auth/test_graphql_model_version_permissions.py::test_nested_run_model_versions_wildcard_reader_and_admin_see_all": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

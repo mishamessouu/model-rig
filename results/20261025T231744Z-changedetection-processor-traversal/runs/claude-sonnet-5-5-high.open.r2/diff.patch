@@ -1,0 +1,84 @@
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..cf7248c 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -32,7 +32,7 @@ try:
+ except ImportError:
+     HAS_ORJSON = False
+ 
+-from ..processors import get_custom_watch_obj_for_processor
++from ..processors import get_custom_watch_obj_for_processor, find_processors
+ 
+ # Import the base class and helpers
+ from .file_saving_datastore import FileSavingDataStore, load_all_watches, load_all_tags, save_json_atomic
+@@ -778,6 +778,13 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+         if apply_extras.get('tags'):
+             apply_extras['tags'] = list(set(apply_extras.get('tags')))
+ 
++        # The processor name is later used to build filenames inside the watch data_dir
++        # (history-{name}.txt, {name}.json), and arrives from client input (add form, importer,
++        # share links), so only accept names of processors that are actually installed.
++        if 'processor' in apply_extras and apply_extras['processor'] not in [name for _, name in find_processors()]:
++            logger.warning(f"add_watch: ignoring unknown processor {apply_extras['processor']!r} for '{url}', using the default")
++            del apply_extras['processor']
++
+         # If the processor also has its own Watch implementation
+         watch_class = get_custom_watch_obj_for_processor(apply_extras.get('processor'))
+         new_watch = watch_class(datastore_path=self.datastore_path, __datastore=self.__data, url=url)
+diff --git a/changedetectionio/tests/unit/test_add_watch_processor_validation.py b/changedetectionio/tests/unit/test_add_watch_processor_validation.py
+new file mode 100644
+index 0000000..214fb22
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_add_watch_processor_validation.py
+@@ -0,0 +1,51 @@
++#!/usr/bin/env python3
++"""
++add_watch() must only accept the names of installed processors.
++
++The processor name is used to build filenames inside the watch data_dir
++(history-{name}.txt, {name}.json) and reaches add_watch() from client input
++(Add Watch form, URL importer, share links), so a value like '../../x' must never stick.
++
++Run from the tests/ directory:
++    python -m unittest unit/test_add_watch_processor_validation.py
++"""
++
++import os
++import shutil
++import tempfile
++import time
++import unittest
++
++from changedetectionio.store import ChangeDetectionStore
++
++
++class TestAddWatchProcessorValidation(unittest.TestCase):
++    def setUp(self):
++        self.test_datastore_path = tempfile.mkdtemp()
++        self.store = ChangeDetectionStore(
++            datastore_path=self.test_datastore_path,
++            include_default_watches=False,
++        )
++
++    def tearDown(self):
++        self.store.stop_thread = True
++        time.sleep(0.5)
++        shutil.rmtree(self.test_datastore_path, ignore_errors=True)
++
++    def test_known_processor_is_kept(self):
++        new_uuid = self.store.add_watch(url="https://example.com", extras={'processor': 'restock_diff'})
++        self.assertEqual(self.store.data['watching'][new_uuid]['processor'], 'restock_diff')
++
++    def test_traversal_processor_is_rejected(self):
++        new_uuid = self.store.add_watch(url="https://example.com", extras={'processor': '../../evil'})
++        watch = self.store.data['watching'][new_uuid]
++        self.assertEqual(watch['processor'], 'text_json_diff')
++        self.assertEqual(watch.history_index_filename, 'history.txt')
++
++    def test_unknown_processor_is_rejected(self):
++        new_uuid = self.store.add_watch(url="https://example.com", extras={'processor': 'does_not_exist'})
++        self.assertEqual(self.store.data['watching'][new_uuid]['processor'], 'text_json_diff')
++
++
++if __name__ == '__main__':
++    unittest.main()

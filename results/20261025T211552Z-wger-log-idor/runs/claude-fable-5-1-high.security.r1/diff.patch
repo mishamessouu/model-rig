@@ -1,0 +1,64 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..fb66d6e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,12 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++            (WorkoutLog, 'next_log'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..64da871 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -41,3 +41,41 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_cannot_reference_foreign_slot_entry(self):
++        """
++        Logs can not be attached to a slot entry that belongs to another user.
++
++        Slot entries 1 to 4 belong to the admin user, routine 3 to the test user.
++        """
++        self.authenticate('test')
++        data = dict(self.data, slot_entry=1)
++
++        response = self.client.post(self.url, data)
++        self.assertEqual(response.status_code, 403)
++        self.assertFalse(WorkoutLog.objects.filter(user__username='test', slot_entry=1).exists())
++
++        # Updating an existing log is not allowed either (log 5 belongs to test)
++        response = self.client.patch(self.url_detail, {'slot_entry': 1})
++        self.assertEqual(response.status_code, 403)
++        self.assertIsNone(WorkoutLog.objects.get(pk=5).slot_entry_id)
++
++        # ...but it works for the owner of the slot entry
++        self.authenticate('admin')
++        response = self.client.post(self.url, dict(self.data, routine=1, slot_entry=1))
++        self.assertEqual(response.status_code, 201)
++        self.assertEqual(WorkoutLog.objects.get(pk=response.data['id']).slot_entry_id, 1)
++
++    def test_cannot_reference_foreign_next_log(self):
++        """
++        Logs can not be chained to a log entry that belongs to another user.
++
++        Logs 1 to 4 belong to the admin user, log 5 to the test user.
++        """
++        self.authenticate('test')
++        response = self.client.patch(self.url_detail, {'next_log': 1})
++        self.assertEqual(response.status_code, 403)
++        self.assertIsNone(WorkoutLog.objects.get(pk=5).next_log_id)
++
++        response = self.client.post(self.url, dict(self.data, next_log=1))
++        self.assertEqual(response.status_code, 403)

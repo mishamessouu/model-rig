@@ -1,0 +1,84 @@
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..99ea879 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -748,6 +748,20 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+                 logger.error(f"add_watch: URL '{url}' is not permitted or invalid, skipping.")
+             return None
+ 
++        # The processor name ends up in on-disk filenames (history-{processor}.txt, {processor}.json),
++        # so only ever accept a processor that is actually installed. Inputs reach here unvalidated
++        # from the shared-link metadata fetch above and the UI import form.
++        requested_processor = apply_extras.get('processor')
++        if requested_processor is not None:
++            from ..processors import find_processors
++            installed = {name for _, name in find_processors()}
++            if not isinstance(requested_processor, str) or requested_processor not in installed:
++                from flask import has_request_context
++                logger.error(f"add_watch: Unknown processor '{requested_processor!r}' for URL '{url}', skipping.")
++                if has_request_context():
++                    flash(gettext("Unknown processor '{}', watch not added.").format(requested_processor), 'error')
++                return None
++
+         # Check PAGE_WATCH_LIMIT if set
+         page_watch_limit = os.getenv('PAGE_WATCH_LIMIT')
+         if page_watch_limit:
+diff --git a/changedetectionio/tests/unit/test_add_watch_processor_validation.py b/changedetectionio/tests/unit/test_add_watch_processor_validation.py
+new file mode 100644
+index 0000000..14d8129
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_add_watch_processor_validation.py
+@@ -0,0 +1,53 @@
++#!/usr/bin/env python3
++"""
++The watch 'processor' name is used to build on-disk filenames (history-{processor}.txt).
++It arrives unvalidated from the shared-link metadata fetch and the UI import form, so
++add_watch() must reject anything that is not an installed processor.
++
++Run from the tests/ directory:
++    python -m unittest unit/test_add_watch_processor_validation.py
++"""
++import os
++import shutil
++import tempfile
++import time
++import unittest
++
++from changedetectionio.store import ChangeDetectionStore
++
++
++class TestAddWatchProcessorValidation(unittest.TestCase):
++    def setUp(self):
++        self.test_datastore_path = tempfile.mkdtemp()
++        self.store = ChangeDetectionStore(
++            datastore_path=self.test_datastore_path,
++            include_default_watches=False,
++        )
++
++    def tearDown(self):
++        self.store.stop_thread = True
++        time.sleep(0.5)
++        shutil.rmtree(self.test_datastore_path, ignore_errors=True)
++
++    def test_traversal_processor_name_is_rejected(self):
++        for bad in ['../../../../tmp/evil', 'nope', '', 123, 'text_json_diff/../../x']:
++            with self.subTest(processor=bad):
++                uuid = self.store.add_watch(url='https://example.com', extras={'processor': bad})
++                self.assertIsNone(uuid)
++        self.assertEqual(len(self.store.data['watching']), 0)
++
++    def test_installed_processor_is_accepted(self):
++        uuid = self.store.add_watch(url='https://example.com', extras={'processor': 'restock_diff'})
++        self.assertIsNotNone(uuid)
++        watch = self.store.data['watching'][uuid]
++        self.assertEqual(watch.get('processor'), 'restock_diff')
++        self.assertEqual(os.path.basename(watch.history_index_filename), 'history-restock_diff.txt')
++
++    def test_missing_processor_falls_back_to_default(self):
++        uuid = self.store.add_watch(url='https://example.com')
++        self.assertIsNotNone(uuid)
++        self.assertEqual(self.store.data['watching'][uuid].get('processor'), 'text_json_diff')
++
++
++if __name__ == '__main__':
++    unittest.main()

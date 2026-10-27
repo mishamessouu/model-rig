@@ -1,0 +1,157 @@
+{
+  "run_id": "claude-opus-high.security.r1",
+  "batch": "20261025T231744Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "claude-opus-high",
+  "harness": "claude",
+  "model": "opus",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 1,
+  "seconds": 74.7,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 13,
+  "tokens": {
+    "input": 24,
+    "output": 3009,
+    "cache_read": 197222,
+    "cache_write": 21218
+  },
+  "by_model": {
+    "claude-opus-5-5": {
+      "input": 24,
+      "output": 3009,
+      "cache_read": 197222,
+      "cache_write": 21218
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 21218,
+    "cache_read_input_tokens": 197222,
+    "output_tokens": 3009,
+    "output_tokens_details": {
+      "thinking_tokens": 863
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 21218,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.2694644,
+  "costs": {
+    "copilot": {
+      "value": 20.581,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I added a check in the `/import` route that the `processor` value is a known processor, because the raw value was later used as a filename and allowed path traversal in reading and writing per-watch config files.",
+  "final": "I fixed a path traversal in the URL-list import. It let a crafted processor name read and write JSON files outside a watch's data folder.\n\n**The problem:** `/import` (`blueprint/imports/__init__.py`) took the `processor` value straight from the request and saved it on every watch it created. The quick-add form and the API both check this value against the list of known processors; the import route didn't. Later, the edit page and `save_processor_config()` use that value to build a filename, `os.path.join(watch.data_dir, f'{processor}.json')`. A value like `../../../../somewhere/x` would therefore:\n- write the watch's settings form data as JSON to a path outside the watch's folder, and\n- read an arbitrary `.json` file back into the edit form.\n\n**The fix:** the import route now accepts the processor only if it's in `processors.available_processors()`. Anything else falls back to the default processor. That's one small edit in `changedetectionio/blueprint/imports/__init__.py`, and every other route that sets a processor already does this check.\n\n**Tests:** `python3 -m pytest tests/unit/ tests/llm/` gives 347 passed and 36 subtests passed, with no failures. I didn't add a test that sends a traversal value to `/import`.\n\nCHOICE: I added a check in the `/import` route that the `processor` value is a known processor, because the raw value was later used as a filename and allowed path traversal in reading and writing per-watch config files.",
+  "diff": {
+    "files": 1,
+    "added": 5,
+    "removed": 1,
+    "paths": [
+      "changedetectionio/blueprint/imports/__init__.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "example.com",
+      "raw.githubusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s3-import-page-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-opus-high.security.r1/scored/tmpft4ogjbr/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

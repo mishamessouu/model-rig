@@ -1,0 +1,131 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..8781308 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -806,6 +806,40 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def filter_queryset(self, queryset):
++        """Only return attachments for models which the user is allowed to view.
++
++        An attachment inherits the permissions of the model it is linked to,
++        so a user who cannot view (for example) purchase orders must not be able
++        to list the files attached to them.
++        """
++        from common.validators import attachment_model_class_from_label
++
++        queryset = super().filter_queryset(queryset)
++
++        user = self.request.user
++
++        if user.is_superuser:
++            return queryset
++
++        model_types = queryset.values_list('model_type', flat=True).distinct()
++        excluded = []
++
++        for model_type in model_types:
++            try:
++                model_class = attachment_model_class_from_label(model_type)
++            except ValidationError:
++                excluded.append(model_type)
++                continue
++
++            if not model_class.check_related_permission('view', user):
++                excluded.append(model_type)
++
++        if excluded:
++            queryset = queryset.exclude(model_type__in=excluded)
++
++        return queryset
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +866,17 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an attachment, if the user may view the linked model."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('view', request.user):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..4f64ab1 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -1062,6 +1062,63 @@ class AttachmentAPITests(InvenTreeAPITestCase):
+             # Ensure that the file associated with each attachment has been removed
+             self.assertFalse(default_storage.exists(att.attachment.path))
+ 
++    def test_attachment_view_permission(self):
++        """Attachments are only visible for models the user is allowed to view."""
++        from common.models import Attachment
++        from company.models import Company
++        from part.models import Part
++
++        part = Part.objects.create(name='Visible Part', description='A part')
++        company = Company.objects.create(name='Hidden Company', description='A company')
++
++        part_att = Attachment.objects.create(
++            model_type='part', model_id=part.pk, link='https://example.com/part'
++        )
++        company_att = Attachment.objects.create(
++            model_type='company',
++            model_id=company.pk,
++            link='https://example.com/company',
++        )
++
++        list_url = reverse('api-attachment-list')
++        part_url = reverse('api-attachment-detail', kwargs={'pk': part_att.pk})
++        company_url = reverse('api-attachment-detail', kwargs={'pk': company_att.pk})
++
++        # User has 'part.view' but no role granting access to Company data
++        self.clearRoles()
++        self.assignRole('part.view')
++
++        response = self.get(list_url, expected_code=200)
++        pks = [item['pk'] for item in response.data]
++        self.assertIn(part_att.pk, pks)
++        self.assertNotIn(company_att.pk, pks)
++
++        # Explicitly filtering for the hidden model type must return nothing
++        response = self.get(
++            list_url, data={'model_type': 'company'}, expected_code=200
++        )
++        self.assertEqual(len(response.data), 0)
++
++        self.get(part_url, expected_code=200)
++        self.get(company_url, expected_code=403)
++
++        # Granting a role which covers Company data exposes the attachment
++        self.assignRole('purchase_order.view')
++
++        response = self.get(list_url, expected_code=200)
++        pks = [item['pk'] for item in response.data]
++        self.assertIn(company_att.pk, pks)
++
++        self.get(company_url, expected_code=200)
++
++        # A superuser sees everything
++        self.user.is_superuser = True
++        self.user.save()
++        self.clearRoles()
++
++        response = self.get(list_url, expected_code=200)
++        self.assertEqual(len(response.data), Attachment.objects.count())
++
+ 
+ class AttachmentThumbnailAPITests(InvenTreeAPITestCase):
+     """Tests for thumbnail generation when uploading attachments via the API."""

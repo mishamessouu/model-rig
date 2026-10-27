@@ -1,0 +1,95 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..914ca18 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5085,6 +5085,9 @@ def _graphql_can_read_model(model_name: str, username: str) -> bool:
+     return _graphql_get_permission_for_model(model_name, username).can_read
+ 
+ 
++RUN_MODEL_VERSIONS_FIELD = "runModelVersions"
++
++
+ class GraphQLAuthorizationMiddleware:
+     """
+     Graphene middleware that enforces per-object authorization for GraphQL queries.
+@@ -5101,6 +5104,7 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchRuns",
+         "mlflowSearchDatasets",
+         "mlflowSearchModelVersions",
++        RUN_MODEL_VERSIONS_FIELD,
+     }
+ 
+     def resolve(self, next, root, info, **args):
+@@ -5117,6 +5121,10 @@ class GraphQLAuthorizationMiddleware:
+             The resolved value or an error response
+         """
+         field_name = info.field_name
++        # ``modelVersions`` on the search response is filtered via ``mlflowSearchModelVersions``;
++        # the one nested under a run is resolved separately and would otherwise be unfiltered.
++        if field_name == "modelVersions" and info.parent_type.name == "MlflowRunExtension":
++            field_name = RUN_MODEL_VERSIONS_FIELD
+ 
+         if field_name not in self.PROTECTED_FIELDS:
+             return next(root, info, **args)
+@@ -5196,6 +5204,9 @@ class GraphQLAuthorizationMiddleware:
+         """Apply post-resolution filtering on GraphQL results."""
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if field_name == RUN_MODEL_VERSIONS_FIELD:
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):
+diff --git a/tests/server/auth/test_auth.py b/tests/server/auth/test_auth.py
+index f3df01e..1f33ba6 100644
+--- a/tests/server/auth/test_auth.py
++++ b/tests/server/auth/test_auth.py
+@@ -1530,6 +1530,47 @@ def test_graphql_search_model_versions(client, monkeypatch):
+     assert names == [f"gql_mv_model{i}" for i in readable]
+ 
+ 
++@pytest.mark.parametrize(
++    "client",
++    [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],
++    indirect=True,
++)
++def test_graphql_run_model_versions_filtered_by_model_permission(client, monkeypatch):
++    username1, password1 = create_user(client.tracking_uri)
++    username2, password2 = create_user(client.tracking_uri)
++
++    with User(username1, password1, monkeypatch):
++        experiment_id = client.create_experiment("gql_run_mv_exp")
++        run_id = client.create_run(experiment_id).info.run_id
++        for name in ("gql_run_mv_readable", "gql_run_mv_hidden"):
++            rm = client.create_registered_model(name)
++            client.create_model_version(rm.name, f"runs:/{run_id}/model", run_id=run_id)
++    grant_role_permission(client.tracking_uri, username2, "experiment", experiment_id, "READ")
++    grant_role_permission(
++        client.tracking_uri, username2, "registered_model", "gql_run_mv_readable", "READ"
++    )
++
++    query = """
++    query GetRun($input: MlflowGetRunInput){
++      mlflowGetRun(input: $input){
++        run { modelVersions { name } }
++      }
++    }
++    """
++    variables = {"input": {"runId": run_id}}
++
++    for auth, expected in [
++        ((username1, password1), ["gql_run_mv_hidden", "gql_run_mv_readable"]),
++        ((username2, password2), ["gql_run_mv_readable"]),
++    ]:
++        resp = _graphql_query(client.tracking_uri, query, variables, auth=auth)
++        resp.raise_for_status()
++        payload = resp.json()
++        assert payload.get("errors") in (None, [])
++        run = payload["data"]["mlflowGetRun"]["run"]
++        assert sorted(mv["name"] for mv in run["modelVersions"]) == expected
++
++
+ @pytest.mark.parametrize(
+     "client",
+     [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],

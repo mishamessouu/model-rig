@@ -36,6 +36,20 @@ def success(result):
                 and not result["error"] and not result.get("timed_out"))
 
 
+def refused(result):
+    """A provider safety filter stopped the run (decision 15). It stays a
+    failure, because the person got no fix. A result from before the rig
+    recorded refusals is matched on Claude Code's error text."""
+    return bool(result.get("refused") or "safeguards flagged" in (result.get("error") or ""))
+
+
+def over_time(result):
+    """A planted defect fixed with no regression, but only after the
+    timeout (decision 15). Not a success: every cell has the same limit."""
+    return bool(not result.get("control") and result.get("timed_out")
+                and result["fixed"] and result["regression_pass"])
+
+
 # What a control run did, in the order the report shows (decision 12).
 # "error" counts first and holds every run the rig could not observe.
 # The other four are the behaviour of the runs that remain.
@@ -132,6 +146,8 @@ def summarise(results, sheet="copilot", sheets=None):
             "all_succeeded": None if control else len(good) == len(runs),
             "regressions": sum(1 for r in runs if not r["regression_pass"]),
             "errors": sum(1 for r in runs if r["error"] or r["timed_out"]),
+            "refused": sum(1 for r in runs if refused(r)),
+            "over_time": sum(1 for r in runs if over_time(r)),
             **{f"mean_{k}": _mean([r["tokens"][k] for r in runs])
                for k in ("input", "output", "cache_read", "cache_write")},
             "mean_cost": total_cost / len(runs) if total_cost is not None else None,
@@ -159,17 +175,21 @@ def markdown(batch_dir, sheet="copilot"):
             f"tokens with today's `{sheet}` price sheet, in {unit}; a cell with an "
             "unpriced run shows n/a. The interval is a 95% Wilson interval for the "
             "success rate. With three runs it is wide, so rank two cells only "
-            "with a test on the runs, such as Fisher's exact test.", "",
+            "with a test on the runs, such as Fisher's exact test. \"Refused\" counts "
+            "errors where a provider safety filter stopped the run. \"Fixed over "
+            "time\" counts timeouts whose diff fixed a defect with no regression; "
+            "they are not successes (decision 15).", "",
             "| Cell | Prompt | n | Picks | Success | 95% interval | Regressions | Errors | "
+            "Refused | Fixed over time | "
             f"Mean {unit} | {unit} per success | Mean reported USD | Mean s | "
             "Mean lines changed | Fix after cutoff |",
-            "|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|",
+            "|---|---|---:|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ]
     for r in planted:
         lines.append(
             f"| {r['cell']} | {r['prompt']} | {r['n']} | {r['picks']} | "
             f"{r['success']}/{r['n']} | {_interval(r['interval'])} | "
-            f"{r['regressions']} | {r['errors']} | "
+            f"{r['regressions']} | {r['errors']} | {r['refused']} | {r['over_time']} | "
             f"{_fmt(r['mean_cost'], 3)} | {_fmt(r['cost_per_success'], 3)} | "
             f"{_fmt(r['mean_usd_reported'], 3)} | {_fmt(r['mean_seconds'])} | "
             f"{_fmt(r['mean_lines'])} | {r['fix_after_cutoff']} |")

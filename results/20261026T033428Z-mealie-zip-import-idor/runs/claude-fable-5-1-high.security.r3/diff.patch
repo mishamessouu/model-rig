@@ -1,0 +1,94 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..c7b49f8 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -387,11 +387,26 @@ class RecipeService(RecipeServiceBase):
+         data["group_id"] = str(self.user.group_id)
+         data["household_id"] = str(self.user.household_id)
+ 
+-        # make sure categories and tags and food/unit are valid
++        # Never trust an id from the uploaded file on a nested object. `auto_init` resolves related
++        # rows by id without any group or household scoping, so a foreign id would bind another
++        # tenant's row (tool, category, instruction, comment, ...) to this recipe and overwrite it.
++        # Organizers are re-resolved by slug below. Food and unit keep their id only because their
++        # transforms validate it against the group-scoped repository first, and a substitute food
++        # because `resolve_substitutions` drops any food that is not in the group.
++        if key == "recipe":
++            # Comments belong to the users and the recipe they were written on; they are not part
++            # of the recipe content, so they are neither bound to nor recreated by an import.
++            data.pop("comments", None)
++        elif key not in {"food", "unit", "substitute_food"}:
++            data.pop("id", None)
++
++        # make sure categories, tags, tools and food/unit are valid
+         if key == "recipe_category":
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..a117044 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -438,6 +438,57 @@ def test_create_recipe_from_zip_reimport_into_same_instance(api_client: TestClie
+     assert still_there.json()["id"] == original["id"]
+ 
+ 
++def test_create_recipe_from_zip_ignores_ids_from_other_groups(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """Nested ids in an uploaded zip must never bind to, or modify, rows that belong to another group."""
++    tool = api_client.post(
++        api_routes.organizers_tools, json={"name": random_string()}, headers=unique_user.token
++    ).json()
++    slug = api_client.post(api_routes.recipes, json={"name": random_string()}, headers=unique_user.token).json()
++    victim = api_client.get(api_routes.recipes_slug(slug), headers=unique_user.token).json()
++    victim["recipeInstructions"] = [{"text": "secret step"}]
++    victim["tools"] = [tool]
++    assert api_client.put(api_routes.recipes_slug(slug), json=victim, headers=unique_user.token).status_code == 200
++    victim = api_client.get(api_routes.recipes_slug(slug), headers=unique_user.token).json()
++    comment = api_client.post(
++        api_routes.comments, json={"recipeId": victim["id"], "text": "secret comment"}, headers=unique_user.token
++    ).json()
++
++    payload = {
++        "name": random_string(),
++        "tools": [{**tool, "name": "stolen"}],
++        "recipeInstructions": [{"id": victim["recipeInstructions"][0]["id"], "text": "overwritten"}],
++        "comments": [{**comment, "text": "overwritten"}],
++    }
++    with tempfile.NamedTemporaryFile(mode="w+", dir=tempdir, suffix=".json", delete=False) as data_file:
++        json.dump(payload, data_file)
++        data_file.flush()
++        zip_file = os.path.join(tempdir, "foreign-ids.zip")
++        with ZipFile(zip_file, "w") as zf:
++            zf.write(data_file.name)
++
++    r = api_client.post(
++        api_routes.recipes_create_zip, files={"archive": Path(zip_file).read_bytes()}, headers=g2_user.token
++    )
++    assert r.status_code == 201
++
++    # the other group's data is untouched
++    after = api_client.get(api_routes.recipes_slug(slug), headers=unique_user.token).json()
++    assert [step["text"] for step in after["recipeInstructions"]] == ["secret step"]
++    assert [c["text"] for c in after["comments"]] == ["secret comment"]
++    assert [t["id"] for t in after["tools"]] == [tool["id"]]
++    assert after["tools"][0]["name"] == tool["name"]
++
++    # the importer got their own rows, created in their own group
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=g2_user.token).json()
++    assert imported["comments"] == []
++    assert imported["recipeInstructions"][0]["id"] != victim["recipeInstructions"][0]["id"]
++    assert len(imported["tools"]) == 1
++    assert imported["tools"][0]["id"] != tool["id"]
++    assert imported["tools"][0]["groupId"] == str(g2_user.group_id)
++
++
+ def test_create_recipe_from_zip_reimport_preserves_contents(api_client: TestClient, unique_user: TestUser):
+     """Re-importing an export into the same instance keeps every part of the recipe."""
+     category = api_client.post(

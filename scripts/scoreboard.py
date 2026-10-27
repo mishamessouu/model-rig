@@ -18,8 +18,16 @@ the scenario did not plant, from `scenarios/<name>/triage.toml`. It also
 counts control runs, because a control run can confirm a find. A scenario
 with no triage file counts no finds, so "either" is a lower bound. The
 per-scenario counts of a held scenario stay in the lab repo.
+
+The third table (design decision 14) compares two cells on the scenarios
+they both ran. The Wilson intervals above treat every run as independent,
+but the scenario decides most of the outcome. A paired comparison takes
+the mean of the per-scenario differences in success rate, with each
+scenario weighted the same, and a 95% interval from a two-stage
+bootstrap: scenarios with replacement, then runs within each scenario.
 """
 import argparse
+import random
 import sys
 import tomllib
 from pathlib import Path
@@ -27,6 +35,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from rig import prices, report, triage  # noqa: E402
+
+# A pair of cells shows only when they share this many scenarios.
+PAIR_MIN_SCENARIOS = 3
+BOOTSTRAP_SAMPLES = 2000
 
 
 def newest_runs(root, cells, skip, controls):
@@ -51,7 +63,7 @@ def planted_table(newest, cells, sheet):
     shown = [c for c in cells if any((s, c) in newest for s in scenarios)]
     lines = ["| Scenario | " + " | ".join(shown) + " |",
              "|---|" + "---:|" * len(shown)]
-    totals = {c: [0, 0, 0.0] for c in shown}
+    totals = {c: [0, 0, 0.0, 0, 0] for c in shown}
     for s in scenarios:
         row = []
         for c in shown:
@@ -67,16 +79,22 @@ def planted_table(newest, cells, sheet):
             # report, not a partial sum read as the whole.
             if totals[c][2] is not None:
                 totals[c][2] = None if None in costs else totals[c][2] + sum(costs)
+            totals[c][3] += sum(report.refused(r) for r in runs)
+            totals[c][4] += sum(report.over_time(r) for r in runs)
             row.append(f"{wins}/{len(runs)}")
         lines.append(f"| {s} | " + " | ".join(row) + " |")
     lines += [
-        "| **All** | " + " | ".join(f"**{w}/{n}**" for w, n, _ in totals.values()) + " |",
+        "| **All** | " + " | ".join(f"**{w}/{n}**" for w, n, *_ in totals.values()) + " |",
         "| 95% interval | " + " | ".join(
-            "{:.0%} to {:.0%}".format(*report.wilson(w, n)) for w, n, _ in totals.values())
+            "{:.0%} to {:.0%}".format(*report.wilson(w, n)) for w, n, *_ in totals.values())
         + " |",
         "| Credits per success | " + " | ".join(
             f"{cost / w:.0f}" if w and cost is not None else "n/a"
-            for w, _, cost in totals.values()) + " |",
+            for w, _, cost, *_ in totals.values()) + " |",
+        # Decision 15: both are failures above, shown so a reader can see why.
+        "| Refused by a safety filter | " + " | ".join(
+            str(t[3]) for t in totals.values()) + " |",
+        "| Fixed, but over time | " + " | ".join(str(t[4]) for t in totals.values()) + " |",
         "",
         "Batches: " + ", ".join(sorted({b for b, _ in newest.values()})),
     ]
@@ -144,6 +162,60 @@ def finds_table(newest, cells, finds):
     return lines
 
 
+def outcomes(newest, cell):
+    """scenario -> [1 or 0 per run] for the cell's planted successes."""
+    return {s: [int(report.success(r)) for r in runs]
+            for (s, c), (_, runs) in newest.items() if c == cell}
+
+
+def _share(runs):
+    return sum(runs) / len(runs)
+
+
+def paired(a, b, samples=BOOTSTRAP_SAMPLES, seed=0):
+    """Compare two cells on their shared scenarios. `a` and `b` map
+    scenario -> outcomes. Return (scenarios, (a better, tie, b better),
+    mean difference a - b, (low, high) 95% percentile interval)."""
+    names = sorted(set(a) & set(b))
+    diffs = [_share(a[s]) - _share(b[s]) for s in names]
+    signs = (sum(d > 0 for d in diffs), sum(d == 0 for d in diffs), sum(d < 0 for d in diffs))
+    rng = random.Random(seed)
+    draws = []
+    for _ in range(samples):
+        picked = rng.choices(names, k=len(names))
+        draws.append(sum(_share(rng.choices(a[s], k=len(a[s])))
+                         - _share(rng.choices(b[s], k=len(b[s]))) for s in picked) / len(picked))
+    draws.sort()
+    low, high = draws[int(0.025 * samples)], draws[int(0.975 * samples) - 1]
+    return len(names), signs, sum(diffs) / len(diffs), (low, high)
+
+
+def paired_table(newest, cells):
+    """The paired comparison table, as lines."""
+    per_cell = {c: outcomes(newest, c) for c in cells}
+    lines = [
+        "Paired by scenario (decision 14), planted successes only. Each pair "
+        "uses only the scenarios both cells ran, with each scenario weighted "
+        "the same. The interval is a 95% two-stage bootstrap: scenarios, then "
+        f"runs within each scenario, {BOOTSTRAP_SAMPLES} samples. \"Not "
+        "separable\" means the interval holds zero. A pair shows only with "
+        f"{PAIR_MIN_SCENARIOS} or more shared scenarios.",
+        "",
+        "| Cell A | Cell B | Scenarios | A better, tie, B better | A minus B | 95% interval | Result |",
+        "|---|---|---:|---|---:|---|---|",
+    ]
+    for i, a in enumerate(cells):
+        for b in cells[i + 1:]:
+            if len(set(per_cell[a]) & set(per_cell[b])) < PAIR_MIN_SCENARIOS:
+                continue
+            n, signs, mean, (low, high) = paired(per_cell[a], per_cell[b])
+            result = (f"{a} higher" if low > 0 else f"{b} higher" if high < 0
+                      else "not separable")
+            lines.append(f"| {a} | {b} | {n} | {signs[0]}, {signs[1]}, {signs[2]} | "
+                         f"{mean:+.0%} | {low:+.0%} to {high:+.0%} | {result} |")
+    return lines
+
+
 def main(argv=None, root=ROOT):
     parser = argparse.ArgumentParser()
     parser.add_argument("--sheet", default="copilot")
@@ -154,10 +226,12 @@ def main(argv=None, root=ROOT):
     cells = [c["name"] for c in
              tomllib.loads((Path(root) / "config" / "matrix.toml").read_text())["cells"]
              if not c["name"].startswith("fake")]
-    lines = planted_table(newest_runs(root, cells, skip, controls=False), cells, sheet)
+    planted = newest_runs(root, cells, skip, controls=False)
+    lines = planted_table(planted, cells, sheet)
     every = newest_runs(root, cells, skip, controls=True)
     finds = {s: triage.load(s, root) for s in {s for s, _ in every}}
     lines += [""] + finds_table(every, cells, finds)
+    lines += [""] + paired_table(planted, cells)
     print("\n".join(lines))
 
 

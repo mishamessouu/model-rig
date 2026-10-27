@@ -1,0 +1,55 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e906f13 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,11 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..da094f5 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,6 +16,9 @@
+ import datetime
+ import logging
+ 
++# Third Party
++from rest_framework import status
++
+ # wger
+ from wger.core.tests import api_base_test
+ from wger.manager.models import WorkoutLog
+@@ -41,3 +44,23 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_post_slot_entry_of_other_user(self):
++        """
++        A log cannot reference a slot entry that belongs to another user's routine
++        """
++        # Slot entry 1 belongs to a routine of user "admin", not "test"
++        self.authenticate(self.user_access)
++        data = dict(self.data, slot_entry=1)
++        response = self.client.post(self.url, data=data)
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertFalse(WorkoutLog.objects.filter(user__username='test', slot_entry=1).exists())
++
++    def test_patch_slot_entry_of_other_user(self):
++        """
++        An existing log cannot be pointed at another user's slot entry
++        """
++        self.authenticate(self.user_access)
++        response = self.client.patch(self.url_detail, data={'slot_entry': 1})
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertIsNone(WorkoutLog.objects.get(pk=self.pk).slot_entry_id)

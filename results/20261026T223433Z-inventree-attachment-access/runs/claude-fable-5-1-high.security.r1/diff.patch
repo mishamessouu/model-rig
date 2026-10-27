@@ -1,0 +1,44 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..ad0b654 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -810,6 +810,39 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+ 
++    def filter_queryset(self, queryset):
++        """Restrict the listed attachments to models which the user is allowed to view.
++
++        - Extract all model types present in the queryset
++        - Exclude any model type for which the user lacks 'view' permission
++        """
++        from common.validators import attachment_model_class_from_label
++        from InvenTree.models import InvenTreeAttachmentMixin
++
++        queryset = super().filter_queryset(queryset)
++
++        user = getattr(self.request, 'user', None)
++
++        if user is None or not user.is_authenticated:  # pragma: no cover
++            return queryset.none()
++
++        model_types = queryset.values_list('model_type', flat=True).distinct()
++
++        for model_type in model_types:
++            try:
++                model_class = attachment_model_class_from_label(model_type)
++            except ValidationError:
++                model_class = None
++
++            if (
++                model_class is None
++                or not issubclass(model_class, InvenTreeAttachmentMixin)
++                or not model_class.check_related_permission('view', user)
++            ):
++                queryset = queryset.exclude(model_type=model_type)
++
++        return queryset
++
+     def validate_delete(self, queryset, request) -> None:
+         """Ensure that the user has correct permissions for a bulk-delete.
+ 

@@ -1,0 +1,79 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e906f13 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,11 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..a290418 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -16,9 +16,16 @@
+ import datetime
+ import logging
+ 
++# Third Party
++from rest_framework import status
++
+ # wger
+ from wger.core.tests import api_base_test
+-from wger.manager.models import WorkoutLog
++from wger.core.tests.base_testcase import WgerTestCase
++from wger.manager.models import (
++    SlotEntry,
++    WorkoutLog,
++)
+ 
+ 
+ logger = logging.getLogger(__name__)
+@@ -41,3 +48,39 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++
++class WorkoutLogSlotEntryOwnershipTestCase(WgerTestCase):
++    """
++    Logs may only reference slot entries that belong to the requesting user
++    """
++
++    def setUp(self):
++        super().setUp()
++        self.user_login('test')
++        # Slot entry 1 belongs to routine 1, which is owned by 'admin'
++        self.assertNotEqual(SlotEntry.objects.get(pk=1).get_owner_object().user.username, 'test')
++
++    def test_create_log_with_foreign_slot_entry(self):
++        data = {
++            'exercise': 1,
++            'routine': 3,
++            'slot_entry': 1,
++            'repetitions': 3,
++            'repetitions_unit': 1,
++            'weight_unit': 2,
++            'weight': 2,
++            'date': datetime.date.today(),
++        }
++        response = self.client.post('/api/v2/workoutlog/', data)
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertFalse(WorkoutLog.objects.filter(slot_entry_id=1, user__username='test').exists())
++
++    def test_update_log_with_foreign_slot_entry(self):
++        response = self.client.patch(
++            '/api/v2/workoutlog/5/',
++            {'slot_entry': 1},
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertIsNone(WorkoutLog.objects.get(pk=5).slot_entry_id)

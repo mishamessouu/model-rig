@@ -1,0 +1,40 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..a0aed39 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -15,6 +15,17 @@ from loguru import logger
+ SCREENSHOT_FORMAT_JPEG = 'JPEG'
+ SCREENSHOT_FORMAT_PNG = 'PNG'
+ 
++
++def _processor_config_path(data_dir, filename):
++    """Keep processor configuration reads and writes inside the watch directory."""
++    if not isinstance(filename, str) or filename in ('', '.', '..') or os.path.basename(filename) != filename or '\\' in filename:
++        raise ValueError('Invalid processor config filename')
++    directory = os.path.realpath(data_dir)
++    filepath = os.path.realpath(os.path.join(directory, filename))
++    if os.path.dirname(filepath) != directory:
++        raise ValueError('Processor config must be inside the watch directory')
++    return filepath
++
+ class difference_detection_processor():
+     browser_steps = None
+     datastore = None
+@@ -319,7 +330,7 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = _processor_config_path(data_dir, filename)
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -353,7 +364,7 @@ class difference_detection_processor():
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = _processor_config_path(data_dir, filename)
+ 
+         try:
+             # If merge is enabled, read existing data first

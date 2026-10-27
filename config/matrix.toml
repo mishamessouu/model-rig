@@ -60,3 +60,51 @@ name = "codex-astra-high"
 harness = "codex"
 model = "gpt-6-astra"
 effort = "high"
+
+# GPT-6.1 Terra, released 2026-10-26. The maintainer asked for it on 2026-10-27.
+[[cells]]
+name = "codex-terra-medium"
+harness = "codex"
+model = "gpt-6.1-terra"
+effort = "medium"
+
+[[cells]]
+name = "codex-terra-high"
+harness = "codex"
+model = "gpt-6.1-terra"
+effort = "high"
+
+# Claude effort pairs and Fable 5.1. The maintainer asked for Anthropic models on
+# high and for Fable 5.1 on 2026-10-25.
+[[cells]]
+name = "claude-opus-high"
+harness = "claude"
+model = "opus"
+effort = "high"
+
+[[cells]]
+name = "claude-sonnet-5-5-high"
+harness = "claude"
+model = "claude-sonnet-5-5"
+effort = "high"
+
+[[cells]]
+name = "claude-fable-5-1-medium"
+harness = "claude"
+model = "claude-fable-5-1"
+effort = "medium"
+
+[[cells]]
+name = "claude-fable-5-1-high"
+harness = "claude"
+model = "claude-fable-5-1"
+effort = "high"
+
+# Haiku 5.5 against Luna medium. Model watch reported on 2026-10-25 that
+# Haiku 5.5 beats GPT-6 Luna on the Artificial Analysis index at the same
+# price. The maintainer asked for the cell the same day.
+[[cells]]
+name = "claude-haiku-5-5-medium"
+harness = "claude"
+model = "claude-haiku-5-5"
+effort = "medium"

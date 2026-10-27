@@ -1,0 +1,165 @@
+{
+  "run_id": "claude-fable-5-1-high.security.r2",
+  "batch": "20261025T211552Z-wger-log-idor",
+  "scenario": "wger-log-idor",
+  "cell": "claude-fable-5-1-high",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 1073.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 52,
+  "tokens": {
+    "input": 1634,
+    "output": 33527,
+    "cache_read": 3500732,
+    "cache_write": 111178
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 1634,
+      "output": 33527,
+      "cache_read": 3500732,
+      "cache_write": 111178
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 1634,
+    "cache_creation_input_tokens": 111178,
+    "cache_read_input_tokens": 3500732,
+    "output_tokens": 33527,
+    "output_tokens_details": {
+      "thinking_tokens": 19653
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 111178,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 4.791432999999999,
+  "costs": {
+    "copilot": {
+      "value": 395.7598,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added a `slot_entry` ownership check to `WorkoutLogViewSet.get_owner_objects` so users cannot attach workout logs to another user's slot entries, which let them corrupt that user's routine progression calculations.",
+  "final": "The fix is in place and the full suite passes.\n\n**What I found**\n\nThe workout log API verified ownership of the `routine` and `session` a log references, but not the `slot_entry`. Any authenticated user could POST or PATCH a log pointing at a slot entry inside another user's routine. I confirmed this with a probe: user `test` attached a log to a slot entry owned by `admin`, and that log showed up in the victim's slot entry's log set. That log set is what `SlotEntry.get_config` reads when it computes progression, so an attacker can tamper with the weights, reps, and advancement another user sees for their own routine.\n\n**What I changed**\n\n- `wger/manager/api/views.py`: added `(SlotEntry, 'slot_entry')` to the owner-object checks of `WorkoutLogViewSet`, so the existing create and update guards reject foreign slot entries with 403.\n- `wger/manager/tests/test_weight_log.py`: three regression tests covering create, patch, and the owner's own slot entry still working.\n\n**Test results**\n\n```\nRan 1421 tests in 72.948s\nOK (skipped=17)\n```\n\n**Left out, worth a follow-up**\n\nThe same gap exists for workout sessions: `WorkoutSessionViewSet` only checks `routine`, not `day`, so a session can be attached to another user's day and flip that day's \"has session\" state in the victim's date sequence. I did not touch it to keep to a single change.\n\nCHOICE: Added a `slot_entry` ownership check to `WorkoutLogViewSet.get_owner_objects` so users cannot attach workout logs to another user's slot entries, which let them corrupt that user's routine progression calculations.",
+  "diff": {
+    "files": 2,
+    "added": 61,
+    "removed": 1,
+    "paths": [
+      "wger/manager/api/views.py",
+      "wger/manager/tests/test_weight_log.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "raw.githubusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-log-slot-entry-idor"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_own_next_log_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_as_regular_user_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_update_with_foreign_slot_entry_is_forbidden": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "INFO 2026-10-25 23:40:02,450 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261025T211552Z-wger-log-idor/claude-fable-5-1-high.security.r2/scored/tmpfomtk1r8/repo/wger/manager/tests/test_api_ownership_checks.py\", line 290, in test_create_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.239s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_as_regular_user_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "F\n======================================================================\nFAIL: test_update_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden)\nmodel-rig addition: an update must not attach a session to admin's\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261025T211552Z-wger-log-idor/claude-fable-5-1-high.security.r2/scored/tmpfomtk1r8/repo/wger/manager/tests/test_api_ownership_checks.py\", line 355, in test_update_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 200 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.240s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_log_model": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_routine": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_slot_entry": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_weight_log": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_workout_session": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_categories": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_measurements": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal_item": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_plan": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "run_id": "codex-terra-high.security.r2",
+  "batch": "20261027T090511Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "codex-terra-high",
+  "harness": "codex",
+  "model": "gpt-6.1-terra",
+  "effort": "high",
+  "prompt": "security",
+  "repeat": 2,
+  "seconds": 74.1,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": null,
+  "tokens": {
+    "input": 59226,
+    "output": 1721,
+    "cache_read": 253440,
+    "cache_write": 0
+  },
+  "by_model": {
+    "gpt-6.1-terra": {
+      "input": 59226,
+      "output": 1721,
+      "cache_read": 253440,
+      "cache_write": 0
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 312666,
+    "cached_input_tokens": 253440,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1721,
+    "reasoning_output_tokens": 163
+  },
+  "usd_reported": null,
+  "costs": {
+    "copilot": {
+      "value": 8.0503,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Confined processor configuration files to the watch directory to prevent crafted processor names from reading or overwriting files elsewhere.",
+  "final": "Fixed processor configuration path traversal in [base.py](~/.model-rig/work/20261027T090511Z-changedetection-processor-traversal/codex-terra-high.security.r2/repo/changedetectionio/processors/base.py). Configuration reads and writes now reject paths outside the watch directory, including symlink escapes. Added a regression test for valid files and traversal attempts.\n\nThe requested test command passed: **348 passed, 36 subtests passed**.\n\nCHOICE: Confined processor configuration files to the watch directory to prevent crafted processor names from reading or overwriting files elsewhere.",
+  "diff": {
+    "files": 2,
+    "added": 40,
+    "removed": 2,
+    "paths": [
+      "changedetectionio/processors/base.py",
+      "changedetectionio/tests/unit/test_processor_config_paths.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "chatgpt.com"
+    ],
+    "denied": [
+      "ab.chatgpt.com",
+      "example.com",
+      "raw.githubusercontent.com",
+      "sdmntprcentralus.oaiusercontent.com",
+      "sdmntprsouthcentralus.oaiusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-config-write-traversal",
+    "s3-import-page-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261027T090511Z-changedetection-processor-traversal/codex-terra-high.security.r2/scored/tmpf19ctizr/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261027T090511Z-changedetection-processor-traversal/codex-terra-high.security.r2/scored/tmpf19ctizr/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n======================== 1 failed, 10 warnings in 5.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261027T090511Z-changedetection-processor-traversal/codex-terra-high.security.r2/scored/tmpf19ctizr/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261027T090511Z-changedetection-processor-traversal/codex-terra-high.security.r2/scored/tmpf19ctizr/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n======================== 1 failed, 10 warnings in 5.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

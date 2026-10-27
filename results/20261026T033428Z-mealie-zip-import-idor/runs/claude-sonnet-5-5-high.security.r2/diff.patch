@@ -1,0 +1,84 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..d8e81a1 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -262,16 +262,15 @@ class RecipeService(RecipeServiceBase):
+ 
+     def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
+         slug = data.get("slug")
+-        if not slug:
+-            return data
+ 
+-        # if the item exists, return the actual data
+-        query = repo.get_one(slug, "slug")
++        # if the item exists in this group, return the actual data; the repo is group-scoped, so an id or
++        # slug belonging to another group never matches
++        query = repo.get_one(slug, "slug") if slug else repo.get_one(data.get("id"))
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
+-        new_item = repo.create(data)
++        # otherwise, create the item; the id comes from the archive and may belong to another group
++        new_item = repo.create({k: v for k, v in data.items() if k != "id"})
+         return new_item.model_dump()
+ 
+     def _get_data_matcher(self) -> DataMatcher:
+@@ -392,6 +391,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_category_or_tag(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..8e767ad 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -23,7 +23,7 @@ from mealie.pkgs.safehttp.fetch import FetchResult
+ from mealie.pkgs.safehttp.transport import AsyncSafeTransport
+ from mealie.schema.cookbook.cookbook import SaveCookBook
+ from mealie.schema.labels.multi_purpose_label import MultiPurposeLabelSave
+-from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag
++from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag, RecipeTool
+ from mealie.schema.recipe.recipe_category import CategorySave, TagSave
+ from mealie.schema.recipe.recipe_ingredient import (
+     CreateIngredientFoodAlias,
+@@ -2219,3 +2219,35 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_does_not_hijack_other_groups_tool(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A tool id in an imported zip must never resolve to (or modify) a tool owned by another group."""
++    victim_tool = g2_user.repos.tools.create(RecipeToolSave(name=random_string(), group_id=g2_user.group_id))
++
++    recipe_name = random_string()
++    recipe = Recipe(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[RecipeTool(id=victim_tool.id, name="hijacked", slug="hijacked")],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    # the other group's tool is untouched and still belongs to its group
++    unchanged = g2_user.repos.tools.get_one(victim_tool.id)
++    assert unchanged
++    assert unchanged.name == victim_tool.name
++    assert str(unchanged.group_id) == str(g2_user.group_id)
++
++    # the imported recipe gets its own tool in the importing group
++    imported = unique_user.repos.recipes.get_by_slug(unique_user.group_id, recipe.slug)
++    assert imported
++    assert len(imported.tools) == 1
++    assert imported.tools[0].id != victim_tool.id

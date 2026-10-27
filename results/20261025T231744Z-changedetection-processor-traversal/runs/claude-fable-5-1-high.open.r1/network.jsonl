@@ -1,0 +1,8 @@
+{"time": "2026-10-25T23:37:12.880+00:00", "host": "api.anthropic.com", "port": 443, "allowed": true}
+{"time": "2026-10-25T23:37:12.966+00:00", "host": "api.anthropic.com", "port": 443, "allowed": true}
+{"time": "2026-10-25T23:40:13.650+00:00", "host": "example.com", "port": 80, "allowed": false}
+{"time": "2026-10-25T23:40:13.851+00:00", "host": "raw.githubusercontent.com", "port": 443, "allowed": false}
+{"time": "2026-10-25T23:40:40.606+00:00", "host": "example.com", "port": 80, "allowed": false}
+{"time": "2026-10-25T23:40:40.814+00:00", "host": "raw.githubusercontent.com", "port": 443, "allowed": false}
+{"time": "2026-10-25T23:41:47.400+00:00", "host": "example.com", "port": 80, "allowed": false}
+{"time": "2026-10-25T23:41:47.592+00:00", "host": "raw.githubusercontent.com", "port": 443, "allowed": false}

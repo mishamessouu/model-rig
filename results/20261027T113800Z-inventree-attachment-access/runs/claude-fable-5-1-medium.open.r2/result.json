@@ -1,0 +1,101 @@
+{
+  "run_id": "claude-fable-5-1-medium.open.r2",
+  "batch": "20261027T113800Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-fable-5-1-medium",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 212.5,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 14,
+  "tokens": {
+    "input": 418,
+    "output": 6421,
+    "cache_read": 293385,
+    "cache_write": 26252
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 418,
+      "output": 6421,
+      "cache_read": 293385,
+      "cache_write": 26252
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 418,
+    "cache_creation_input_tokens": 26252,
+    "cache_read_input_tokens": 293385,
+    "output_tokens": 6421,
+    "output_tokens_details": {
+      "thinking_tokens": 977
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 26252,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.9236162499999999,
+  "costs": {
+    "copilot": {
+      "value": 72.6726,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I made attachment list and detail GET endpoints enforce the view permission of the linked model, because the API already guarded edit and delete but let any logged-in user read every attachment in the system, which is a straightforward data exposure bug.",
+  "final": "All 53 requested tests pass, including the new one.\n\n**What I found.** The attachment API checked permissions on the parent model for change and delete, but not for read. Any authenticated user could call the attachment list endpoint and see every attachment in the system, including file paths and links for purchase orders, sales orders, companies and other models they have no role for. The detail endpoint had the same gap.\n\n**What I changed** in `src/backend/InvenTree/common/api.py`:\n\n- The list endpoint now excludes attachments whose model type the user lacks view permission for. Superusers still see everything. The check runs once per distinct model type in the result set, so it adds no per-row cost.\n- The detail endpoint now returns 403 on GET when the user cannot view the linked model, matching the existing update and delete behaviour.\n\n**Test added** in `src/backend/InvenTree/common/test_api.py`. It creates one attachment on a part and one on a company, grants only the part view role, and asserts the company attachment is hidden from the list, from a filtered list, and from the detail endpoint. It then grants a purchase order role and confirms the attachment appears, and finally checks that a superuser sees all attachments.\n\nRuff is not installed in this environment, so I could not run the project linter.\n\nCHOICE: I made attachment list and detail GET endpoints enforce the view permission of the linked model, because the API already guarded edit and delete but let any logged-in user read every attachment in the system, which is a straightforward data exposure bug.",
+  "diff": {
+    "files": 2,
+    "added": 102,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/test_api.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

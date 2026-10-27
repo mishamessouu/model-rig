@@ -1,0 +1,160 @@
+{
+  "run_id": "claude-fable-5-1-high.open.r3",
+  "batch": "20261025T231744Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "claude-fable-5-1-high",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 3,
+  "seconds": 183.7,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 21,
+  "tokens": {
+    "input": 642,
+    "output": 11229,
+    "cache_read": 718334,
+    "cache_write": 44870
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 642,
+      "output": 11229,
+      "cache_read": 718334,
+      "cache_write": 44870
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 642,
+    "cache_creation_input_tokens": 44870,
+    "cache_read_input_tokens": 718334,
+    "output_tokens": 11229,
+    "output_tokens_details": {
+      "thinking_tokens": 2928
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 44870,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.6448535000000002,
+  "costs": {
+    "copilot": {
+      "value": 130.8329,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added a path-safety guard to the processor config file helpers in `processors/base.py` so a processor name can never read or write outside the watch's data directory, because that sink built file paths from user-settable data with no check and relied entirely on upstream validation staying intact.",
+  "final": "I hardened the one place where the watch's `processor` value reaches the filesystem.\n\n**What I found.** Processor-specific settings are stored as a JSON file named after the processor, so a watch whose processor is `foo` gets `foo.json` in its data directory. The two helpers that read and write that file in `changedetectionio/processors/base.py` joined the name onto the directory with no checks. A value like `../../victim` would have written attacker-controlled JSON outside the watch directory, or read a file from outside it. I verified with a live app and test client that today every entry point rejects such a value. The REST API enforces the OpenAPI enum, the edit form uses a radio field with fixed choices, the import endpoint checks the available list, and the switch-processor link checks it too. So this is not exploitable right now, but the safety depends on every edge staying correct, and a single loosened schema or a plugin that registers an odd name would turn it into an arbitrary file write.\n\n**What I changed.** One change, in one file plus a test:\n\n- Added `resolve_extra_watch_config_path` in `changedetectionio/processors/base.py`. It rejects empty or non-string names, anything with directory components or an absolute path, and anything whose real path lands outside the watch directory. That last check also blocks symlink escapes, and mirrors the guard this repo already uses for history snapshot entries.\n- Both config helpers now go through it. A read of an unsafe name returns an empty dict. A write of an unsafe name logs an error and does nothing, so callers like the API config save and the edit page keep their existing behaviour for valid names.\n- Added `changedetectionio/tests/unit/test_processor_config_path_safety.py` covering traversal, absolute, dotted, non-string, and symlinked names, plus a normal read and merge-write round trip.\n\n**Verification.** The full requested run passes:\n\n```\npython3 -m pytest tests/unit/ tests/llm/\n361 passed, 30 warnings, 36 subtests passed in 15.67s\n```\n\nI also re-ran a live PUT through the API with a valid restock config and confirmed it still returns 200 and writes `restock_diff.json` into the watch directory.\n\nCHOICE: Added a path-safety guard to the processor config file helpers in `processors/base.py` so a processor name can never read or write outside the watch's data directory, because that sink built file paths from user-settable data with no check and relied entirely on upstream validation staying intact.",
+  "diff": {
+    "files": 2,
+    "added": 127,
+    "removed": 3,
+    "paths": [
+      "changedetectionio/processors/base.py",
+      "changedetectionio/tests/unit/test_processor_config_path_safety.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "changedetection.io",
+      "example.com",
+      "raw.githubusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-config-write-traversal",
+    "s3-import-page-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-fable-5-1-high.open.r3/scored/tmpzm47k9zc/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-fable-5-1-high.open.r3/scored/tmpzm47k9zc/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-fable-5-1-high.open.r3/scored/tmpzm47k9zc/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-fable-5-1-high.open.r3/scored/tmpzm47k9zc/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

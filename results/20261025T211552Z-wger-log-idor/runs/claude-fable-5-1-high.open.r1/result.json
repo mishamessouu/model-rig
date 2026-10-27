@@ -1,0 +1,163 @@
+{
+  "run_id": "claude-fable-5-1-high.open.r1",
+  "batch": "20261025T211552Z-wger-log-idor",
+  "scenario": "wger-log-idor",
+  "cell": "claude-fable-5-1-high",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 252.0,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 15,
+  "tokens": {
+    "input": 450,
+    "output": 6851,
+    "cache_read": 369609,
+    "cache_write": 31945
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 450,
+      "output": 6851,
+      "cache_read": 369609,
+      "cache_write": 31945
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 450,
+    "cache_creation_input_tokens": 31945,
+    "cache_read_input_tokens": 369609,
+    "output_tokens": 6851,
+    "output_tokens_details": {
+      "thinking_tokens": 2413
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 31945,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.07835225,
+  "costs": {
+    "copilot": {
+      "value": 83.8765,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Added a `slot_entry` ownership check to the workout log API so users can no longer attach logs to other users' slot entries, because that let anyone silently tamper with another user's routine progression.",
+  "final": "The full suite passes.\n\n```\nRan 1420 tests in 70.301s\nOK (skipped=17)\n```\n\n**What was wrong.** The workout log API endpoint verified that a submitted `routine` and `session` belonged to the requesting user, but it never checked the `slot_entry` field. Slot entries compute a user's progression from every log attached to them, with no filter on who wrote the log. Any authenticated user could therefore POST or PATCH a log pointing at another user's slot entry and alter that user's weight and rep progression, or block their routine from advancing.\n\n**What I changed.**\n- `wger/manager/api/views.py:312` now includes the slot entry in the ownership check list, so a foreign slot entry returns 403 on create and update, matching how the slot entry endpoint itself already guards its parent.\n- `wger/manager/tests/test_weight_log.py` gains two regression tests, one for POST and one for PATCH. Both fail on the baseline and pass with the fix.\n\nCHOICE: Added a `slot_entry` ownership check to the workout log API so users can no longer attach logs to other users' slot entries, because that let anyone silently tamper with another user's routine progression.",
+  "diff": {
+    "files": 2,
+    "added": 37,
+    "removed": 1,
+    "paths": [
+      "wger/manager/api/views.py",
+      "wger/manager/tests/test_weight_log.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-log-slot-entry-idor"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogNextLogOwnershipTestCase.test_create_with_own_next_log_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_foreign_slot_entry_is_forbidden": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_as_regular_user_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_create_with_own_slot_entry_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutLogSlotEntryOwnershipTestCase.test_update_with_foreign_slot_entry_is_forbidden": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "INFO 2026-10-25 22:42:02,927 trophy Awarded trophy \"Personal Record\" to user test\nF\n======================================================================\nFAIL: test_create_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_foreign_day_is_forbidden)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261025T211552Z-wger-log-idor/claude-fable-5-1-high.open.r1/scored/tmp2omttf28/repo/wger/manager/tests/test_api_ownership_checks.py\", line 290, in test_create_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 201 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.228s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_as_regular_user_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_create_with_own_day_is_allowed": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden": {
+      "passed": false,
+      "tail": "F\n======================================================================\nFAIL: test_update_with_foreign_day_is_forbidden (wger.manager.tests.test_api_ownership_checks.WorkoutSessionDayOwnershipTestCase.test_update_with_foreign_day_is_forbidden)\nmodel-rig addition: an update must not attach a session to admin's\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"~/.model-rig/work/20261025T211552Z-wger-log-idor/claude-fable-5-1-high.open.r1/scored/tmp2omttf28/repo/wger/manager/tests/test_api_ownership_checks.py\", line 355, in test_update_with_foreign_day_is_forbidden\n    self.assertIn(response.status_code, REFUSED)\nAssertionError: 200 not found in (400, 403, 404)\n\n----------------------------------------------------------------------\nRan 1 test in 0.229s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    },
+    "wger.manager.tests.test_log_model": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_routine": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_slot_entry": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_weight_log": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.manager.tests.test_workout_session": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_categories": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.measurements.tests.test_measurements": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_meal_item": {
+      "passed": true,
+      "tail": ""
+    },
+    "wger.nutrition.tests.test_plan": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

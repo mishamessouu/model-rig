@@ -1,0 +1,101 @@
+{
+  "run_id": "claude-fable-5-1-high.open.r1",
+  "batch": "20261026T223433Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-fable-5-1-high",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 243.0,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 18,
+  "tokens": {
+    "input": 546,
+    "output": 11217,
+    "cache_read": 534564,
+    "cache_write": 42575
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 546,
+      "output": 11217,
+      "cache_read": 534564,
+      "cache_write": 42575
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 546,
+    "cache_creation_input_tokens": 42575,
+    "cache_read_input_tokens": 534564,
+    "output_tokens": 11217,
+    "output_tokens_details": {
+      "thinking_tokens": 4768
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 42575,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.5514510000000001,
+  "costs": {
+    "copilot": {
+      "value": 123.2138,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I made the attachment list and detail endpoints filter by view permission on the linked model, because the write side already enforced target-model permissions while any authenticated user could read every attachment, which is the gap that matters most in an attachment-access review.",
+  "final": "The attachment API now hides attachments from users who lack view permission on the linked model.\n\n**What was wrong.** The attachment table is deliberately on the permissions ignore list, so access is meant to come from the target model. Create, update, and delete already check the target model's permission. List and detail GET checked nothing beyond authentication, so any logged-in user could enumerate every attachment in the system, including file URLs for parts, orders, and stock they were not allowed to see.\n\n**What I changed.**\n- `src/backend/InvenTree/common/api.py:800` adds a read-only filter to the shared attachment view mixin. For safe HTTP methods it keeps only attachments whose model type the user can view, using the same two checks the create path uses. Writes are untouched, since they already enforce change and delete permissions and a user with change but not view must keep working.\n- `src/backend/InvenTree/common/tests.py` adds a regression test. A user with no roles sees an empty list and gets a 404 on the detail URL. A role on an unrelated model does not help. Granting view on the linked model makes the attachment visible, and a superuser always sees it.\n\n**Verification.** The requested command ran all three suites and passed.\n\n| Suites | Result |\n|---|---|\n| common.test_api, common.tests.AttachmentTest, part.test_api.AttachmentTest | 53 tests, OK |\n\nI also stashed the fix and re-ran the new test alone. It failed with one attachment visible instead of zero, so the test exercises the gap. Ruff is not installed in this environment, so I could not run the linter. The code follows the surrounding style by hand.\n\nCHOICE: I made the attachment list and detail endpoints filter by view permission on the linked model, because the write side already enforced target-model permissions while any authenticated user could read every attachment, which is the gap that matters most in an attachment-access review.",
+  "diff": {
+    "files": 2,
+    "added": 90,
+    "removed": 1,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/tests.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

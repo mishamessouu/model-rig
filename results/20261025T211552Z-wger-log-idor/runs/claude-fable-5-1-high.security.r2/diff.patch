@@ -1,0 +1,89 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e906f13 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,11 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..9c0890a 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -17,7 +17,10 @@ import datetime
+ import logging
+ 
+ # wger
++from django.urls import reverse
++
+ from wger.core.tests import api_base_test
++from wger.core.tests.base_testcase import WgerTestCase
+ from wger.manager.models import WorkoutLog
+ 
+ 
+@@ -41,3 +44,56 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++
++class WorkoutLogSlotEntryOwnershipTestCase(WgerTestCase):
++    """
++    A log may only reference slot entries that belong to the requesting user.
++
++    Otherwise a user could attach their own logs to somebody else's routine
++    structure and tamper with that user's progression calculations.
++    """
++
++    # Slot entry 1 belongs to routine 1, owned by user 'admin'
++    FOREIGN_SLOT_ENTRY_PK = 1
++
++    def get_data(self, slot_entry):
++        return {
++            'exercise': 1,
++            'routine': 3,
++            'slot_entry': slot_entry,
++            'iteration': 1,
++            'repetitions': 3,
++            'repetitions_unit': 1,
++            'weight_unit': 1,
++            'weight': 100,
++            'date': datetime.date.today(),
++        }
++
++    def test_create_log_with_foreign_slot_entry_is_forbidden(self):
++        self.user_login('test')
++        response = self.client.post(
++            reverse('workoutlog-list'),
++            self.get_data(self.FOREIGN_SLOT_ENTRY_PK),
++        )
++        self.assertEqual(response.status_code, 403)
++        self.assertFalse(
++            WorkoutLog.objects.filter(slot_entry_id=self.FOREIGN_SLOT_ENTRY_PK, user_id=2).exists()
++        )
++
++    def test_update_log_with_foreign_slot_entry_is_forbidden(self):
++        self.user_login('test')
++        response = self.client.patch(
++            reverse('workoutlog-detail', kwargs={'pk': 5}),
++            {'slot_entry': self.FOREIGN_SLOT_ENTRY_PK},
++            content_type='application/json',
++        )
++        self.assertEqual(response.status_code, 403)
++        self.assertNotEqual(WorkoutLog.objects.get(pk=5).slot_entry_id, self.FOREIGN_SLOT_ENTRY_PK)
++
++    def test_owner_can_use_own_slot_entry(self):
++        self.user_login('admin')
++        data = self.get_data(self.FOREIGN_SLOT_ENTRY_PK)
++        data['routine'] = 1
++        response = self.client.post(reverse('workoutlog-list'), data)
++        self.assertEqual(response.status_code, 201)

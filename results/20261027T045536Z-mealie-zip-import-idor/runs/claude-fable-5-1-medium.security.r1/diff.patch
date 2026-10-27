@@ -1,0 +1,122 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..1dd0d17 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -274,6 +275,29 @@ class RecipeService(RecipeServiceBase):
+         new_item = repo.create(data)
+         return new_item.model_dump()
+ 
++    def _transform_tool(self, data: dict[str, Any] | Any) -> dict[str, Any] | None:
++        """Resolve an imported tool against this group, creating it if necessary.
++
++        Like tags and categories, tools are matched by slug within the current group only. The id carried by
++        the export is never trusted: tools are linked by id in the recipe model without a group filter, so an
++        id pointing at another group's tool would both attach it to this recipe and overwrite that tool's data.
++        """
++        if not isinstance(data, dict):
++            return None
++
++        name = self._non_empty_str(data.get("name"))
++        if not name:
++            return None
++
++        slug = self._non_empty_str(data.get("slug")) or slugify(name)
++
++        existing_tool = self.repos.tools.get_one(slug, "slug")
++        if existing_tool:
++            return existing_tool.model_dump()
++
++        new_tool = self.repos.tools.create({"name": name, "slug": slug, "group_id": self.user.group_id})
++        return new_tool.model_dump()
++
+     def _get_data_matcher(self) -> DataMatcher:
+         if self._data_matcher is None:
+             # Exact matches only: zip imports should rematch name/plural/alias/abbreviation,
+@@ -366,7 +390,11 @@ class RecipeService(RecipeServiceBase):
+ 
+     def _process_recipe_data(self, key: str, data: list | dict | Any) -> Any:
+         if isinstance(data, list):
+-            return [self._process_recipe_data(key, item) for item in data]
++            items = [self._process_recipe_data(key, item) for item in data]
++            if key == "tools":
++                # tools that could not be resolved are dropped rather than left as None
++                return [item for item in items if item is not None]
++            return items
+ 
+         elif isinstance(data, str):
+             # make sure the user is valid
+@@ -392,6 +420,8 @@ class RecipeService(RecipeServiceBase):
+             return self._transform_category_or_tag(data, self.repos.categories)
+         elif key == "tags":
+             return self._transform_category_or_tag(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_tool(data)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..709ac3b 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -55,8 +55,12 @@ def tempdir() -> Generator[str]:
+ 
+ 
+ def zip_recipe(tempdir: str, recipe: RecipeSummary) -> dict:
++    return zip_recipe_dict(tempdir, json.loads(recipe.model_dump_json()))
++
++
++def zip_recipe_dict(tempdir: str, recipe: dict) -> dict:
+     with tempfile.NamedTemporaryFile(mode="w+", dir=tempdir, suffix=".json", delete=False) as data_file:
+-        json.dump(json.loads(recipe.model_dump_json()), data_file)
++        json.dump(recipe, data_file)
+         data_file.flush()
+ 
+         zip_file = os.path.join(tempdir, "zipfile.zip")
+@@ -2219,3 +2223,39 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_tool_id_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """A tool id in the import that belongs to another group must not link to, or alter, that group's tool."""
++    other_tool = api_client.post(
++        api_routes.organizers_tools, json={"name": random_string()}, headers=g2_user.token
++    ).json()
++
++    recipe_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++    )
++    recipe_dict = recipe.model_dump(mode="json")
++    recipe_dict["tools"] = [{"id": other_tool["id"], "name": random_string(), "slug": random_string()}]
++
++    r = api_client.post(
++        api_routes.recipes_create_zip, files=zip_recipe_dict(tempdir, recipe_dict), headers=unique_user.token
++    )
++    assert r.status_code == 201
++
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert len(imported["tools"]) == 1
++    assert imported["tools"][0]["id"] != other_tool["id"]
++    assert imported["tools"][0]["name"] == recipe_dict["tools"][0]["name"]
++
++    # the other group's tool is untouched
++    still_there = api_client.get(api_routes.organizers_tools_item_id(other_tool["id"]), headers=g2_user.token)
++    assert still_there.status_code == 200
++    assert still_there.json()["name"] == other_tool["name"]
++    assert still_there.json()["groupId"] == str(g2_user.group_id)

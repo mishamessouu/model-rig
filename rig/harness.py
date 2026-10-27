@@ -112,6 +112,8 @@ def parse_claude(stdout, final_file=None):
                   f"{(data.get('result') or '')[:200]}") if data.get("is_error") else None,
         "raw_usage": data.get("usage"),
         "final": data.get("result") or "",
+        # A provider safety filter stopped the run (decision 15).
+        "refused": data.get("stop_reason") == "refusal",
     }
 
 

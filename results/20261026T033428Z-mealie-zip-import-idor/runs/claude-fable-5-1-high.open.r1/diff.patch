@@ -1,0 +1,176 @@
+diff --git a/mealie/db/models/_model_utils/auto_init.py b/mealie/db/models/_model_utils/auto_init.py
+index cf715d2..fd33bab 100644
+--- a/mealie/db/models/_model_utils/auto_init.py
++++ b/mealie/db/models/_model_utils/auto_init.py
+@@ -73,27 +73,79 @@ def get_lookup_attr(relation_cls: type[SqlAlchemyBase]) -> str:
+     return get_attr
+ 
+ 
+-def handle_many_to_many(session, get_attr, relation_cls, all_elements: list[dict]):
++def handle_many_to_many(session, get_attr, relation_cls, all_elements: list[dict], group_id=None):
+     """
+     Proxy call to `handle_one_to_many_list` for many-to-many relationships. Because functionally, they do the same
+     """
+-    return handle_one_to_many_list(session, get_attr, relation_cls, all_elements)
++    return handle_one_to_many_list(session, get_attr, relation_cls, all_elements, group_id=group_id)
++
++
++def _is_group_owned(relation_cls: type[SqlAlchemyBase]) -> bool:
++    """Returns True when the related class stores a group of its own.
++
++    Only a real column counts: classes that expose `group_id` as an association proxy derive
++    their group from a parent row instead, so there is nothing to filter on.
++    """
++    try:
++        return "group_id" in inspect(relation_cls).columns
++    except Exception:
++        return False
++
++
++def _owning_group_id(instance: SqlAlchemyBase, kwargs: dict) -> UUID | str | None:
++    """Returns the group this row belongs to, or None when it does not belong to one.
++
++    On an update the row is already persisted, so its stored group is used when the caller did
++    not supply one. `group_id` can also be an association proxy, which raises on a row whose
++    parent is not set yet, hence the broad guard.
++    """
++    group_id = kwargs.get("group_id", None)
++    if group_id is not None:
++        return group_id
++
++    try:
++        return getattr(instance, "group_id", None)
++    except Exception:
++        return None
+ 
+ 
+ def handle_one_to_many_list(
+-    session: Session, get_attr, relation_cls: type[SqlAlchemyBase], all_elements: list[dict] | list[str]
++    session: Session,
++    get_attr,
++    relation_cls: type[SqlAlchemyBase],
++    all_elements: list[dict] | list[str],
++    group_id: UUID | str | None = None,
+ ):
+     elems_to_create: list[dict] = []
+     updated_elems: list[dict] = []
+ 
+     cfg = _get_config(relation_cls)
+ 
++    # Related rows that belong to a group of their own must belong to the same group as their
++    # parent. The lookup below matches on a client-supplied id or slug, and then writes the
++    # client-supplied values onto whatever it finds, so without this scoping a request body
++    # could reach a row in another group and re-parent or rename it.
++    scope_to_group = group_id is not None and _is_group_owned(relation_cls)
++
+     for elem in all_elements:
++        if scope_to_group and isinstance(elem, dict):
++            elem = {**elem, "group_id": group_id}
++
+         elem_id = elem.get(get_attr, None) if isinstance(elem, dict) else elem
+         stmt = select(relation_cls).filter_by(**{get_attr: elem_id})
++        if scope_to_group:
++            stmt = stmt.filter_by(group_id=group_id)
+         existing_elem = session.execute(stmt).scalars().one_or_none()
+ 
+         if existing_elem is None and isinstance(elem, dict):
++            if scope_to_group:
++                # Nothing in this group matched. If the row exists in another group then the id
++                # that came with it is already taken and cannot be reused here, so it is dropped
++                # and the new row gets a generated one instead.
++                taken_elsewhere = session.execute(select(relation_cls).filter_by(**{get_attr: elem_id}))
++                if taken_elsewhere.scalars().first() is not None:
++                    elem = {key: value for key, value in elem.items() if key != "id"}
++
+             elems_to_create.append(elem)
+             continue
+ 
+@@ -140,6 +192,9 @@ def auto_init():  # sourcery no-metrics
+             if session is None:
+                 raise ValueError("Session is required to initialize the model with `auto_init`")
+ 
++            # The group this row belongs to, used to keep related lookups inside that group.
++            group_id = _owning_group_id(self, kwargs)
++
+             for key, val in kwargs.items():
+                 if key in exclude:
+                     continue
+@@ -167,7 +222,7 @@ def auto_init():  # sourcery no-metrics
+                     get_attr = get_lookup_attr(relation_cls)
+ 
+                     if relation_dir == ONETOMANY and use_list:
+-                        instances = handle_one_to_many_list(session, get_attr, relation_cls, val)
++                        instances = handle_one_to_many_list(session, get_attr, relation_cls, val, group_id=group_id)
+                         setattr(self, key, instances)
+ 
+                     elif relation_dir == ONETOMANY:
+@@ -197,7 +252,7 @@ def auto_init():  # sourcery no-metrics
+                             pass
+ 
+                     elif relation_dir == MANYTOMANY:
+-                        instances = handle_many_to_many(session, get_attr, relation_cls, val)
++                        instances = handle_many_to_many(session, get_attr, relation_cls, val, group_id=group_id)
+                         setattr(self, key, instances)
+ 
+             return init(self, *args, **kwargs)
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..2f56e8b 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -23,7 +23,7 @@ from mealie.pkgs.safehttp.fetch import FetchResult
+ from mealie.pkgs.safehttp.transport import AsyncSafeTransport
+ from mealie.schema.cookbook.cookbook import SaveCookBook
+ from mealie.schema.labels.multi_purpose_label import MultiPurposeLabelSave
+-from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag
++from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag, RecipeTool
+ from mealie.schema.recipe.recipe_category import CategorySave, TagSave
+ from mealie.schema.recipe.recipe_ingredient import (
+     CreateIngredientFoodAlias,
+@@ -2219,3 +2219,47 @@ def test_create_recipe_slug_length_validation(api_client: TestClient, unique_use
+ 
+     response = api_client.get(api_routes.recipes_slug(created_slug), headers=unique_user.token)
+     assert response.status_code == 200
++
++
++def test_create_recipe_from_zip_cannot_reach_a_tool_from_another_group(
++    api_client: TestClient, unique_user: TestUser, g2_user: TestUser, tempdir: str
++):
++    """
++    A zip is untrusted input, and the organizer ids inside it are resolved against the whole
++    instance rather than the importing group. Matching an id from another group hands the
++    importer that group's tool row, and the values from the zip are then written onto it,
++    renaming it and moving it into the importing group.
++    """
++
++    foreign_tool = g2_user.repos.tools.create(RecipeToolSave(name=random_string(), group_id=g2_user.group_id))
++
++    recipe_name = random_string()
++    hijacked_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        tools=[
++            RecipeTool(
++                id=foreign_tool.id,
++                group_id=unique_user.group_id,
++                name=hijacked_name,
++                slug=slugify(hijacked_name),
++            )
++        ],
++    )
++
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    # the other group still owns its tool, under its original name
++    untouched = g2_user.repos.tools.get_one(foreign_tool.id)
++    assert untouched is not None
++    assert untouched.name == foreign_tool.name
++    assert str(untouched.group_id) == str(g2_user.group_id)
++
++    # and it was never linked to the imported recipe
++    imported = api_client.get(api_routes.recipes_slug(r.json()), headers=unique_user.token).json()
++    assert str(foreign_tool.id) not in [tool["id"] for tool in imported["tools"]]

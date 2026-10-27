@@ -1,0 +1,44 @@
+diff --git a/changedetectionio/blueprint/imports/__init__.py b/changedetectionio/blueprint/imports/__init__.py
+index b088ab6..d49fe06 100644
+--- a/changedetectionio/blueprint/imports/__init__.py
++++ b/changedetectionio/blueprint/imports/__init__.py
+@@ -1,4 +1,5 @@
+ from flask import Blueprint, request, redirect, url_for, flash, render_template
++from flask_babel import gettext
+ from loguru import logger
+ 
+ from changedetectionio.store import ChangeDetectionStore
+@@ -27,17 +28,23 @@ def construct_blueprint(datastore: ChangeDetectionStore, update_q, queuedWatchMe
+             if request.values.get('urls') and len(request.values.get('urls').strip()):
+                 # Import and push into the queue for immediate update check
+                 from changedetectionio import processors
+-                importer_handler = import_url_list()
+-                importer_handler.run(data=request.values.get('urls'), flash=flash, datastore=datastore, processor=request.values.get('processor', processors.get_default_processor()))
+-                logger.debug(f"Imported {len(importer_handler.new_uuids)} new UUIDs")
+-                # Dont' add to queue because scheduler can see that they haven't been checked and will add them to the queue
+-#                for uuid in importer_handler.new_uuids:
+-#                    worker_pool.queue_item_async_safe(update_q, queuedWatchMetaData.PrioritizedItem(priority=1, item={'uuid': uuid}))
+-
+-                if len(importer_handler.remaining_data) == 0:
+-                    return redirect(url_for('watchlist.index'))
++                processor = request.values.get('processor', processors.get_default_processor())
++                # The processor name is later used as a filename (processor config JSON), only accept known processors
++                if processor not in [p[0] for p in processors.available_processors()]:
++                    flash(gettext("Invalid processor '{}'").format(processor), 'error')
++                    remaining_urls = request.values.get('urls').splitlines()
+                 else:
+-                    remaining_urls = importer_handler.remaining_data
++                    importer_handler = import_url_list()
++                    importer_handler.run(data=request.values.get('urls'), flash=flash, datastore=datastore, processor=processor)
++                    logger.debug(f"Imported {len(importer_handler.new_uuids)} new UUIDs")
++                    # Dont' add to queue because scheduler can see that they haven't been checked and will add them to the queue
++#                    for uuid in importer_handler.new_uuids:
++#                        worker_pool.queue_item_async_safe(update_q, queuedWatchMetaData.PrioritizedItem(priority=1, item={'uuid': uuid}))
++
++                    if len(importer_handler.remaining_data) == 0:
++                        return redirect(url_for('watchlist.index'))
++                    else:
++                        remaining_urls = importer_handler.remaining_data
+ 
+             # Distill.io import
+             if request.values.get('distill-io') and len(request.values.get('distill-io').strip()):

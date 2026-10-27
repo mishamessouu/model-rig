@@ -1,0 +1,128 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..e99918a 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5103,6 +5103,15 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchModelVersions",
+     }
+ 
++    # Nested fields whose resolver fans out to resources *other than* the parent the
++    # caller was already authorized for, keyed by ``(parent GraphQL type, field)``.
++    # ``MlflowRunExtension.modelVersions`` runs a registry search by ``run_id``, so
++    # without per-row filtering a caller with READ on an experiment could enumerate
++    # model versions of registered models they hold no grant on.
++    PROTECTED_NESTED_FIELDS = {
++        ("MlflowRunExtension", "modelVersions"),
++    }
++
+     def resolve(self, next, root, info, **args):
+         """
+         Middleware resolve function called for every field resolution.
+@@ -5117,8 +5126,12 @@ class GraphQLAuthorizationMiddleware:
+             The resolved value or an error response
+         """
+         field_name = info.field_name
++        parent_type = info.parent_type.name
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        if (
++            field_name not in self.PROTECTED_FIELDS
++            and (parent_type, field_name) not in self.PROTECTED_NESTED_FIELDS
++        ):
+             return next(root, info, **args)
+ 
+         try:
+@@ -5144,7 +5157,9 @@ class GraphQLAuthorizationMiddleware:
+             return None
+ 
+         result = next(root, info, **args)
+-        return self._post_resolve(field_name, result, username) if result is not None else None
++        if result is None:
++            return None
++        return self._post_resolve(parent_type, field_name, result, username)
+ 
+     def _check_authorization(self, field_name: str, args: dict[str, Any], username: str) -> bool:
+         """
+@@ -5192,10 +5207,13 @@ class GraphQLAuthorizationMiddleware:
+ 
+         return True
+ 
+-    def _post_resolve(self, field_name: str, result, username: str):
++    def _post_resolve(self, parent_type: str, field_name: str, result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if (parent_type, field_name) == ("MlflowRunExtension", "modelVersions"):
++            can_read = _role_based_read_predicate(username, "registered_model")
++            return [mv for mv in result if can_read(mv.name)]
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):
+diff --git a/tests/server/auth/test_auth.py b/tests/server/auth/test_auth.py
+index f3df01e..3f42bb0 100644
+--- a/tests/server/auth/test_auth.py
++++ b/tests/server/auth/test_auth.py
+@@ -1530,6 +1530,63 @@ def test_graphql_search_model_versions(client, monkeypatch):
+     assert names == [f"gql_mv_model{i}" for i in readable]
+ 
+ 
++@pytest.mark.parametrize(
++    "client",
++    [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],
++    indirect=True,
++)
++def test_graphql_run_model_versions_filtered_by_registered_model_permission(client, monkeypatch):
++    username1, password1 = create_user(client.tracking_uri)
++    username2, password2 = create_user(client.tracking_uri)
++
++    readable = [0, 2]
++
++    with User(username1, password1, monkeypatch):
++        experiment_id = client.create_experiment("gql_run_mv_test_exp")
++        run_id = client.create_run(experiment_id).info.run_id
++        client.set_terminated(run_id)
++        for i in range(4):
++            rm = client.create_registered_model(f"gql_run_mv_model{i}")
++            client.create_model_version(rm.name, f"runs:/{run_id}/model", run_id=run_id)
++            if i in readable:
++                grant_role_permission(
++                    client.tracking_uri, username2, "registered_model", rm.name, "READ"
++                )
++        # user2 may read the run, but holds no grant on the remaining registered models.
++        grant_role_permission(client.tracking_uri, username2, "experiment", experiment_id, "READ")
++
++    query = """
++    query($runId: String!) {
++        mlflowGetRun(input: {runId: $runId}) {
++            run {
++                info { runId }
++                modelVersions { name version }
++            }
++        }
++    }
++    """
++
++    resp = _graphql_query(
++        client.tracking_uri, query, variables={"runId": run_id}, auth=(username1, password1)
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    names = sorted(mv["name"] for mv in payload["data"]["mlflowGetRun"]["run"]["modelVersions"])
++    assert names == [f"gql_run_mv_model{i}" for i in range(4)]
++
++    resp = _graphql_query(
++        client.tracking_uri, query, variables={"runId": run_id}, auth=(username2, password2)
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    run_data = payload["data"]["mlflowGetRun"]["run"]
++    assert run_data["info"]["runId"] == run_id
++    names = sorted(mv["name"] for mv in run_data["modelVersions"])
++    assert names == [f"gql_run_mv_model{i}" for i in readable]
++
++
+ @pytest.mark.parametrize(
+     "client",
+     [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],

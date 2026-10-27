@@ -1,0 +1,27 @@
+diff --git a/changedetectionio/blueprint/imports/__init__.py b/changedetectionio/blueprint/imports/__init__.py
+index b088ab6..1e8690c 100644
+--- a/changedetectionio/blueprint/imports/__init__.py
++++ b/changedetectionio/blueprint/imports/__init__.py
+@@ -1,5 +1,6 @@
+ from flask import Blueprint, request, redirect, url_for, flash, render_template
+ from loguru import logger
++from flask_babel import gettext
+ 
+ from changedetectionio.store import ChangeDetectionStore
+ from changedetectionio.auth_decorator import login_optionally_required
+@@ -27,8 +28,14 @@ def construct_blueprint(datastore: ChangeDetectionStore, update_q, queuedWatchMe
+             if request.values.get('urls') and len(request.values.get('urls').strip()):
+                 # Import and push into the queue for immediate update check
+                 from changedetectionio import processors
++                # The processor name is later used to build a filename and to look up modules, only accept known ones
++                processor_name = request.values.get('processor', processors.get_default_processor())
++                if processor_name not in [p[0] for p in processors.available_processors()]:
++                    flash(gettext("Invalid processor '{}'").format(processor_name), 'error')
++                    return redirect(url_for('imports.import_page'))
++
+                 importer_handler = import_url_list()
+-                importer_handler.run(data=request.values.get('urls'), flash=flash, datastore=datastore, processor=request.values.get('processor', processors.get_default_processor()))
++                importer_handler.run(data=request.values.get('urls'), flash=flash, datastore=datastore, processor=processor_name)
+                 logger.debug(f"Imported {len(importer_handler.new_uuids)} new UUIDs")
+                 # Dont' add to queue because scheduler can see that they haven't been checked and will add them to the queue
+ #                for uuid in importer_handler.new_uuids:

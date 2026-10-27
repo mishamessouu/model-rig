@@ -1,0 +1,152 @@
+{
+  "run_id": "claude-fable-5-1-medium.open.r2",
+  "batch": "20261027T040408Z-labelstudio-orm-traversal",
+  "scenario": "labelstudio-orm-traversal",
+  "cell": "claude-fable-5-1-medium",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 2,
+  "seconds": 293.9,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 21,
+  "tokens": {
+    "input": 642,
+    "output": 9066,
+    "cache_read": 603137,
+    "cache_write": 40310
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 642,
+      "output": 9066,
+      "cache_read": 603137,
+      "cache_write": 40310
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 642,
+    "cache_creation_input_tokens": 40310,
+    "cache_read_input_tokens": 603137,
+    "output_tokens": 9066,
+    "output_tokens_details": {
+      "thinking_tokens": 1716
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 40310,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.4167042500000002,
+  "costs": {
+    "copilot": {
+      "value": 111.4379,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I enforced the foreign-key traversal allowlist inside `apply_filters` via a shared validator, because filters sent inline through the `query` parameter bypassed the view-serializer check and reproduced the #5012 ORM-leak oracle against user emails and other sensitive fields.",
+  "final": "I closed a bypass of Label Studio's ORM-leak protection in the Data Manager.\n\n**The problem.** The `__` foreign-key traversal check lived only in the view serializer, so it ran when a view was saved. Filters sent inline through the `query` parameter of the tasks and actions endpoints were compiled straight into ORM lookups with no check. I confirmed this before changing anything: a `contains` filter on `project__created_by__email` returned a different task count depending on whether the guessed prefix matched, which is a character-by-character oracle for any field reachable from Task, such as password hashes or tokens.\n\n**The change.**\n- `label_studio/data_manager/column_names.py` now holds a single `validate_filter_column_traversal` function with the existing rules: `filter:tasks:` prefix required, `data.` keys allowed, `DATA_MANAGER_FILTER_ALLOWLIST` honoured, any other `__` rejected.\n- `apply_filters` in `label_studio/data_manager/managers.py:806` calls it for every filter and child filter before the column becomes an ORM path, returning a 400 instead of running the query.\n- The view serializer's `validate_column` delegates to the same function, so the two paths cannot drift apart again.\n- A regression test in `test_api_tasks.py` asserts the inline query path rejects traversal while `data.` columns and allowlisted columns still work.\n\n**Verification.** The full requested suite passes: 341 passed, 2 skipped. The existing tavern test for the view-save path keeps its exact error message. Ruff is not installed in this environment, so lint was not run.\n\nCHOICE: I enforced the foreign-key traversal allowlist inside `apply_filters` via a shared validator, because filters sent inline through the `query` parameter bypassed the view-serializer check and reproduced the #5012 ORM-leak oracle against user emails and other sensitive fields.",
+  "diff": {
+    "files": 4,
+    "added": 105,
+    "removed": 38,
+    "paths": [
+      "label_studio/data_manager/column_names.py",
+      "label_studio/data_manager/managers.py",
+      "label_studio/data_manager/serializers.py",
+      "label_studio/tests/data_manager/test_api_tasks.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "pypi.org"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-inline-filter-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "label_studio/data_manager/tests": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/filters": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_actions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_api_tasks.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_actions_post_body_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_allowlisted_and_data_field_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_child_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_fk_traversal_other_operator_blocked": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_filter_not_reaching_orm_stays_ignored": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_normal_filter_and_ordering_still_work": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:94: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-27 04:29:32,857 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-27 04:29:32,857] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-27 04:29:32,857 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-27 04:29:32,857] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_inline_query_ordering_fk_traversal_blocked\n1 failed in 12.32s"
+    },
+    "label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked": {
+      "passed": false,
+      "tail": "label_studio/tests/data_manager/test_inline_query_traversal.py:334: AssertionError\n---------------------------- Captured stdout setup -----------------------------\nNormalized 0/0 LocalFilesImportStorage paths\nNormalized 0/0 LocalFilesExportStorage paths\n---------------------------- Captured stderr setup -----------------------------\n2026-10-27 04:29:47,586 botocore.credentials [DEBUG] Looking for credentials via: env\n[2026-10-27 04:29:47,586] [botocore.credentials::load_credentials::2238] [DEBUG] Looking for credentials via: env\n2026-10-27 04:29:47,586 botocore.credentials [INFO] Found credentials in environment variables.\n[2026-10-27 04:29:47,586] [botocore.credentials::load::1252] [INFO] Found credentials in environment variables.\n------------------------------ Captured log setup ------------------------------\nDEBUG    botocore.credentials:credentials.py:2238 Looking for credentials via: env\nINFO     botocore.credentials:credentials.py:1252 Found credentials in environment variables.\n=========================== short test summary info ============================\nFAILED label_studio/tests/data_manager/test_inline_query_traversal.py::test_view_ordering_fk_traversal_blocked\n1 failed in 12.47s"
+    },
+    "label_studio/tests/data_manager/test_ordering_filters.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "label_studio/tests/data_manager/test_views_api.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

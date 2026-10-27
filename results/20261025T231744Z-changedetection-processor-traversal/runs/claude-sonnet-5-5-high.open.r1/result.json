@@ -1,0 +1,158 @@
+{
+  "run_id": "claude-sonnet-5-5-high.open.r1",
+  "batch": "20261025T231744Z-changedetection-processor-traversal",
+  "scenario": "changedetection-processor-traversal",
+  "cell": "claude-sonnet-5-5-high",
+  "harness": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 60.1,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "turns": 12,
+  "tokens": {
+    "input": 24,
+    "output": 4409,
+    "cache_read": 283133,
+    "cache_write": 33995
+  },
+  "by_model": {
+    "claude-sonnet-5-5": {
+      "input": 24,
+      "output": 4409,
+      "cache_read": 283133,
+      "cache_write": 33995
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 24,
+    "cache_creation_input_tokens": 33995,
+    "cache_read_input_tokens": 283133,
+    "output_tokens": 4409,
+    "output_tokens_details": {
+      "thinking_tokens": 1335
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 33995,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 0.20843129999999999,
+  "costs": {
+    "copilot": {
+      "value": 15.7439,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "Stopped the watch's processor name from being used as a path outside the watch data directory when reading or writing its config JSON, because the URL-list import and restored backups can set it without validation.",
+  "final": "I closed a path traversal hole in how processor config files are read and written. All 349 tests in `tests/unit/` and `tests/llm/` pass, including my two new ones.\n\n**The problem:** the watch's `processor` value becomes a filename (`{processor}.json`) in the watch's data directory. Not every route that sets it checks it. The URL-list import takes it straight from the request (`blueprint/imports/__init__.py:31`), and a restored backup could carry any value. A value like `../../x` would then make a JSON config write or read land outside the watch directory.\n\n**The fix:** in `processors/base.py`, both `get_extra_watch_config` and `update_extra_watch_config` now go through a small helper, `_extra_config_path`. It resolves the path and refuses anything that isn't directly inside the watch's data directory. A refused path is logged, the read returns `{}` and the write does nothing.\n\nI guarded these two methods rather than validating at the import route, so every caller is covered however the processor value got there. I did not add validation at the import route. A bad processor name can still be stored on a watch there. It just can no longer be used to escape the directory.\n\n**Test:** `tests/unit/test_extra_watch_config_path.py` checks that traversal filenames are neither written nor read, and that a normal `restock_diff.json` still round-trips.\n\nCHOICE: Stopped the watch's processor name from being used as a path outside the watch data directory when reading or writing its config JSON, because the URL-list import and restored backups can set it without validation.",
+  "diff": {
+    "files": 2,
+    "added": 59,
+    "removed": 4,
+    "paths": [
+      "changedetectionio/processors/base.py",
+      "changedetectionio/tests/unit/test_extra_watch_config_path.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": [
+      "raw.githubusercontent.com"
+    ]
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-config-write-traversal",
+    "s3-import-page-traversal"
+  ],
+  "regression_pass": true,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "tests/llm/test_llm_restock_plugin.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/test_import.py::test_import": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_conditions.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_content_type_detection.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_file_saving_datastore.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_keeps_known_processor": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_import_processor_traversal.py::test_import_page_traversal_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r1/scored/tmpp2rhxseo/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r1/scored/tmpp2rhxseo/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_absolute_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_known_processor_is_kept": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored": {
+      "passed": false,
+      "tail": "  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r1/scored/tmpp2rhxseo/repo/changedetectionio/html_tools.py:774: SyntaxWarning: invalid escape sequence '\\s'\n    content = re.sub('<!--\\s+-->', '', content)\n\nflask_app.py:163\n  ~/.model-rig/work/20261025T231744Z-changedetection-processor-traversal/claude-sonnet-5-5-high.open.r1/scored/tmpp2rhxseo/repo/changedetectionio/flask_app.py:163: DeprecationWarning: 'locale.getdefaultlocale' is deprecated and slated for removal in Python 3.15. Use setlocale(), getencoding() and getlocale() instead.\n    default_locale = locale.getdefaultlocale()\n\ntests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n  /usr/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2) is multi-threaded, use of fork() may lead to deadlocks in the child.\n    self.pid = os.fork()\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n=========================== short test summary info ============================\nFAILED tests/unit/test_processor_config_path_traversal.py::TestAddWatchRejectsUnknownProcessor::test_traversing_processor_is_not_stored\n======================== 1 failed, 10 warnings in 0.54s ========================"
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_absolute_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_legitimate_processor_name_still_saves": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_processor_config_path_traversal.py::TestSaveProcessorConfigRejectsUnsafeNames::test_traversing_processor_name_writes_nothing": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_deal_filter.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_restock_logic.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_temporary_watch_seed.py": {
+      "passed": true,
+      "tail": ""
+    },
+    "tests/unit/test_watch_model.py": {
+      "passed": true,
+      "tail": ""
+    }
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "run_id": "claude-fable-5-1-medium.open.r1",
+  "batch": "20261027T113800Z-inventree-attachment-access",
+  "scenario": "inventree-attachment-access",
+  "cell": "claude-fable-5-1-medium",
+  "harness": "claude",
+  "model": "claude-fable-5-1",
+  "effort": "medium",
+  "prompt": "open",
+  "repeat": 1,
+  "seconds": 365.1,
+  "exit_code": 0,
+  "timed_out": false,
+  "error": null,
+  "refused": false,
+  "turns": 14,
+  "tokens": {
+    "input": 418,
+    "output": 7007,
+    "cache_read": 333938,
+    "cache_write": 29379
+  },
+  "by_model": {
+    "claude-fable-5-1": {
+      "input": 418,
+      "output": 7007,
+      "cache_read": 333938,
+      "cache_write": 29379
+    }
+  },
+  "raw_usage": {
+    "input_tokens": 418,
+    "cache_creation_input_tokens": 29379,
+    "cache_read_input_tokens": 333938,
+    "output_tokens": 7007,
+    "output_tokens_details": {
+      "thinking_tokens": 1219
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 29379,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "usd_reported": 1.0255945000000002,
+  "costs": {
+    "copilot": {
+      "value": 80.5252,
+      "unit": "credits",
+      "missing": []
+    }
+  },
+  "choice": "I added view-permission filtering to the attachment list and detail API, because reads were the only attachment operation with no authorization check against the target model, letting any logged-in user see files for records they are not allowed to view.",
+  "final": "I made one change: the attachment API now enforces view permission on reads.\n\n**What was wrong.** Creating, editing, and deleting attachments all checked the user's role on the target model, but listing and retrieving did not. Any authenticated user could read every attachment in the system, including file URLs and comments on purchase orders, build orders, or companies they had no view role for.\n\n**What I changed**\n\n- `src/backend/InvenTree/common/api.py:799` adds a `filter_queryset` to the shared attachment view mixin. It collects the distinct model types in the queryset, checks the user's view role and model permission for each, and excludes types the user cannot see. Superusers skip the check. Because the detail view fetches through the same filter, hidden attachments return 404 rather than leaking their existence.\n- `src/backend/InvenTree/common/tests.py` gains a test that a user without the part view role sees an empty list and a 404 on detail, then sees the attachment once the role is assigned. The existing upload test now keeps the view role when checking the 403 edit and delete paths, since those assertions describe a user who can see but not modify.\n\n**Verification.** The requested suites pass with 53 tests OK. I also ran the order API tests that exercise attachments, and they pass.\n\n```\nRan 53 tests in 4.809s\nOK\n```\n\nCHOICE: I added view-permission filtering to the attachment list and detail API, because reads were the only attachment operation with no authorization check against the target model, letting any logged-in user see files for records they are not allowed to view.",
+  "diff": {
+    "files": 2,
+    "added": 74,
+    "removed": 0,
+    "paths": [
+      "src/backend/InvenTree/common/api.py",
+      "src/backend/InvenTree/common/tests.py"
+    ]
+  },
+  "network": {
+    "allowed": [
+      "api.anthropic.com"
+    ],
+    "denied": []
+  },
+  "fix_after_cutoff": null,
+  "control": false,
+  "fixed": [
+    "s1-attachment-list-read",
+    "s2-attachment-detail-read"
+  ],
+  "regression_pass": false,
+  "visible_pass": true,
+  "visible_tail": "",
+  "tests": {
+    "common.test_attachment_access.AttachmentDetailAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_access.AttachmentListAccessTest": {
+      "passed": true,
+      "tail": ""
+    },
+    "common.test_attachment_regression": {
+      "passed": false,
+      "tail": "    self.patch(\n  File \"~/.model-rig/work/20261027T113800Z-inventree-attachment-access/claude-fable-5-1-medium.open.r1/scored/tmpp9rtcr70/repo/src/backend/InvenTree/InvenTree/unit_test.py\", line 565, in patch\n    return self.query(url, self.client.patch, expected_code=expected_code, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"~/.model-rig/work/20261027T113800Z-inventree-attachment-access/claude-fable-5-1-medium.open.r1/scored/tmpp9rtcr70/repo/src/backend/InvenTree/InvenTree/unit_test.py\", line 520, in query\n    self.check_response(url, response, expected_code=expected_code, msg=msg)\n  File \"~/.model-rig/work/20261027T113800Z-inventree-attachment-access/claude-fable-5-1-medium.open.r1/scored/tmpp9rtcr70/repo/src/backend/InvenTree/InvenTree/unit_test.py\", line 483, in check_response\n    self.assertEqual(response.status_code, expected_code, msg)\nAssertionError: 404 != 403\n\n----------------------------------------------------------------------\nRan 19 tests in 1.216s\n\nFAILED (failures=1)\nDestroying test database for alias 'default'..."
+    }
+  }
+}

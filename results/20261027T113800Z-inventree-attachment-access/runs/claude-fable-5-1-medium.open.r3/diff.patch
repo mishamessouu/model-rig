@@ -1,0 +1,152 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..2d844ec 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -806,6 +806,52 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def filter_queryset(self, queryset):
++        """Filter the queryset to only include attachments the user is allowed to view.
++
++        An attachment inherits its permissions from the model it is attached to,
++        so a user who cannot 'view' a particular model type must not be able
++        to list (or download the file links of) attachments against that model.
++        """
++        from common.validators import attachment_model_class_from_label
++        from InvenTree.models import InvenTreeAttachmentMixin
++        from users.permissions import check_user_permission
++
++        queryset = super().filter_queryset(queryset)
++
++        user = getattr(self.request, 'user', None)
++
++        if user is None or not user.is_authenticated:
++            return queryset.none()
++
++        if user.is_superuser:
++            return queryset
++
++        model_types = (
++            queryset.order_by().values_list('model_type', flat=True).distinct()
++        )
++        denied_types = []
++
++        for model_type in model_types:
++            try:
++                model_class = attachment_model_class_from_label(model_type)
++            except ValidationError:
++                # Unknown / stale model type - do not expose it
++                denied_types.append(model_type)
++                continue
++
++            if (
++                not issubclass(model_class, InvenTreeAttachmentMixin)
++                or not check_user_permission(user, model_class, 'view')
++                or not model_class.check_related_permission('view', user)
++            ):
++                denied_types.append(model_type)
++
++        if denied_types:
++            queryset = queryset.exclude(model_type__in=denied_types)
++
++        return queryset
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +878,17 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an existing attachment object."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('view', request.user):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()
+diff --git a/src/backend/InvenTree/common/test_api.py b/src/backend/InvenTree/common/test_api.py
+index 038bd02..d52452d 100644
+--- a/src/backend/InvenTree/common/test_api.py
++++ b/src/backend/InvenTree/common/test_api.py
+@@ -1063,6 +1063,72 @@ class AttachmentAPITests(InvenTreeAPITestCase):
+             self.assertFalse(default_storage.exists(att.attachment.path))
+ 
+ 
++    def test_attachment_view_permission(self):
++        """Test that attachments are only visible if the user can view the linked model."""
++        from common.models import Attachment
++        from company.models import Company
++        from part.models import Part
++
++        part = Part.objects.create(name='Visible Part', description='A part')
++        company = Company.objects.create(name='A Company', description='Company')
++
++        part_attachment = Attachment.objects.create(
++            model_type='part',
++            model_id=part.pk,
++            link='https://example.com/part',
++            comment='part attachment',
++        )
++
++        company_attachment = Attachment.objects.create(
++            model_type='company',
++            model_id=company.pk,
++            link='https://example.com/company',
++            comment='company attachment',
++        )
++
++        list_url = reverse('api-attachment-list')
++        part_url = reverse('api-attachment-detail', kwargs={'pk': part_attachment.pk})
++        company_url = reverse(
++            'api-attachment-detail', kwargs={'pk': company_attachment.pk}
++        )
++
++        # Non-superuser with no roles cannot see any attachments
++        self.user.is_superuser = False
++        self.user.is_staff = False
++        self.user.save()
++        self.clearRoles()
++
++        response = self.get(list_url, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++
++        self.get(part_url, expected_code=403)
++        self.get(company_url, expected_code=403)
++
++        # Grant 'view' permission for the Part model only
++        self.assignRole('part.view')
++
++        response = self.get(list_url, expected_code=200)
++        pks = [item['pk'] for item in response.data]
++        self.assertIn(part_attachment.pk, pks)
++        self.assertNotIn(company_attachment.pk, pks)
++
++        # Explicitly filtering by model type must not leak hidden attachments
++        response = self.get(list_url, {'model_type': 'company'}, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++
++        self.get(part_url, expected_code=200)
++        self.get(company_url, expected_code=403)
++
++        # Superuser can see everything
++        self.user.is_superuser = True
++        self.user.save()
++
++        response = self.get(list_url, expected_code=200)
++        pks = [item['pk'] for item in response.data]
++        self.assertIn(part_attachment.pk, pks)
++        self.assertIn(company_attachment.pk, pks)
++
++
+ class AttachmentThumbnailAPITests(InvenTreeAPITestCase):
+     """Tests for thumbnail generation when uploading attachments via the API."""
+ 

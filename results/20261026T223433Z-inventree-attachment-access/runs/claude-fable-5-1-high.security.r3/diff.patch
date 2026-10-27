@@ -1,0 +1,75 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..e8680b8 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -796,6 +796,20 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def viewable_model_types(self, user) -> list[str]:
++        """Return the list of attachment model types which the user may view.
++
++        An attachment inherits the 'view' permission of the model it is attached to.
++        """
++        from common.validators import attachment_model_types
++        from users.permissions import check_user_permission
++
++        return [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if check_user_permission(user, model, 'view')
++        ]
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+@@ -806,6 +820,14 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     ordering_fields = ['model_id', 'model_type', 'upload_date', 'file_size']
+     search_fields = ['comment', 'model_id', 'model_type']
+ 
++    def filter_queryset(self, queryset):
++        """Only return attachments for models which the user has permission to view."""
++        queryset = super().filter_queryset(queryset)
++
++        return queryset.filter(
++            model_type__in=self.viewable_model_types(self.request.user)
++        )
++
+     def perform_create(self, serializer):
+         """Save the user information when a file is uploaded."""
+         serializer.save(upload_user=self.request.user)
+@@ -832,6 +854,17 @@ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+ class AttachmentDetail(AttachmentMixin, RetrieveUpdateDestroyAPI):
+     """Detail API endpoint for Attachment objects."""
+ 
++    def retrieve(self, request, *args, **kwargs):
++        """Retrieve an existing attachment object."""
++        attachment = self.get_object()
++
++        if not attachment.check_permission('view', request.user):
++            raise PermissionDenied(
++                _('User does not have permission to view this attachment')
++            )
++
++        return super().retrieve(request, *args, **kwargs)
++
+     def update(self, request, *args, **kwargs):
+         """Update an existing attachment object."""
+         attachment = self.get_object()
+diff --git a/src/backend/InvenTree/common/tests.py b/src/backend/InvenTree/common/tests.py
+index 49463df..20bf08b 100644
+--- a/src/backend/InvenTree/common/tests.py
++++ b/src/backend/InvenTree/common/tests.py
+@@ -190,6 +190,12 @@ class AttachmentTest(InvenTreeAPITestCase):
+         # And check that we cannot edit the attachment without the correct permissions
+         self.clearRoles()
+ 
++        # Without 'view' permission, the attachment must not be readable either
++        response = self.get(url, data={'model_type': 'part'}, expected_code=200)
++        self.assertNotIn(pk, [item['pk'] for item in response.data])
++
++        self.get(reverse('api-attachment-detail', kwargs={'pk': pk}), expected_code=403)
++
+         self.patch(
+             reverse('api-attachment-detail', kwargs={'pk': pk}),
+             {'comment': 'New comment 2'},

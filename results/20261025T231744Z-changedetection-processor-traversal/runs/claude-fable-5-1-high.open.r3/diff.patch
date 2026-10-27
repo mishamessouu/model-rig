@@ -1,0 +1,164 @@
+diff --git a/changedetectionio/processors/base.py b/changedetectionio/processors/base.py
+index f12ca64..5c559ac 100644
+--- a/changedetectionio/processors/base.py
++++ b/changedetectionio/processors/base.py
+@@ -15,6 +15,40 @@ from loguru import logger
+ SCREENSHOT_FORMAT_JPEG = 'JPEG'
+ SCREENSHOT_FORMAT_PNG = 'PNG'
+ 
++def resolve_extra_watch_config_path(data_dir, filename):
++    """
++    Resolve a processor config filename to a path that is guaranteed to live directly
++    inside the watch's own data directory.
++
++    The filename is usually derived from the watch's ``processor`` value
++    (``f"{processor_name}.json"``). The processor name is validated at the API and form
++    edges, but this is the sink that actually touches the filesystem, so it must not
++    trust its input: a value such as ``"../../etc/foo"`` or an absolute path must never
++    be able to read or overwrite files outside the watch directory.
++
++    :param data_dir: The watch's data directory
++    :param filename: Bare filename (no directory components)
++    :return: The resolved absolute path, or None if the filename is unsafe
++    """
++    if not filename or not isinstance(filename, str):
++        logger.warning(f"Rejecting extra watch config filename {filename!r}: empty or not a string")
++        return None
++
++    # Must be a bare filename - no separators, no "." / "..", no absolute paths
++    if filename in ('.', '..') or os.path.basename(filename) != filename or os.path.isabs(filename):
++        logger.warning(f"Rejecting extra watch config filename {filename!r}: must be a bare filename")
++        return None
++
++    # Belt and braces: even a bare name must resolve to inside data_dir (also blocks symlink escapes)
++    safe_data_dir = os.path.realpath(data_dir)
++    resolved_path = os.path.realpath(os.path.join(data_dir, filename))
++    if not resolved_path.startswith(safe_data_dir + os.sep):
++        logger.warning(f"Rejecting extra watch config filename {filename!r}: resolves outside watch data dir")
++        return None
++
++    return resolved_path
++
++
+ class difference_detection_processor():
+     browser_steps = None
+     datastore = None
+@@ -319,7 +353,9 @@ class difference_detection_processor():
+         if not data_dir:
+             return {}
+ 
+-        filepath = os.path.join(data_dir, filename)
++        filepath = resolve_extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            return {}
+ 
+         if not os.path.isfile(filepath):
+             return {}
+@@ -350,11 +386,14 @@ class difference_detection_processor():
+             logger.warning(f"Cannot save extra watch config {filename}: no data_dir")
+             return
+ 
++        filepath = resolve_extra_watch_config_path(data_dir, filename)
++        if not filepath:
++            logger.error(f"Refusing to save extra watch config, unsafe filename {filename!r}")
++            return
++
+         # Ensure directory exists
+         watch.ensure_data_dir_exists()
+ 
+-        filepath = os.path.join(data_dir, filename)
+-
+         try:
+             # If merge is enabled, read existing data first
+             existing_data = {}
+diff --git a/changedetectionio/tests/unit/test_processor_config_path_safety.py b/changedetectionio/tests/unit/test_processor_config_path_safety.py
+new file mode 100644
+index 0000000..83b9db7
+--- /dev/null
++++ b/changedetectionio/tests/unit/test_processor_config_path_safety.py
+@@ -0,0 +1,85 @@
++"""
++The processor config file helpers build a filename from the watch's ``processor`` value.
++Even though that value is validated at the API/form edges, the filesystem sink must
++never let a traversal or absolute name escape the watch's own data directory.
++"""
++import json
++import os
++import tempfile
++from unittest.mock import MagicMock
++
++import pytest
++
++from changedetectionio.processors.base import (
++    difference_detection_processor,
++    resolve_extra_watch_config_path,
++)
++
++
++def _make_processor(data_dir):
++    watch = MagicMock()
++    watch.data_dir = data_dir
++    watch.ensure_data_dir_exists = lambda: os.makedirs(data_dir, exist_ok=True)
++    datastore = MagicMock()
++    datastore.data = {'watching': {'some-uuid': watch}}
++    return difference_detection_processor(datastore, 'some-uuid')
++
++
++@pytest.mark.parametrize("bad_name", [
++    "",
++    ".",
++    "..",
++    "../pwned.json",
++    "../../etc/passwd",
++    "sub/dir.json",
++    "/etc/passwd",
++    "..\\pwned.json" if os.sep == "\\" else "/tmp/pwned.json",
++    None,
++    123,
++])
++def test_unsafe_filenames_are_rejected(bad_name):
++    with tempfile.TemporaryDirectory() as data_dir:
++        assert resolve_extra_watch_config_path(data_dir, bad_name) is None
++
++
++def test_safe_filename_resolves_inside_data_dir():
++    with tempfile.TemporaryDirectory() as data_dir:
++        path = resolve_extra_watch_config_path(data_dir, "restock_diff.json")
++        assert path == os.path.join(os.path.realpath(data_dir), "restock_diff.json")
++
++
++def test_symlinked_filename_outside_data_dir_is_rejected():
++    with tempfile.TemporaryDirectory() as outside, tempfile.TemporaryDirectory() as data_dir:
++        target = os.path.join(outside, "target.json")
++        with open(target, "w") as f:
++            f.write("{}")
++        os.symlink(target, os.path.join(data_dir, "evil.json"))
++        assert resolve_extra_watch_config_path(data_dir, "evil.json") is None
++
++
++def test_update_and_get_refuse_traversal_and_do_not_touch_outside_files():
++    with tempfile.TemporaryDirectory() as root:
++        data_dir = os.path.join(root, "watch-uuid")
++        os.makedirs(data_dir)
++        processor = _make_processor(data_dir)
++
++        # A processor name of "../victim" would produce this filename
++        traversal_name = "../victim.json"
++        processor.update_extra_watch_config(traversal_name, {"owned": True})
++
++        assert not os.path.exists(os.path.join(root, "victim.json"))
++        assert os.listdir(data_dir) == []
++
++        # Reading via the same name must not leak a file that sits outside the watch dir
++        with open(os.path.join(root, "victim.json"), "w") as f:
++            json.dump({"secret": "yes"}, f)
++        assert processor.get_extra_watch_config(traversal_name) == {}
++
++
++def test_update_and_get_round_trip_for_safe_name():
++    with tempfile.TemporaryDirectory() as data_dir:
++        processor = _make_processor(data_dir)
++        processor.update_extra_watch_config("text_json_diff.json", {"a": 1})
++        processor.update_extra_watch_config("text_json_diff.json", {"b": 2})
++        assert processor.get_extra_watch_config("text_json_diff.json") == {"a": 1, "b": 2}
++        assert os.path.isfile(os.path.join(data_dir, "text_json_diff.json"))

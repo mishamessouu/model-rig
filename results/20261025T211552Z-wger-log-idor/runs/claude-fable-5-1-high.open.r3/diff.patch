@@ -1,0 +1,97 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e906f13 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,11 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [
++            (Routine, 'routine'),
++            (WorkoutSession, 'session'),
++            (SlotEntry, 'slot_entry'),
++        ]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/models/log.py b/wger/manager/models/log.py
+index bd0c94f..42262c9 100644
+--- a/wger/manager/models/log.py
++++ b/wger/manager/models/log.py
+@@ -271,6 +271,10 @@ class WorkoutLog(models.Model):
+         if self.next_log and self.next_log.user != self.user:
+             self.next_log = None
+ 
++        # If the slot entry does not belong to this user, remove foreign key
++        if self.slot_entry and self.slot_entry.get_owner_object().user != self.user:
++            self.slot_entry = None
++
+         # If the user selected "Until Failure", do only 1 "repetition",
+         # anything else doesn't make sense.
+         if self.repetitions_unit == 2:
+diff --git a/wger/manager/tests/test_log_model.py b/wger/manager/tests/test_log_model.py
+index 4f6be5f..892a867 100644
+--- a/wger/manager/tests/test_log_model.py
++++ b/wger/manager/tests/test_log_model.py
+@@ -123,3 +123,29 @@ class LogModelTestCase(WgerTestCase):
+         log1.save()
+ 
+         self.assertEqual(log1.next_log, log2)
++
++    def test_slot_entry_user_check_fail(self):
++        """
++        Test that the slot entry foreign key checks ownership
++        """
++
++        # Slot entry 1 belongs to routine 1, owned by user 1
++        log = WorkoutLog.objects.get(pk=1)
++        log.user_id = 2
++        log.routine = None
++        log.slot_entry_id = 1
++        log.save()
++
++        self.assertEqual(log.slot_entry, None)
++
++    def test_slot_entry_user_check_success(self):
++        """
++        Test that the slot entry foreign key is kept for the owner
++        """
++
++        log = WorkoutLog.objects.get(pk=1)
++        self.assertEqual(log.user_id, 1)
++        log.slot_entry_id = 1
++        log.save()
++
++        self.assertEqual(log.slot_entry_id, 1)
+diff --git a/wger/manager/tests/test_weight_log.py b/wger/manager/tests/test_weight_log.py
+index 2e6cacc..e066e48 100644
+--- a/wger/manager/tests/test_weight_log.py
++++ b/wger/manager/tests/test_weight_log.py
+@@ -41,3 +41,26 @@ class WorkoutLogApiTestCase(api_base_test.ApiBaseResourceTestCase):
+         'weight': 2,
+         'date': datetime.date.today(),
+     }
++
++    def test_post_foreign_slot_entry(self):
++        """
++        Logs can not be attached to a slot entry owned by another user
++        """
++        self.authenticate(self.user_access)
++        count_before = WorkoutLog.objects.count()
++
++        # Slot entry 1 belongs to routine 1, which is owned by the admin user
++        data = dict(self.data, slot_entry=1)
++        response = self.client.post(self.url, data)
++        self.assertEqual(response.status_code, 403)
++        self.assertEqual(WorkoutLog.objects.count(), count_before)
++
++    def test_patch_foreign_slot_entry(self):
++        """
++        Existing logs can not be moved to a slot entry owned by another user
++        """
++        self.authenticate(self.user_access)
++
++        response = self.client.patch(self.url_detail, {'slot_entry': 1})
++        self.assertEqual(response.status_code, 403)
++        self.assertIsNone(WorkoutLog.objects.get(pk=self.pk).slot_entry)

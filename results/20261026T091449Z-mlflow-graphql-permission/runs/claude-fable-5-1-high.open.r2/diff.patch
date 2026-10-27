@@ -1,0 +1,216 @@
+diff --git a/mlflow/server/auth/__init__.py b/mlflow/server/auth/__init__.py
+index 103c4b4..36026d7 100644
+--- a/mlflow/server/auth/__init__.py
++++ b/mlflow/server/auth/__init__.py
+@@ -5103,6 +5103,13 @@ class GraphQLAuthorizationMiddleware:
+         "mlflowSearchModelVersions",
+     }
+ 
++    # Nested fields added by ``graphql_schema_extensions`` whose resolvers call the
++    # handler ``*_impl`` functions directly, so neither the REST after-request filters
++    # nor the top-level checks above ever see their results. Keyed by (parent GraphQL
++    # type, field name) because a generic name like ``modelVersions`` also appears on
++    # types whose data has already been authorized.
++    PROTECTED_NESTED_FIELDS = {("MlflowRunExtension", "modelVersions")}
++
+     def resolve(self, next, root, info, **args):
+         """
+         Middleware resolve function called for every field resolution.
+@@ -5117,8 +5124,12 @@ class GraphQLAuthorizationMiddleware:
+             The resolved value or an error response
+         """
+         field_name = info.field_name
++        nested_key = (info.parent_type.name, field_name)
+ 
+-        if field_name not in self.PROTECTED_FIELDS:
++        if (
++            field_name not in self.PROTECTED_FIELDS
++            and nested_key not in self.PROTECTED_NESTED_FIELDS
++        ):
+             return next(root, info, **args)
+ 
+         try:
+@@ -5144,7 +5155,9 @@ class GraphQLAuthorizationMiddleware:
+             return None
+ 
+         result = next(root, info, **args)
+-        return self._post_resolve(field_name, result, username) if result is not None else None
++        if result is None:
++            return None
++        return self._post_resolve(nested_key, result, username)
+ 
+     def _check_authorization(self, field_name: str, args: dict[str, Any], username: str) -> bool:
+         """
+@@ -5192,21 +5205,28 @@ class GraphQLAuthorizationMiddleware:
+ 
+         return True
+ 
+-    def _post_resolve(self, field_name: str, result, username: str):
++    def _post_resolve(self, nested_key: tuple[str, str], result, username: str):
+         """Apply post-resolution filtering on GraphQL results."""
++        _, field_name = nested_key
+         if field_name == "mlflowSearchModelVersions":
+             return self._filter_model_versions_result(result, username)
++        if nested_key in self.PROTECTED_NESTED_FIELDS:
++            # ``MlflowRunExtension.modelVersions`` resolves to a bare list of versions.
++            return self._filter_model_versions(result, username)
+         return result
+ 
+     def _filter_model_versions_result(self, result, username: str):
+         """Filter model versions the user doesn't have read access to."""
+-        can_read = _role_based_read_predicate(username, "registered_model")
+         if hasattr(result, "model_versions") and result.model_versions is not None:
+-            filtered = [mv for mv in result.model_versions if can_read(mv.name)]
++            filtered = self._filter_model_versions(result.model_versions, username)
+             del result.model_versions[:]
+             result.model_versions.extend(filtered)
+         return result
+ 
++    def _filter_model_versions(self, model_versions, username: str) -> list[Any]:
++        can_read = _role_based_read_predicate(username, "registered_model")
++        return [mv for mv in model_versions if can_read(mv.name)]
++
+ 
+ def get_graphql_authorization_middleware():
+     """
+diff --git a/tests/server/auth/test_auth.py b/tests/server/auth/test_auth.py
+index f3df01e..30ace23 100644
+--- a/tests/server/auth/test_auth.py
++++ b/tests/server/auth/test_auth.py
+@@ -1530,6 +1530,63 @@ def test_graphql_search_model_versions(client, monkeypatch):
+     assert names == [f"gql_mv_model{i}" for i in readable]
+ 
+ 
++@pytest.mark.parametrize(
++    "client",
++    [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],
++    indirect=True,
++)
++def test_graphql_run_model_versions_filtered_by_model_permission(client, monkeypatch):
++    username1, password1 = create_user(client.tracking_uri)
++    username2, password2 = create_user(client.tracking_uri)
++    readable_model = "gql_run_mv_readable"
++    hidden_model = "gql_run_mv_hidden"
++
++    with User(username1, password1, monkeypatch):
++        experiment_id = client.create_experiment("gql_run_mv_exp")
++        run_id = client.create_run(experiment_id).info.run_id
++        for name in (readable_model, hidden_model):
++            client.create_registered_model(name)
++            client.create_model_version(name, f"runs:/{run_id}/model", run_id=run_id)
++        # user2 can read the run (via its experiment) but only one of the linked models.
++        grant_role_permission(client.tracking_uri, username2, "experiment", experiment_id, "READ")
++        grant_role_permission(
++            client.tracking_uri, username2, "registered_model", readable_model, "READ"
++        )
++
++    # ``run.modelVersions`` is resolved by the schema extension, not by the top-level
++    # ``mlflowSearchModelVersions`` field, so cover both entry points that expose it.
++    query = """
++    query($runId: String!, $expIds: [String]!) {
++        mlflowGetRun(input: {runId: $runId}) {
++            run { modelVersions { name version } }
++        }
++        mlflowSearchRuns(input: {experimentIds: $expIds}) {
++            runs { modelVersions { name version } }
++        }
++    }
++    """
++    variables = {"runId": run_id, "expIds": [experiment_id]}
++
++    def _model_names(auth):
++        response = _graphql_query(client.tracking_uri, query, variables=variables, auth=auth)
++        assert response.status_code == 200
++        payload = response.json()
++        assert payload.get("errors") in (None, [])
++        get_run_names = {
++            mv["name"] for mv in payload["data"]["mlflowGetRun"]["run"]["modelVersions"]
++        }
++        search_runs_names = {
++            mv["name"]
++            for run in payload["data"]["mlflowSearchRuns"]["runs"]
++            for mv in run["modelVersions"]
++        }
++        return get_run_names, search_runs_names
++
++    all_models = {readable_model, hidden_model}
++    assert _model_names((username1, password1)) == (all_models, all_models)
++    assert _model_names((username2, password2)) == ({readable_model}, {readable_model})
++
++
+ @pytest.mark.parametrize(
+     "client",
+     [{"MLFLOW_AUTH_CONFIG_PATH": "fixtures/no_permission_auth.ini"}],
+diff --git a/tests/server/auth/test_client_workspace.py b/tests/server/auth/test_client_workspace.py
+index f35fb1a..d140881 100644
+--- a/tests/server/auth/test_client_workspace.py
++++ b/tests/server/auth/test_client_workspace.py
+@@ -343,3 +343,68 @@ def test_registered_model_access_controls_across_workspaces(workspace_setup, mon
+     )
+     assert resp.status_code == 403
+     assert "Permission denied" in resp.text
++
++
++def _graphql_get_run_model_versions(
++    tracking_uri: str, workspace_name: str, auth: tuple[str, str], run_id: str
++):
++    query = """
++    query GetRun($input: MlflowGetRunInput){
++      mlflowGetRun(input: $input){
++        run { modelVersions { name version } }
++      }
++    }
++    """
++    resp = requests.post(
++        f"{tracking_uri}/graphql",
++        json={"query": query, "variables": {"input": {"runId": run_id}}},
++        auth=auth,
++        headers={WORKSPACE_HEADER_NAME: workspace_name},
++    )
++    resp.raise_for_status()
++    payload = resp.json()
++    assert payload.get("errors") in (None, [])
++    return payload["data"]["mlflowGetRun"]["run"]["modelVersions"]
++
++
++def test_graphql_run_model_versions_filtered_by_workspace_model_grant(
++    workspace_setup, monkeypatch
++):
++    client, tracking_uri, workspace_a, username, password = workspace_setup
++    grant_role_permission(tracking_uri, username, "workspace", "*", "MANAGE", workspace=workspace_a)
++
++    exp_a = _create_experiment(tracking_uri, workspace_a, auth=(username, password))
++    run_a = _create_run(tracking_uri, workspace_a, exp_a, auth=(username, password))
++    readable_model = f"model-readable-{random_str()}"
++    hidden_model = f"model-hidden-{random_str()}"
++    for model_name in (readable_model, hidden_model):
++        _create_registered_model(tracking_uri, workspace_a, model_name, auth=(username, password))
++        _create_model_version(
++            tracking_uri, workspace_a, model_name, run_a, auth=(username, password)
++        )
++
++    # Limited user can read the run's experiment but holds a grant on only one of the
++    # models linked to that run; ``run.modelVersions`` must honor the model grants.
++    limited_user, limited_password = create_user(tracking_uri)
++    grant_role_permission(
++        tracking_uri, limited_user, "experiment", exp_a, "READ", workspace=workspace_a
++    )
++    grant_role_permission(
++        tracking_uri,
++        limited_user,
++        "registered_model",
++        readable_model,
++        "READ",
++        workspace=workspace_a,
++    )
++
++    versions = _graphql_get_run_model_versions(
++        tracking_uri, workspace_a, auth=(limited_user, limited_password), run_id=run_a
++    )
++    assert {v["name"] for v in versions} == {readable_model}
++
++    # The workspace admin still sees every linked version.
++    versions = _graphql_get_run_model_versions(
++        tracking_uri, workspace_a, auth=(username, password), run_id=run_a
++    )
++    assert {v["name"] for v in versions} == {readable_model, hidden_model}

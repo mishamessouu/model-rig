@@ -1,0 +1,71 @@
+diff --git a/wger/manager/api/views.py b/wger/manager/api/views.py
+index 136e94a..e69179e 100644
+--- a/wger/manager/api/views.py
++++ b/wger/manager/api/views.py
+@@ -313,7 +313,7 @@ class WorkoutLogViewSet(WgerOwnerObjectModelViewSet):
+         """
+         Return objects to check for ownership permission
+         """
+-        return [(Routine, 'routine'), (WorkoutSession, 'session')]
++        return [(Routine, 'routine'), (WorkoutSession, 'session'), (SlotEntry, 'slot_entry')]
+ 
+ 
+ class RoutineDayViewSet(WgerOwnerObjectModelViewSet):
+diff --git a/wger/manager/tests/test_api_rir.py b/wger/manager/tests/test_api_rir.py
+index 4f8f5c7..9b7c51a 100644
+--- a/wger/manager/tests/test_api_rir.py
++++ b/wger/manager/tests/test_api_rir.py
+@@ -20,6 +20,7 @@ from rest_framework import status
+ 
+ # wger
+ from wger.core.tests.base_testcase import WgerTestCase
++from wger.manager.models import WorkoutLog
+ 
+ 
+ class RiRApiTestCase(WgerTestCase):
+@@ -101,3 +102,45 @@ class RiRApiTestCase(WgerTestCase):
+         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+         self.assertIn('1.3 is not a valid RiR option', data['rir'][0])
+         self.assertIn('1.6 is not a valid RiR option', data['rir_target'][0])
++
++
++class WorkoutLogOwnershipApiTestCase(WgerTestCase):
++    """
++    Test that logs cannot be attached to another user's slot entries
++    """
++
++    def test_log_other_users_slot_entry(self):
++        self.user_login('test')
++        count = WorkoutLog.objects.count()
++
++        response = self.client.post(
++            reverse('workoutlog-list'),
++            data={
++                'iteration': 1,
++                'exercise': 1,
++                'slot_entry': 1,
++                'repetitions': 5,
++                'repetitions_unit': 1,
++                'weight': 10,
++                'weight_unit': 1,
++            },
++        )
++        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
++        self.assertEqual(WorkoutLog.objects.count(), count)
++
++    def test_log_own_slot_entry(self):
++        self.user_login('admin')
++
++        response = self.client.post(
++            reverse('workoutlog-list'),
++            data={
++                'iteration': 1,
++                'exercise': 1,
++                'slot_entry': 1,
++                'repetitions': 5,
++                'repetitions_unit': 1,
++                'weight': 10,
++                'weight_unit': 1,
++            },
++        )
++        self.assertEqual(response.status_code, status.HTTP_201_CREATED)

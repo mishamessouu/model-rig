@@ -1,0 +1,34 @@
+diff --git a/bookings/repository.py b/bookings/repository.py
+index 82b77e7..0c1ed76 100644
+--- a/bookings/repository.py
++++ b/bookings/repository.py
+@@ -52,9 +52,9 @@ class BookingRepository:
+     def search(self, owner, term):
+         query = (
+             f"SELECT {COLUMNS} FROM bookings "
+-            f"WHERE owner = '{owner}' AND title LIKE '%{term}%' ORDER BY id"
++            "WHERE owner = ? AND title LIKE ? ORDER BY id"
+         )
+-        return [Booking(*row) for row in self.db.execute(query).fetchall()]
++        return [Booking(*row) for row in self.db.execute(query, (owner, f"%{term}%")).fetchall()]
+ 
+     def all_active(self):
+         rows = self.db.execute(
+diff --git a/tests/test_basic.py b/tests/test_basic.py
+index 7418b8a..b8f7b43 100644
+--- a/tests/test_basic.py
++++ b/tests/test_basic.py
+@@ -28,6 +28,13 @@ class BasicTest(unittest.TestCase):
+         )
+         self.assertEqual(response["status"], 201)
+ 
++    def test_search_input_cannot_bypass_owner_filter(self):
++        service = make_service()
++        service.book("alice", "Fjord", "Private", 1)
++        service.book("bob", "Glacier", "Public", 1)
++        self.assertEqual(service.search("bob", "%' OR 1=1 --"), [])
++        self.assertEqual(service.search("bob' OR 1=1 --", ""), [])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

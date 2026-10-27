@@ -1,0 +1,126 @@
+diff --git a/src/backend/InvenTree/common/api.py b/src/backend/InvenTree/common/api.py
+index 489530c..f629afb 100644
+--- a/src/backend/InvenTree/common/api.py
++++ b/src/backend/InvenTree/common/api.py
+@@ -32,7 +32,7 @@ from pint._typing import UnitLike
+ from rest_framework import serializers, viewsets
+ from rest_framework.decorators import action
+ from rest_framework.exceptions import NotAcceptable, NotFound, PermissionDenied
+-from rest_framework.permissions import IsAdminUser, IsAuthenticated
++from rest_framework.permissions import SAFE_METHODS, IsAdminUser, IsAuthenticated
+ from rest_framework.response import Response
+ from rest_framework.views import APIView
+ from sql_util.utils import SubqueryCount
+@@ -796,6 +796,37 @@ class AttachmentMixin:
+     serializer_class = common.serializers.AttachmentSerializer
+     permission_classes = [IsAuthenticatedOrReadScope]
+ 
++    def get_queryset(self):
++        """Return only the attachments which the user has permission to view.
++
++        Attachments are linked to a target model (e.g. 'part' or 'purchaseorder'),
++        and must not be exposed to a user who cannot view that target model.
++        """
++        from common.validators import attachment_model_types
++
++        queryset = super().get_queryset()
++
++        # Write operations (update / delete) enforce their own per-model
++        # permission checks, so only restrict the queryset for read requests
++        if self.request.method not in SAFE_METHODS:
++            return queryset
++
++        user = getattr(self.request, 'user', None)
++
++        if user is None or not user.is_authenticated:
++            return queryset.none()
++
++        if user.is_superuser:
++            return queryset
++
++        allowed_models = [
++            model.__name__.lower()
++            for model in attachment_model_types()
++            if model.check_related_permission('view', user)
++        ]
++
++        return queryset.filter(model_type__in=allowed_models)
++
+ 
+ class AttachmentList(AttachmentMixin, BulkDeleteMixin, ListCreateAPI):
+     """List API endpoint for Attachment objects."""
+diff --git a/src/backend/InvenTree/part/test_api.py b/src/backend/InvenTree/part/test_api.py
+index 837bd68..c0c9089 100644
+--- a/src/backend/InvenTree/part/test_api.py
++++ b/src/backend/InvenTree/part/test_api.py
+@@ -18,7 +18,7 @@ import build.models
+ import company.models
+ import order.models
+ from build.status_codes import BuildStatus
+-from common.models import InvenTreeSetting, ParameterTemplate
++from common.models import Attachment, InvenTreeSetting, ParameterTemplate
+ from common.settings import set_global_setting
+ from company.models import Company, SupplierPart
+ from InvenTree.config import get_testfolder_dir
+@@ -3573,7 +3573,60 @@ class BomItemTest(InvenTreeAPITestCase):
+ class AttachmentTest(InvenTreeAPITestCase):
+     """Unit tests for the Attachment API endpoint."""
+ 
+-    fixtures = ['category', 'part', 'location']
++    fixtures = [
++        'category',
++        'part',
++        'location',
++        'company',
++        'manufacturer_part',
++        'supplier_part',
++        'order',
++    ]
++
++    def test_view_permissions(self):
++        """Test that attachments are only visible for models the user can view."""
++        list_url = reverse('api-attachment-list')
++        link = 'https://www.inventree.org/'
++
++        part_attachment = Attachment.objects.create(
++            model_type='part', model_id=1, link=link, comment='Part attachment'
++        )
++        order_attachment = Attachment.objects.create(
++            model_type='purchaseorder', model_id=1, link=link, comment='PO attachment'
++        )
++
++        part_url = reverse('api-attachment-detail', kwargs={'pk': part_attachment.pk})
++        order_url = reverse('api-attachment-detail', kwargs={'pk': order_attachment.pk})
++
++        # Without any 'view' permissions, no attachments are visible
++        self.clearRoles()
++        response = self.get(list_url, expected_code=200)
++        self.assertEqual(len(response.data), 0)
++        self.get(part_url, expected_code=404)
++        self.get(order_url, expected_code=404)
++
++        # Grant 'view' permission for the Part model only
++        self.assignRole('part.view')
++        response = self.get(list_url, expected_code=200)
++        pks = [item['pk'] for item in response.data]
++        self.assertIn(part_attachment.pk, pks)
++        self.assertNotIn(order_attachment.pk, pks)
++        self.get(part_url, expected_code=200)
++        self.get(order_url, expected_code=404)
++
++        # Filtering by an unviewable model type must not leak anything either
++        response = self.get(
++            list_url, {'model_type': 'purchaseorder'}, expected_code=200
++        )
++        self.assertEqual(len(response.data), 0)
++
++        # Grant 'view' permission for the PurchaseOrder model too
++        self.assignRole('purchase_order.view')
++        response = self.get(list_url, expected_code=200)
++        pks = [item['pk'] for item in response.data]
++        self.assertIn(part_attachment.pk, pks)
++        self.assertIn(order_attachment.pk, pks)
++        self.get(order_url, expected_code=200)
+ 
+     def test_add_attachment(self):
+         """Test that we can create a new Attachment instances via the API."""

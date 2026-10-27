@@ -1,0 +1,26 @@
+diff --git a/changedetectionio/store/__init__.py b/changedetectionio/store/__init__.py
+index 16031b0..46e4429 100644
+--- a/changedetectionio/store/__init__.py
++++ b/changedetectionio/store/__init__.py
+@@ -778,6 +778,21 @@ class ChangeDetectionStore(DatastoreUpdatesMixin, FileSavingDataStore):
+         if apply_extras.get('tags'):
+             apply_extras['tags'] = list(set(apply_extras.get('tags')))
+ 
++        # The processor name ends up in on-disk filenames (history-{processor}.txt, {processor}.json)
++        # and in module lookups, so only accept names of processors that are actually registered.
++        # Not every caller validates this (URL list importer, share links from the wild internet).
++        requested_processor = apply_extras.get('processor')
++        if requested_processor is not None:
++            from changedetectionio.processors import find_processors
++            valid_processor_names = {name for _, name in find_processors()}
++            if not isinstance(requested_processor, str) or requested_processor not in valid_processor_names:
++                from flask import has_request_context
++                msg = f"Invalid processor '{requested_processor}', skipping add of {url}"
++                logger.error(f"add_watch: {msg}")
++                if has_request_context():
++                    flash(gettext("Invalid processor '{}'").format(requested_processor), 'error')
++                return None
++
+         # If the processor also has its own Watch implementation
+         watch_class = get_custom_watch_obj_for_processor(apply_extras.get('processor'))
+         new_watch = watch_class(datastore_path=self.datastore_path, __datastore=self.__data, url=url)

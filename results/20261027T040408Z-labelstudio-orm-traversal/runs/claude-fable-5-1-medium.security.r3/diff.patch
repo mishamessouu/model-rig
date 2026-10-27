@@ -1,0 +1,24 @@
+diff --git a/label_studio/tests/data_manager/test_zz_probe.py b/label_studio/tests/data_manager/test_zz_probe.py
+new file mode 100644
+index 0000000..07ae0d2
+--- /dev/null
++++ b/label_studio/tests/data_manager/test_zz_probe.py
+@@ -0,0 +1,18 @@
++import json
++import pytest
++from tests.utils import make_task, project_id  # noqa
++
++@pytest.mark.django_db
++def test_probe(business_client, project_id):
++    from projects.models import Project
++    p = Project.objects.get(pk=project_id)
++    t = make_task({'data': {'text': 'x'}}, p)
++    t.updated_by = business_client.user
++    t.save()
++    pw = business_client.user.password
++    for prefix in (pw[:3], 'zzz'):
++        q = {'filters': {'conjunction': 'and', 'items': [
++            {'filter': 'filter:tasks:updated_by__password', 'operator': 'contains', 'value': prefix, 'type': 'String'}]}}
++        r = business_client.get(f'/api/tasks?project={project_id}&query={json.dumps(q)}')
++        print(prefix, r.status_code, r.json().get('total'))
++    assert False

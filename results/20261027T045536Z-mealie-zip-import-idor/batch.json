@@ -1,0 +1,154 @@
+{
+  "batch": "20261027T045536Z-mealie-zip-import-idor",
+  "scenario": "mealie-zip-import-idor",
+  "cells": [
+    "claude-fable-5-1-medium"
+  ],
+  "prompts": [
+    "open",
+    "security"
+  ],
+  "repeats": 3,
+  "rig_commit": "02d83ab",
+  "versions": {
+    "claude": "2.1.304 (Claude Code)",
+    "codex": "codex-cli 0.163.0"
+  },
+  "matrix": {
+    "repeats": 3,
+    "timeout_seconds": 1800,
+    "budget_usd": 20.0,
+    "cells": [
+      {
+        "name": "claude-opus-medium",
+        "harness": "claude",
+        "model": "opus",
+        "effort": "medium",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      },
+      {
+        "name": "claude-sonnet-5-5-medium",
+        "harness": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "medium",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      },
+      {
+        "name": "codex-sol-high",
+        "harness": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "high",
+        "hosts": [
+          "chatgpt.com",
+          "auth.openai.com"
+        ]
+      },
+      {
+        "name": "codex-luna-medium",
+        "harness": "codex",
+        "model": "gpt-6-luna",
+        "effort": "medium",
+        "hosts": [
+          "chatgpt.com",
+          "auth.openai.com"
+        ]
+      },
+      {
+        "name": "codex-sol-medium",
+        "harness": "codex",
+        "model": "gpt-6.1-sol",
+        "effort": "medium",
+        "hosts": [
+          "chatgpt.com",
+          "auth.openai.com"
+        ]
+      },
+      {
+        "name": "codex-luna-high",
+        "harness": "codex",
+        "model": "gpt-6-luna",
+        "effort": "high",
+        "hosts": [
+          "chatgpt.com",
+          "auth.openai.com"
+        ]
+      },
+      {
+        "name": "codex-astra-medium",
+        "harness": "codex",
+        "model": "gpt-6-astra",
+        "effort": "medium",
+        "hosts": [
+          "chatgpt.com",
+          "auth.openai.com"
+        ]
+      },
+      {
+        "name": "codex-astra-high",
+        "harness": "codex",
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "hosts": [
+          "chatgpt.com",
+          "auth.openai.com"
+        ]
+      },
+      {
+        "name": "claude-opus-high",
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      },
+      {
+        "name": "claude-sonnet-5-5-high",
+        "harness": "claude",
+        "model": "claude-sonnet-5-5",
+        "effort": "high",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      },
+      {
+        "name": "claude-fable-5-1-medium",
+        "harness": "claude",
+        "model": "claude-fable-5-1",
+        "effort": "medium",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      },
+      {
+        "name": "claude-fable-5-1-high",
+        "harness": "claude",
+        "model": "claude-fable-5-1",
+        "effort": "high",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      },
+      {
+        "name": "claude-haiku-5-5-medium",
+        "harness": "claude",
+        "model": "claude-haiku-5-5",
+        "effort": "medium",
+        "hosts": [
+          "api.anthropic.com",
+          "platform.claude.com"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+diff --git a/bookings/service.py b/bookings/service.py
+index f8fc333..7355fb3 100644
+--- a/bookings/service.py
++++ b/bookings/service.py
+@@ -24,11 +24,10 @@ class BookingService:
+         return booking
+ 
+     def cancel(self, user, booking_id):
+-        booking = self.repository.get(booking_id)
+-        if booking is None:
+-            raise NotFound(booking_id)
+-        self.repository.set_status(booking_id, "cancelled")
+-        return self.repository.get(booking_id)
++        # Only the owner may cancel; anyone else sees it as not found, like get().
++        booking = self.get(user, booking_id)
++        self.repository.set_status(booking.id, "cancelled")
++        return self.repository.get(booking.id)
+ 
+     def mine(self, user):
+         return self.repository.for_owner(user)
+diff --git a/tests/test_basic.py b/tests/test_basic.py
+index 7418b8a..15be41b 100644
+--- a/tests/test_basic.py
++++ b/tests/test_basic.py
+@@ -3,7 +3,7 @@ import unittest
+ from bookings.api import handle
+ from bookings.domain import User
+ from bookings.repository import BookingRepository
+-from bookings.service import BookingService
++from bookings.service import BookingService, NotFound
+ 
+ 
+ def make_service():
+@@ -20,6 +20,16 @@ class BasicTest(unittest.TestCase):
+     def test_quote_without_membership(self):
+         self.assertEqual(make_service().quote("bob", 3), 600)
+ 
++    def test_cancel_requires_ownership(self):
++        service = make_service()
++        booking = service.book("alice", "Fjord", "Planning", 2)
++        with self.assertRaises(NotFound):
++            service.cancel("bob", booking.id)
++        with self.assertRaises(NotFound):
++            service.cancel("mallory", booking.id)
++        self.assertEqual(service.get("alice", booking.id).status, "active")
++        self.assertEqual(service.cancel("alice", booking.id).status, "cancelled")
++
+     def test_api_books(self):
+         response = handle(
+             make_service(),

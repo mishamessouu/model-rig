@@ -1,0 +1,146 @@
+diff --git a/mealie/services/recipe/recipe_service.py b/mealie/services/recipe/recipe_service.py
+index 3995216..e71eeaa 100644
+--- a/mealie/services/recipe/recipe_service.py
++++ b/mealie/services/recipe/recipe_service.py
+@@ -12,6 +12,7 @@ from zipfile import ZipFile
+ 
+ import sqlalchemy as sa
+ from fastapi import UploadFile
++from slugify import slugify
+ 
+ from mealie.core import exceptions
+ from mealie.lang.providers import Translator
+@@ -260,18 +261,29 @@ class RecipeService(RecipeServiceBase):
+             # default to the current user
+             return str(self.user.id)
+ 
+-    def _transform_category_or_tag(self, data: dict, repo: RepositoryGeneric) -> dict:
+-        slug = data.get("slug")
++    def _transform_organizer(self, data: dict[str, Any] | Any, repo: RepositoryGeneric) -> dict[str, Any] | None:
++        """Resolve an imported category, tag or tool to one that belongs to the current group.
++
++        The exported item is matched on slug within the group-scoped repo and created there when
++        missing. The imported id is never kept: the ORM later resolves many-to-many members by id
++        without a group filter and overwrites whatever row it finds, so a foreign id would let an
++        import rename and re-home another group's organizer.
++        """
++        if not isinstance(data, dict):
++            return None
++
++        name = self._non_empty_str(data.get("name"))
++        slug = self._non_empty_str(data.get("slug")) or (slugify(name) if name else None)
+         if not slug:
+-            return data
++            return None
+ 
+         # if the item exists, return the actual data
+         query = repo.get_one(slug, "slug")
+         if query:
+             return query.model_dump()
+ 
+-        # otherwise, create the item
+-        new_item = repo.create(data)
++        # otherwise, create the item in this group
++        new_item = repo.create({"name": name or slug, "group_id": self.user.group_id})
+         return new_item.model_dump()
+ 
+     def _get_data_matcher(self) -> DataMatcher:
+@@ -366,7 +378,11 @@ class RecipeService(RecipeServiceBase):
+ 
+     def _process_recipe_data(self, key: str, data: list | dict | Any) -> Any:
+         if isinstance(data, list):
+-            return [self._process_recipe_data(key, item) for item in data]
++            items = [self._process_recipe_data(key, item) for item in data]
++            # organizers that could not be resolved to this group are dropped rather than imported
++            if key in ("recipe_category", "tags", "tools"):
++                items = [item for item in items if item is not None]
++            return items
+ 
+         elif isinstance(data, str):
+             # make sure the user is valid
+@@ -389,9 +405,11 @@ class RecipeService(RecipeServiceBase):
+ 
+         # make sure categories and tags and food/unit are valid
+         if key == "recipe_category":
+-            return self._transform_category_or_tag(data, self.repos.categories)
++            return self._transform_organizer(data, self.repos.categories)
+         elif key == "tags":
+-            return self._transform_category_or_tag(data, self.repos.tags)
++            return self._transform_organizer(data, self.repos.tags)
++        elif key == "tools":
++            return self._transform_organizer(data, self.repos.tools)
+         elif key == "food":
+             return self._transform_food(data)
+         elif key == "unit":
+diff --git a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+index 6772364..00cdbf5 100644
+--- a/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
++++ b/tests/integration_tests/user_recipe_tests/test_recipe_crud.py
+@@ -23,7 +23,7 @@ from mealie.pkgs.safehttp.fetch import FetchResult
+ from mealie.pkgs.safehttp.transport import AsyncSafeTransport
+ from mealie.schema.cookbook.cookbook import SaveCookBook
+ from mealie.schema.labels.multi_purpose_label import MultiPurposeLabelSave
+-from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag
++from mealie.schema.recipe.recipe import Recipe, RecipeCategory, RecipeSummary, RecipeTag, RecipeTool
+ from mealie.schema.recipe.recipe_category import CategorySave, TagSave
+ from mealie.schema.recipe.recipe_ingredient import (
+     CreateIngredientFoodAlias,
+@@ -622,6 +622,58 @@ def test_create_recipe_from_zip_id_taken_in_another_group(
+     assert still_there.json()["id"] == other_recipe["id"]
+ 
+ 
++@pytest.mark.parametrize(
++    ["field", "schema", "repo_name", "item_route"],
++    [
++        ("recipe_category", RecipeCategory, "categories", api_routes.organizers_categories_item_id),
++        ("tags", RecipeTag, "tags", api_routes.organizers_tags_item_id),
++        ("tools", RecipeTool, "tools", api_routes.organizers_tools_item_id),
++    ],
++    ids=["category", "tag", "tool"],
++)
++def test_create_recipe_from_zip_cannot_hijack_other_groups_organizer(
++    api_client: TestClient,
++    unique_user: TestUser,
++    g2_user: TestUser,
++    tempdir: str,
++    field: str,
++    schema: type,
++    repo_name: str,
++    item_route,
++):
++    """An imported organizer carrying another group's id must not touch that group's row."""
++    victim_name = random_string()
++    victim = getattr(g2_user.repos, repo_name).create({"name": victim_name, "group_id": g2_user.group_id})
++
++    recipe_name = random_string()
++    hijacked_name = random_string()
++    recipe = RecipeSummary(
++        id=uuid4(),
++        user_id=unique_user.user_id,
++        group_id=unique_user.group_id,
++        name=recipe_name,
++        slug=recipe_name,
++        **{field: [schema(id=victim.id, name=hijacked_name, slug=slugify(hijacked_name))]},
++    )
++    r = api_client.post(api_routes.recipes_create_zip, files=zip_recipe(tempdir, recipe), headers=unique_user.token)
++    assert r.status_code == 201
++
++    # the victim's organizer is unchanged and still in its own group
++    r = api_client.get(item_route(victim.id), headers=g2_user.token)
++    assert r.status_code == 200
++    assert r.json()["name"] == victim_name
++    assert api_client.get(item_route(victim.id), headers=unique_user.token).status_code == 404
++    assert getattr(unique_user.repos, repo_name).get_one(victim.id) is None
++
++    # the importer gets a fresh organizer in their own group instead
++    imported = api_client.get(api_routes.recipes_slug(recipe_name), headers=unique_user.token).json()
++    imported_items = imported["recipeCategory" if field == "recipe_category" else field]
++    assert len(imported_items) == 1
++    assert imported_items[0]["id"] != str(victim.id)
++    assert imported_items[0]["name"] == hijacked_name
++    assert getattr(unique_user.repos, repo_name).get_one(imported_items[0]["id"]) is not None
++
++
+ def test_create_recipe_from_zip_preserves_extras(api_client: TestClient, unique_user: TestUser, tempdir: str):
+     """Importing must not write its own keys into the recipe's free-form extras."""
+     recipe_name = random_string()

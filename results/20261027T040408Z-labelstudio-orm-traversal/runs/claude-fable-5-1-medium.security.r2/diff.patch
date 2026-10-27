@@ -1,0 +1,107 @@
+diff --git a/label_studio/data_manager/managers.py b/label_studio/data_manager/managers.py
+index 1dce9e1..8c3eb7f 100644
+--- a/label_studio/data_manager/managers.py
++++ b/label_studio/data_manager/managers.py
+@@ -762,6 +762,32 @@ def add_user_filter(enabled, key, _filter, filter_expressions):
+         return 'continue'
+ 
+ 
++def validate_filter_column_traversal(raw_filter: str) -> None:
++    """Reject filter columns that traverse foreign keys (``__``) unless explicitly allowlisted.
++
++    Mirrors ``FilterSerializer.validate_column`` so that filters arriving through the ad-hoc
++    ``query`` parameter (and any other path that bypasses the view serializer) are held to the
++    same rule. Without this, ``filter:tasks:updated_by__password`` with ``regex``/``contains``
++    becomes a boolean oracle over related tables (ORM leak, see #5012).
++
++    ``task.data`` keys (``data.<key>``) are allowed because they index a JSON field, not a relation.
++    """
++    column = raw_filter
++    if column.startswith('filter:tasks:'):
++        column = column[len('filter:tasks:') :]
++    if column.startswith('-'):
++        column = column[1:]
++    if column.startswith('data.'):
++        return
++    if column in settings.DATA_MANAGER_FILTER_ALLOWLIST:
++        return
++    if '__' in column:
++        raise ValidationError(
++            f'"__" is not generally allowed in filters. Consider asking your administrator to add "{column}" '
++            'to DATA_MANAGER_FILTER_ALLOWLIST, but note that some filter expressions may pose a security risk'
++        )
++
++
+ def apply_filters(queryset, filters, project, request):
+     if not filters:
+         return queryset
+@@ -795,6 +821,9 @@ def apply_filters(queryset, filters, project, request):
+                     break
+                 continue
+ 
++            # Foreign-key traversal must be rejected before the column becomes an ORM path.
++            validate_filter_column_traversal(_filter.filter)
++
+             # django orm loop expression attached to column name
+             field_name, _ = preprocess_field_name(_filter.filter, project)
+             if _is_stale_agreement_field(queryset, field_name):
+diff --git a/label_studio/tests/data_manager/test_orm_traversal.py b/label_studio/tests/data_manager/test_orm_traversal.py
+new file mode 100644
+index 0000000..3c6402a
+--- /dev/null
++++ b/label_studio/tests/data_manager/test_orm_traversal.py
+@@ -0,0 +1,54 @@
++"""This file and its contents are licensed under the Apache License 2.0. Please see the included NOTICE for copyright information and LICENSE for a copy of the license."""
++
++import json
++from urllib.parse import quote
++
++import pytest
++
++from ..utils import project_id  # noqa
++
++pytestmark = pytest.mark.django_db
++
++
++def _query(filter_name, operator='empty', value='true', filter_type='String'):
++    return quote(
++        json.dumps(
++            {
++                'filters': {
++                    'conjunction': 'and',
++                    'items': [{'filter': filter_name, 'operator': operator, 'type': filter_type, 'value': value}],
++                }
++            }
++        )
++    )
++
++
++@pytest.mark.parametrize(
++    'filter_name',
++    [
++        'filter:tasks:updated_by__password',
++        'filter:tasks:annotations__completed_by__password',
++        'filter:tasks:project__organization__token',
++        'filter:tasks:data__text__foo',
++    ],
++)
++def test_adhoc_task_filter_rejects_relation_traversal(business_client, project_id, filter_name):
++    response = business_client.get(f'/api/tasks?project={project_id}&query={_query(filter_name)}')
++    assert response.status_code == 400, response.content
++    assert '__' in json.dumps(response.json())
++
++
++@pytest.mark.parametrize(
++    'filter_name, operator, value, filter_type',
++    [
++        ('filter:tasks:data.text', 'empty', 'true', 'String'),
++        ('filter:tasks:annotations__completed_by', 'equal', 1, 'Number'),
++        ('filter:tasks:updated_by__active_organization', 'equal', 1, 'Number'),
++    ],
++)
++def test_adhoc_task_filter_allows_data_and_allowlisted_columns(
++    business_client, project_id, filter_name, operator, value, filter_type
++):
++    query = _query(filter_name, operator=operator, value=value, filter_type=filter_type)
++    response = business_client.get(f'/api/tasks?project={project_id}&query={query}')
++    assert response.status_code == 200, response.content
