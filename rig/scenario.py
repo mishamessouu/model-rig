@@ -127,13 +127,32 @@ class Scenario:
                 f"Run: python3 -m rig prepare {self.name}")
 
 
-def _masked_install(named):
-    """Restore only an install, never a private folder or its parent."""
+def _outside(link, env):
+    """The first path in `link`'s chain of links that is not in `env`."""
+    env = Path(env)
+    while link.is_symlink() and link.is_relative_to(env):
+        link = link.parent / os.readlink(link)
+    return link
+
+
+def _masked_install(link):
+    """Restore only an install, never a private folder or its parent.
+    `link` is the executable the environment names, two levels below its
+    install folder. The folder comes back only when it holds the real
+    executable, through a link or not. A link in a shared folder, such as
+    uv's ~/.local/bin/python3, brings back the one link and the folder of
+    its target, never all of ~/.local."""
     masked = (*sandbox.EMPTIED, *sandbox.hidden_paths())
     private = [Path(path).resolve() for path in
                (sandbox.ROOT, sandbox.STATE, Path.home())]
+    named = link.parent.parent
+    real = link.resolve()
+    if real.is_relative_to(named.resolve()):
+        prefixes = (named, named.resolve())
+    else:
+        prefixes = (link, real.parent.parent)
     out = []
-    for prefix in (named, named.resolve()):
+    for prefix in prefixes:
         if any(path.is_relative_to(prefix.resolve()) for path in private):
             continue
         if prefix not in out and any(prefix.is_relative_to(folder) for folder in masked):
@@ -153,7 +172,11 @@ def base_interpreter(env):
     for line in config.read_text().splitlines():
         key, _, value = line.partition("=")
         if key.strip() == "home" and value.strip():
-            return _masked_install(Path(value.strip()).parent)
+            home = Path(value.strip())
+            link = _outside(Path(env) / "bin" / "python3", env)
+            if link.parent != home:
+                link = home / "python3"
+            return _masked_install(link)
     return []
 
 
@@ -165,7 +188,7 @@ def node_install(env):
     node = Path(env) / "bin" / "node"
     if not node.is_symlink():
         return []
-    return _masked_install(Path(os.readlink(node)).parent.parent)
+    return _masked_install(_outside(node, env))
 
 
 def load(name):

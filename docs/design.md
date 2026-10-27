@@ -352,8 +352,9 @@ private, subscription sign-ins, and the "choice" measure.
    60-minute limit, as many Fable high runs as timed out per scenario
    and prompt. The scoreboard reads cells from `config/matrix.toml` only,
    so the side cell stays out of the main table. A timed-out Claude run
-   records no token use, so its cost is missing and the scoreboard counts
-   it as zero; that understates the cost of a slow cell. Changes if:
+   records no token use, so its cost is unknown, and the cell shows n/a
+   for credits per success, as for any unpriced run (`rig/prices.py`).
+   Only a lower bound from the priced runs is known. Changes if:
    Codex refusals get a known shape, a provider returns a refused run's
    usage, or the limit changes for every cell.
 

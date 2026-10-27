@@ -72,9 +72,11 @@ How to read it:
   Opus medium run (`20261020T101406Z-labelstudio-orm-traversal`,
   `claude-opus-medium.open.r2`) also used `claude-opus-5`, which the
   sheet does not list. Its priced runs give at least 46 credits per
-  success. A Claude run that times out or stops with an agent error
-  records no tokens, so Fable 5.1 shows n/a too. Its priced runs give at
-  least 110 credits per success at medium and 192 at high.
+  success. Fable 5.1 shows n/a too. Its three refused runs at medium and
+  one wger run at high also used `claude-opus-5`, and its two mealie
+  runs at high timed out. A timed-out Claude run records no tokens. Its
+  priced runs give at least 110 credits per success at medium and 192 at
+  high.
 - **Refused by a safety filter** and **Fixed, but over time** are
   failures in the row above. They are shown apart so you can see why a
   cell failed (design decision 15 in [`docs/design.md`](docs/design.md)).
