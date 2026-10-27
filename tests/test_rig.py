@@ -342,11 +342,14 @@ class RuntimeRestoreTest(unittest.TestCase):
         with self.layout(kind) as (scenario, private):
             for parent in private:
                 with self.subTest(parent=parent.name):
-                    install = parent / "runtime"
-                    (install / "bin").mkdir(parents=True)
-                    (install / "bin" / binary).symlink_to(system)
-                    named = parent / "runtime-link"
-                    named.symlink_to(install, target_is_directory=True)
+                    # The shape of uv's ~/.local/bin/python3: a shared
+                    # folder whose bin holds a link to the real runtime.
+                    shared = parent / "shared"
+                    (shared / "bin").mkdir(parents=True)
+                    (shared / "bin" / binary).symlink_to(system)
+                    (shared / "private-marker").write_text("private")
+                    named = parent / "shared-link"
+                    named.symlink_to(shared, target_is_directory=True)
                     executable = self.point_runtime(scenario, named)
                     reads = scenario.sandbox_read()
                     done = subprocess.run(sandbox.command(
@@ -354,8 +357,31 @@ class RuntimeRestoreTest(unittest.TestCase):
                         capture_output=True, text=True)
                     self.assertEqual(done.returncode, 0, done.stderr)
                     self.assertTrue(done.stdout.strip())
-                    self.assertEqual(reads, [scenario.env, named, install])
+                    # The one link comes back, not the folder around it.
+                    self.assertEqual(reads, [scenario.env, named / "bin" / binary])
+                    self.assert_private(scenario, (*private, shared))
+
+    def assert_whole_install_restored(self, kind):
+        binary = "python3" if kind == "python" else "node"
+        with self.layout(kind) as (scenario, private):
+            for parent in private:
+                with self.subTest(parent=parent.name):
+                    # A uv or nvm install: the real executable sits inside
+                    # it, so the named link and its target both come back.
+                    install = parent / "runtime"
+                    (install / "bin").mkdir(parents=True)
+                    (install / "bin" / binary).write_text("#!/bin/sh\n")
+                    named = parent / "runtime-link"
+                    named.symlink_to(install, target_is_directory=True)
+                    self.point_runtime(scenario, named)
+                    self.assertEqual(scenario.sandbox_read(), [scenario.env, named, install])
                     self.assert_private(scenario, private)
+
+    def test_python_install_holding_its_executable_comes_back_whole(self):
+        self.assert_whole_install_restored("python")
+
+    def test_node_install_holding_its_executable_comes_back_whole(self):
+        self.assert_whole_install_restored("node")
 
     def test_python_install_under_each_dynamic_mask_starts(self):
         self.assert_runtime_restored("python")
